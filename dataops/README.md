@@ -35,5 +35,5 @@ Checked items are available; unchecked items are planned.
 - `Enter` / `Escape`: open/close Database row details in narrow terminals.
 - `F1`: full help · `F6`: theme · `Ctrl+Q`: quit.
 
-- [Architecture](ARCHITECTURE.md) · [Tests](tests/TEST_SUITE.md)
+- [Architecture](../docs/dataops/ARCHITECTURE.md) · [Tests](../docs/dataops/TEST_SUITE.md)
 - [Changes](CHANGELOG.md) · [Project overview](../README.md)

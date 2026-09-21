@@ -23,7 +23,7 @@ Paths below are relative to `src/athar_dataops/`.
 | `assets/` | Packaged terminal artwork. |
 
 - Package configuration and lockfile: `pyproject.toml`, `uv.lock`.
-- Test coverage and commands: [tests/TEST_SUITE.md](tests/TEST_SUITE.md).
+- Test coverage and commands: [TEST_SUITE.md](TEST_SUITE.md).
 
 ## Dependency injection and lifetime
 

@@ -6,6 +6,7 @@ import json
 import sqlite3
 import tempfile
 from contextlib import closing
+from importlib.resources import files
 from pathlib import Path
 from unittest import IsolatedAsyncioTestCase, TestCase
 from unittest.mock import patch
@@ -276,7 +277,11 @@ class PipelineTests(IsolatedAsyncioTestCase):
         self.db = DatabaseService(self.path)
         await self.db.initialize()
         self.assertEqual((await self.db.get_run(result.run_id)).status, "completed")
-        self.assertEqual(len((await self.db.table_page("schema_migrations")).rows), 1)
+        migration_dir = files("athar_dataops").joinpath("migrations")
+        expected = sum(1 for path in migration_dir.iterdir() if path.is_file())
+        self.assertEqual(
+            len((await self.db.table_page("schema_migrations")).rows), expected
+        )
         self.assertEqual(
             (await self.db.get_snapshot(result.snapshot_id)).raw_content, self.body
         )
@@ -299,6 +304,74 @@ class PipelineTests(IsolatedAsyncioTestCase):
             self.assertEqual(
                 conn.execute("SELECT name FROM startups").fetchone()[0], "Keep me"
             )
+
+    async def test_upgrade_from_001_schema_preserves_stored_evidence(self):
+        path = Path(self.directory.name) / "upgrade.db"
+        one = files("athar_dataops").joinpath("migrations").joinpath("001_registry.sql")
+        with closing(sqlite3.connect(path)) as conn:
+            for statement in one.read_text().split(";"):
+                if statement.strip():
+                    conn.execute(statement)
+            conn.execute(
+                "INSERT INTO schema_migrations VALUES (?, ?, ?)",
+                (1, hashlib.sha256(one.read_bytes()).hexdigest(), "2024-01-01T00:00:00Z"),
+            )
+            conn.execute(
+                "INSERT INTO source_snapshots VALUES (?, ?, ?, ?, ?)",
+                ("s1", "https://registry.example", "hash", "2024-01-01T00:00:00Z", b"[]"),
+            )
+            for number, name in ((1, "Example"), (2, "Second")):
+                conn.execute(
+                    "INSERT INTO source_rows VALUES (?, ?, ?)",
+                    ("s1", number, json.dumps(registry_row(name=name), ensure_ascii=False)),
+                )
+                conn.execute(
+                    "INSERT INTO normalized_records VALUES (?, ?, ?, ?, ?)",
+                    ("s1", number, None, name, "{}"),
+                )
+            conn.commit()
+        upgraded = DatabaseService(path)
+        await upgraded.initialize()
+        try:
+            rows = await upgraded.table_page("source_rows")
+            self.assertEqual(len(rows.rows), 2)
+            self.assertIn("id", rows.columns)
+            records = await upgraded.table_page("normalized_records")
+            self.assertEqual(len(records.rows), 2)
+            migrations = await upgraded.table_page("schema_migrations")
+            self.assertEqual(len(migrations.rows), 3)
+        finally:
+            await upgraded.close()
+
+    async def test_clean_pipeline_is_offline_and_writes_relational_rows(self):
+        await self.pipeline.run_pipeline()
+
+        async def fail_if_fetched(*args, **kwargs):
+            raise AssertionError("Clean pipeline must stay offline")
+
+        with patch.object(self.pipeline._artifact, "fetch", side_effect=fail_if_fetched):
+            result = await self.pipeline.run_clean_pipeline()
+        self.assertEqual(result.status, "completed")
+        self.assertEqual(result.records_processed, 1)
+        self.assertEqual(result.review_count, 0)
+        (detail,) = await self.db.list_records()
+        self.assertIsNotNone(detail.normalized.entity_id)
+        founders = await self.db.table_page("entity_founders")
+        self.assertIn("Example Person", [row[2] for row in founders.rows])
+
+    async def test_clean_pipeline_queues_review_for_stored_rows(self):
+        self.body = json.dumps([registry_row(website="bad host")]).encode()
+        await self.pipeline.run_pipeline()
+        result = await self.pipeline.run_clean_pipeline()
+        self.assertEqual(result.status, "completed")
+        self.assertEqual(result.review_count, 1)
+        reviews = await self.db.table_page("entity_review_items")
+        self.assertIn("Invalid website; original retained", [row[3] for row in reviews.rows])
+
+    async def test_clean_pipeline_reports_missing_snapshot(self):
+        result = await self.pipeline.run_clean_pipeline()
+        self.assertEqual(result.status, "failed")
+        self.assertIn("No snapshots found", result.error)
 
 
 class NormalizationTests(TestCase):

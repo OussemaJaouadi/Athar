@@ -1,6 +1,6 @@
 # DataOps architecture
 
-- Current implementation: registry collection, evidence preservation, normalization, and terminal inspection.
+- Current implementation: registry collection, offline cleaning of preserved evidence, and terminal inspection.
 - Python with uv, Textual, and local embedded Turso (`pyturso` / `turso.aio`).
 
 ## File map
@@ -81,7 +81,7 @@ flowchart TD
 | `ArtifactService` | HTTP fetching and hashing original bytes; returns `RegistrySnapshot`. |
 | `RegistryService` | Deterministic field normalization and review reasons; returns `NormalizedRecord` values. |
 | `DatabaseService` | Migrations, evidence, run history, transactional identity resolution, and bounded queries. |
-| `PipelineOrchestrator` | Collection sequence, overlap guard, progress, timeout, and failure/cancellation bookkeeping. |
+| `PipelineOrchestrator` | Collection and offline cleaning sequences, overlap guard, progress, timeout, and failure/cancellation bookkeeping. |
 
 - Services have no Textual dependency; UI consumes service methods and shared types.
 - `schemas/registry.py`: source snapshots, normalized records, and evidence details.

@@ -159,13 +159,22 @@ class DatabaseService:
             )
         return snapshot
 
-    async def preserve_rows(self, snapshot_id: str, rows: list[Any]) -> None:
+    async def preserve_rows(self, snapshot_id: str, rows: list[Any]) -> dict[int, str]:
+        """Store raw rows with UUID PKs. Returns {row_number: row_id} for FK use."""
+        row_ids: dict[int, str] = {}
         async with self._transaction():
             for number, row in enumerate(rows, start=1):
+                row_id = str(uuid4())
                 await self._execute(
-                    "INSERT INTO source_rows VALUES (?, ?, ?) ON CONFLICT DO NOTHING",
-                    (snapshot_id, number, json.dumps(row, ensure_ascii=False)),
+                    "INSERT INTO source_rows (id, snapshot_id, row_number, raw_json) VALUES (?, ?, ?, ?) ON CONFLICT (snapshot_id, row_number) DO NOTHING",
+                    (row_id, snapshot_id, number, json.dumps(row, ensure_ascii=False)),
                 )
+                existing = await self._rows(
+                    "SELECT id FROM source_rows WHERE snapshot_id = ? AND row_number = ?",
+                    (snapshot_id, number),
+                )
+                row_ids[number] = existing[0]["id"]
+        return row_ids
 
     async def get_snapshot(self, snapshot_id: str) -> RegistrySnapshot:
         async with self._lock:
@@ -176,8 +185,23 @@ class DatabaseService:
             raise LookupError("Snapshot not found")
         return RegistrySnapshot(**rows[0])
 
+    async def get_latest_snapshot_rows(self) -> tuple[str, list[Any], dict[int, str]]:
+        async with self._lock:
+            snapshots = await self._rows(
+                "SELECT id FROM source_snapshots ORDER BY fetched_at DESC LIMIT 1"
+            )
+            if not snapshots:
+                raise LookupError("No snapshots found to clean")
+            snapshot_id = snapshots[0]["id"]
+            rows = await self._rows(
+                "SELECT id, row_number, raw_json FROM source_rows WHERE snapshot_id = ? ORDER BY row_number",
+                (snapshot_id,),
+            )
+            row_ids = {row["row_number"]: row["id"] for row in rows}
+            return snapshot_id, [json.loads(row["raw_json"]) for row in rows], row_ids
+
     async def complete_run(
-        self, run_id: str, snapshot_id: str, records: list[NormalizedRecord]
+        self, run_id: str, snapshot_id: str, records: list[NormalizedRecord], row_ids: dict[int, str]
     ) -> PipelineRunResult:
         """Resolve conservative identities and commit records with the success marker."""
         async with self._transaction():
@@ -196,6 +220,7 @@ class DatabaseService:
             for record in records:
                 name = self._name_key(record.name)
                 domain = record.domain
+                source_row_id = row_ids.get(record.row_number)
                 if not name or not domain:
                     record.review_reasons.append(
                         "Identity needs a valid name and website"
@@ -206,13 +231,54 @@ class DatabaseService:
                     )
                 else:
                     key = (name, domain)
+                    now_str = utc_now()
                     if key not in by_key:
                         by_key[key] = str(uuid4())
                         await self._execute(
-                            "INSERT INTO entities VALUES (?, ?, ?)",
-                            (by_key[key], name, domain),
+                            """INSERT INTO entities (
+                                id, name_key, domain, name, website, description, sector,
+                                cohort_label, cohort_date, creation_year,
+                                first_snapshot_id, latest_snapshot_id, latest_row_id,
+                                created_at, updated_at
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                            (
+                                by_key[key], name, domain, record.name, record.website,
+                                record.description, record.sector, record.cohort_label,
+                                record.cohort_date, record.creation_year,
+                                snapshot_id, snapshot_id, source_row_id,
+                                now_str, now_str,
+                            ),
+                        )
+                    else:
+                        await self._execute(
+                            """UPDATE entities SET
+                                name = ?, website = ?, description = ?, sector = ?,
+                                cohort_label = ?, cohort_date = ?, creation_year = ?,
+                                latest_snapshot_id = ?, latest_row_id = ?, updated_at = ?
+                               WHERE id = ?""",
+                            (
+                                record.name, record.website, record.description, record.sector,
+                                record.cohort_label, record.cohort_date, record.creation_year,
+                                snapshot_id, source_row_id, now_str,
+                                by_key[key],
+                            ),
                         )
                     record.entity_id = by_key[key]
+                    if record.founders:
+                        for founder in record.founders:
+                            await self._execute(
+                                "INSERT INTO entity_founders (id, entity_id, full_name, created_at) VALUES (?, ?, ?, ?)",
+                                (str(uuid4()), record.entity_id, founder, now_str),
+                            )
+                if record.review_reasons:
+                    now_str = utc_now()
+                    for reason in record.review_reasons:
+                        await self._execute(
+                            """INSERT INTO entity_review_items (
+                                id, entity_id, source_row_id, reason, resolved, created_at
+                            ) VALUES (?, ?, ?, ?, 0, ?)""",
+                            (str(uuid4()), record.entity_id, source_row_id, reason, now_str),
+                        )
                 await self._execute(
                     "INSERT INTO normalized_records VALUES (?, ?, ?, ?, ?) ON CONFLICT(snapshot_id, row_number) DO UPDATE SET entity_id=excluded.entity_id, name=excluded.name, record_json=excluded.record_json",
                     (
@@ -225,8 +291,8 @@ class DatabaseService:
                 )
             review_count = sum(bool(record.review_reasons) for record in records)
             await self._execute(
-                "UPDATE pipeline_runs SET completed_at=?, status='completed', records_processed=?, review_count=? WHERE id=?",
-                (utc_now(), len(records), review_count, run_id),
+                "UPDATE pipeline_runs SET completed_at=?, status='completed', records_processed=?, review_count=?, snapshot_id=? WHERE id=?",
+                (utc_now(), len(records), review_count, snapshot_id, run_id),
             )
         return PipelineRunResult(
             run_id, "completed", snapshot_id, len(records), review_count

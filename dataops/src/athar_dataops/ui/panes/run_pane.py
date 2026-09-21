@@ -47,6 +47,7 @@ class RunPane(VerticalScroll):
         yield Static("Collect the latest records to browse them here.", classes="muted")
         with Horizontal(classes="actions"):
             yield Button("Collect registry", id="run-pipeline", variant="primary")
+            yield Button("Clean data", id="clean-pipeline")
             yield Button("Cancel", id="cancel-pipeline", disabled=True)
             yield Button("View records", id="view-records")
         yield Static("Ready", id="run-status", markup=False)
@@ -104,6 +105,24 @@ class RunPane(VerticalScroll):
         )
         self.query_one("#cancel-pipeline", Button).focus()
 
+    @on(Button.Pressed, "#clean-pipeline")
+    def start_cleaning(self) -> None:
+        if self.collecting:
+            return
+        self._set_running(True)
+        self.query_one("#view-records").display = False
+        self.query_one("#run-activity").display = True
+        self.query_one(LogView).clear()
+        try:
+            self.query_one(PipelineProgress).reset()
+        except Exception:
+            pass
+        self._set_status("Cleaning and normalizing stored evidence…")
+        self._collection_worker = self.run_worker(
+            self._clean(), group="collection", exit_on_error=False
+        )
+        self.query_one("#cancel-pipeline", Button).focus()
+
     @on(Button.Pressed, "#cancel-pipeline")
     def cancel_collection(self) -> None:
         if self._collection_worker is not None:
@@ -128,6 +147,7 @@ class RunPane(VerticalScroll):
     def _set_running(self, running: bool) -> None:
         self.collecting = running
         self.query_one("#run-pipeline", Button).disabled = running
+        self.query_one("#clean-pipeline", Button).disabled = running
         cancel = self.query_one("#cancel-pipeline", Button)
         cancel.disabled = not running
         cancel.display = running
@@ -220,3 +240,38 @@ class RunPane(VerticalScroll):
                     else "#run-pipeline"
                 )
                 self.query_one(target, Button).focus()
+
+    async def _clean(self) -> None:
+        try:
+            result = await self._orchestrator.run_clean_pipeline(self._progress)
+            if result.status == "completed":
+                summary = f"Cleaned {result.records_processed} records"
+                if result.review_count:
+                    summary += f" · {result.review_count} need review"
+                self._set_status(summary, "success")
+                self.query_one(LogView).write(summary, "completed")
+                self.query_one("#view-records").display = True
+                self.post_message(self.CollectionFinished())
+                await self._update_stats()
+            else:
+                self._failed(result.error or "Cleaning failed")
+        except asyncio.CancelledError:
+            self._set_collection_status("cancelled")
+            self._set_status("Cancelled. You can clean again.")
+            self.query_one(LogView).write(
+                "Cleaning cancelled; existing evidence kept.", "cancelled"
+            )
+            raise
+        except Exception as exc:
+            self._failed(str(exc))
+        finally:
+            cancel_focused = self.query_one("#cancel-pipeline").has_focus
+            self._set_running(False)
+            if cancel_focused:
+                target = (
+                    "#view-records"
+                    if self.query_one("#view-records").display
+                    else "#run-pipeline"
+                )
+                self.query_one(target, Button).focus()
+

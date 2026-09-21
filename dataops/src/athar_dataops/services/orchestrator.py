@@ -63,7 +63,7 @@ class PipelineOrchestrator:
                     raise ValueError(
                         "Registry response must be a JSON array; source bytes retained"
                     )
-                await self._db.preserve_rows(snapshot_id, rows)
+                row_ids = await self._db.preserve_rows(snapshot_id, rows)
                 records = self._registry.normalize(rows)
                 report(
                     "completed",
@@ -72,7 +72,7 @@ class PipelineOrchestrator:
                 )
                 stage = "save"
                 report("running", "Resolving identities and saving records")
-                result = await self._db.complete_run(run_id, snapshot_id, records)
+                result = await self._db.complete_run(run_id, snapshot_id, records, row_ids)
             report("completed", f"{result.review_count} rows need review", len(records))
             return result
         except (Exception, asyncio.CancelledError) as exc:
@@ -82,6 +82,57 @@ class PipelineOrchestrator:
                 error = f"Collection exceeded {self._timeout_seconds:g} seconds"
             else:
                 error = "Collection cancelled" if cancelled else str(exc)
+            if started:
+                await self._db.finish_failed_run(run_id, status, error)
+                result = await self._db.get_run(run_id)
+                if result.status == "completed":
+                    return result
+            report(status, error)
+            if cancelled:
+                raise
+            return PipelineRunResult(run_id, status, snapshot_id, error=error)
+        finally:
+            self._running = False
+
+    async def run_clean_pipeline(
+        self, progress: Callable[[StageProgress], None] | None = None
+    ) -> PipelineRunResult:
+        if self._running:
+            raise RuntimeError("A pipeline operation is already running")
+        self._running = True
+        run_id = str(uuid4())
+        stage: StageName = "normalize"
+        snapshot_id = None
+        started = False
+
+        def report(status: RunStatus, message: str, count: int = 0) -> None:
+            if progress:
+                progress(StageProgress(stage, status, message, count))
+
+        try:
+            await self._db.start_run(run_id)
+            started = True
+            async with asyncio.timeout(self._timeout_seconds):
+                report("running", "Reading latest preserved evidence")
+                snapshot_id, rows, row_ids = await self._db.get_latest_snapshot_rows()
+                records = self._registry.normalize(rows)
+                report(
+                    "completed",
+                    f"Cleaned {len(records)} records from stored evidence",
+                    len(records),
+                )
+                stage = "save"
+                report("running", "Deduplicating and updating entities")
+                result = await self._db.complete_run(run_id, snapshot_id, records, row_ids)
+            report("completed", f"{result.review_count} rows need review", len(records))
+            return result
+        except (Exception, asyncio.CancelledError) as exc:
+            cancelled = isinstance(exc, asyncio.CancelledError)
+            status = "cancelled" if cancelled else "failed"
+            if isinstance(exc, TimeoutError):
+                error = f"Cleaning exceeded {self._timeout_seconds:g} seconds"
+            else:
+                error = "Cleaning cancelled" if cancelled else str(exc)
             if started:
                 await self._db.finish_failed_run(run_id, status, error)
                 result = await self._db.get_run(run_id)

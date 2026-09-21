@@ -31,7 +31,9 @@ class RegistryService:
         record.name = text("name", required=True)
         # The registry calls this field `desc`; the original remains byte-preserved.
         record.description = text("desc", required=True)
-        record.sector = text("sector", required=True)
+        record.sector = text("sector") or text("industry")
+        if not record.sector:
+            record.review_reasons.append("Missing or invalid sector")
         record.cohort_label = text("label", required=True)
         if record.cohort_label:
             try:

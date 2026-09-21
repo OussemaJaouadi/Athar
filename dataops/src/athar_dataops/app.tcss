@@ -1,0 +1,741 @@
+/* Athar DataOps TUI Design System — Foundation v0.1 */
+
+Screen {
+    background: $background;
+    color: $foreground;
+}
+
+/* Masthead Navigation Bar */
+#masthead {
+    height: 3;
+    background: $surface;
+    border-bottom: solid $control-line;
+    padding: 0 2;
+    align-vertical: middle;
+}
+
+#wordmark {
+    color: $action-fg;
+    background: $action-bg;
+    text-style: bold;
+    padding: 0 1;
+    margin-right: 1;
+}
+
+#app-name {
+    color: $foreground;
+    text-style: bold;
+    width: auto;
+}
+
+#masthead-status {
+    color: $muted;
+    width: 1fr;
+    text-align: right;
+}
+
+/* Tabs & Workspace Frame */
+#workspace, ContentSwitcher, TabPane {
+    height: 1fr;
+}
+
+Tabs {
+    background: $surface;
+    border-bottom: solid $control-line;
+    height: 3;
+}
+
+Tab {
+    color: $muted;
+    padding: 0 2;
+    height: 3;
+}
+
+Tab.-active {
+    color: $link-ink;
+    text-style: bold;
+    background: $selection;
+    border-bottom: tall $link-ink;
+}
+
+Tabs:focus Tab.-active {
+    background: $selection;
+}
+
+TabPane {
+    padding: 1 2;
+}
+
+/* Metric Cards Dashboard */
+#run-metrics {
+    height: 5;
+    margin-bottom: 1;
+}
+
+#run-body {
+    height: 1fr;
+}
+
+#run-controls-panel {
+    width: 44;
+    background: $surface;
+    border: round $control-line;
+    padding: 1 2;
+    margin-right: 1;
+}
+
+#run-controls-panel:focus-within {
+    border: round $link-ink;
+}
+
+#run-activity-panel {
+    width: 1fr;
+    height: 1fr;
+}
+
+#run-status {
+    margin-top: 1;
+    padding: 0 1;
+    height: 1;
+    text-style: bold;
+}
+
+#run-status.success { color: $success; }
+#run-status.error { color: $error; }
+#run-status.warning { color: $warning; }
+
+/* Split Rails & Dossier Panels */
+.split {
+    height: 1fr;
+}
+
+.rail {
+    width: 32;
+    background: $surface;
+    border: round $control-line;
+    padding: 1;
+    margin-right: 1;
+}
+
+.rail:focus-within {
+    border: round $link-ink;
+}
+
+.detail {
+    width: 1fr;
+    height: 1fr;
+    background: $surface;
+    border: round $control-line;
+    padding: 1 2;
+}
+
+.detail:focus-within {
+    border: round $link-ink;
+}
+
+/* Record Listing & Item Highlights */
+#records-count {
+    padding: 0 1;
+    height: 1;
+    margin-bottom: 1;
+    background: $panel;
+    color: $link-ink;
+    text-style: bold;
+    text-align: center;
+}
+
+#records-rail {
+    width: 32;
+}
+
+#records-list {
+    background: transparent;
+    border: none;
+    height: 1fr;
+}
+
+#records-list > ListItem {
+    padding: 0 1;
+    height: auto;
+    margin-bottom: 0;
+    border-left: blank transparent;
+    color: $foreground;
+}
+
+#records-list > ListItem.-hovered {
+    background: $boost;
+}
+
+#records-list > ListItem.-highlight {
+    background: $selection;
+    border-left: solid $control-line;
+}
+
+#records-list > ListItem.-highlight Label {
+    color: $foreground;
+    text-style: bold;
+}
+
+#records-list:focus > ListItem.-highlight {
+    background: $selection;
+    border-left: thick $link-ink;
+}
+
+#records-list:focus > ListItem.-highlight Label {
+    color: $link-ink;
+    text-style: bold;
+}
+
+#records-list:focus {
+    border: none;
+}
+
+/* Dossier Components */
+#detail-title-row {
+    height: auto;
+    align-vertical: middle;
+    margin-bottom: 0;
+}
+
+#detail-title {
+    color: $link-ink;
+    text-style: bold;
+    width: auto;
+    margin-right: 2;
+}
+
+#detail-badge {
+    width: auto;
+    height: auto;
+}
+
+#detail-summary {
+    color: $muted;
+    margin-bottom: 1;
+}
+
+#detail-description {
+    padding: 1;
+    background: $panel;
+    border-left: solid $link-ink;
+    margin: 1 0;
+}
+
+#detail-normalized {
+    padding: 1;
+    background: $surface;
+    border: round $line;
+    margin-bottom: 1;
+}
+
+#review-section {
+    border: round $warning;
+    background: $surface;
+    padding: 1;
+    margin: 1 0;
+}
+
+#detail-fields {
+    padding: 1;
+    background: $panel;
+    border: round $line;
+    margin-bottom: 1;
+}
+
+#detail-original {
+    padding: 1;
+    background: $panel;
+    border: round $line;
+}
+
+/* Interactive Collapsibles */
+Collapsible {
+    border: round $control-line;
+    background: $panel;
+    padding: 0 1;
+    margin-top: 1;
+}
+
+Collapsible:focus-within {
+    border: round $link-ink;
+}
+
+Collapsible > Contents {
+    padding: 1 0;
+}
+
+CollapsibleTitle {
+    color: $foreground;
+    text-style: bold;
+}
+
+CollapsibleTitle:focus {
+    color: $link-ink;
+    background: $selection;
+}
+
+/* Button & Action Bar Controls */
+Button {
+    min-width: 14;
+    height: 3;
+    border: round $control-line;
+    background: $panel;
+    color: $foreground;
+}
+
+Button.-primary {
+    background: $action-bg;
+    color: $action-fg;
+    text-style: bold;
+    border: round $control-line;
+}
+
+Button.-primary:hover {
+    background: $action-hover;
+}
+
+Button:focus {
+    border: round $link-ink;
+    text-style: bold;
+    background: $selection;
+}
+
+/* Focus keeps the action's readable foreground/background pair. */
+Button.-primary:focus {
+    background: $action-bg;
+    color: $action-fg;
+    border: double $action-fg;
+}
+Button.-primary:hover:focus { background: $action-hover; }
+
+Button:disabled {
+    opacity: 0.5;
+    background: $panel;
+    color: $muted;
+    border: round $line;
+}
+
+.actions {
+    height: 3;
+    margin: 1 0;
+}
+
+.actions Button {
+    margin-right: 1;
+}
+
+.pager {
+    height: 3;
+    margin-top: 1;
+}
+
+.pager Button {
+    min-width: 10;
+    width: 10;
+    margin-right: 1;
+}
+
+/* Database Schema & Tables */
+#results-label {
+    height: 1;
+    margin-bottom: 1;
+    text-style: bold;
+    color: $link-ink;
+}
+
+#schema-tree {
+    background: transparent;
+    border: none;
+    height: 1fr;
+}
+
+#schema-tree:focus {
+    border: none;
+}
+
+#results-table {
+    height: 1fr;
+    background: $surface;
+    border: round $control-line;
+}
+
+#results-table > .datatable--header {
+    background: $panel;
+    color: $link-ink;
+    text-style: bold;
+    border-bottom: solid $control-line;
+}
+
+#results-table > .datatable--cursor {
+    background: $selection;
+    color: $foreground;
+    text-style: bold;
+}
+
+#results-table:focus {
+    border: round $link-ink;
+}
+
+#db-rail {
+    width: 22;
+}
+
+#db-detail {
+    width: 1fr;
+    height: 1fr;
+}
+
+#results-table {
+    width: 1fr;
+    height: 1fr;
+    background: $surface;
+    border: round $control-line;
+}
+
+#db-drawer {
+    width: 36%;
+    min-width: 32;
+    max-width: 60;
+    background: $surface;
+    border: round $control-line;
+    padding: 1;
+    margin-left: 1;
+}
+
+#db-drawer:focus-within {
+    border: round $link-ink;
+}
+
+/* Logs Pane Split View & Rail Buttons */
+#logs-split {
+    height: 1fr;
+}
+
+#logs-rail {
+    width: 28;
+    background: $surface;
+    border: round $control-line;
+    padding: 1;
+    margin-right: 1;
+    height: 1fr;
+}
+
+#logs-rail:focus-within {
+    border: round $link-ink;
+}
+
+#logs-rail-title {
+    text-style: bold;
+    color: $link-ink;
+    margin-bottom: 0;
+}
+
+#logs-rail-subtitle {
+    color: $muted;
+    margin-bottom: 1;
+}
+
+.rail-section {
+    color: $muted;
+    text-style: bold;
+    margin-top: 1;
+    margin-bottom: 0;
+    padding: 0 1;
+}
+
+#logs-rail Button {
+    width: 100%;
+    min-width: 100%;
+    height: 1;
+    margin-bottom: 0;
+    border: none;
+    background: transparent;
+    color: $muted;
+    text-align: left;
+    padding: 0 1;
+}
+
+#logs-rail Button:hover {
+    background: $selection;
+    color: $foreground;
+}
+
+#logs-rail Button:focus {
+    background: $selection;
+    color: $foreground;
+}
+
+#logs-rail Button.-active {
+    background: $selection;
+    color: $link-ink;
+    text-style: bold;
+    border-left: thick $link-ink;
+}
+
+#logs-stream {
+    width: 1fr;
+    height: 1fr;
+}
+
+#logs-search {
+    height: 3;
+    border: round $control-line;
+    background: $panel;
+    padding: 0 1;
+    margin-bottom: 1;
+}
+
+#logs-search:focus {
+    border: round $link-ink;
+}
+
+#logs-console {
+    height: 1fr;
+    background: $surface;
+    border: round $control-line;
+    padding: 1;
+}
+
+#logs-console:focus {
+    border: round $link-ink;
+}
+
+/* Records Search */
+#records-search {
+    height: 3;
+    border: round $control-line;
+    background: $panel;
+    padding: 0 1;
+    margin-bottom: 1;
+}
+
+#records-search:focus {
+    border: round $link-ink;
+}
+
+/* Settings Split View */
+#settings-split {
+    height: 1fr;
+}
+
+#settings-config-card {
+    width: 1fr;
+    height: 1fr;
+    background: $surface;
+    border: round $control-line;
+    padding: 1 2;
+    margin-right: 1;
+}
+
+#settings-config-card:focus-within {
+    border: round $link-ink;
+}
+
+#settings-about-card {
+    width: 1fr;
+    height: 1fr;
+    background: $surface;
+    border: round $control-line;
+    padding: 1 2;
+}
+
+#settings-about-card:focus-within {
+    border: round $link-ink;
+}
+
+#settings-env-heading {
+    margin-top: 1;
+}
+
+#settings-env-table {
+    margin-top: 0;
+    margin-bottom: 1;
+}
+
+#settings-arch-table {
+    margin-top: 1;
+    margin-bottom: 1;
+}
+
+#theme-picker {
+    width: 100%;
+    margin-bottom: 1;
+}
+
+SelectCurrent {
+    border: round $control-line;
+    background: $panel;
+}
+
+Select:focus SelectCurrent {
+    border: round $link-ink;
+}
+
+/* Dialogs */
+HelpScreen, AboutScreen {
+    align: center middle;
+    background: $background 80%;
+}
+
+#help-dialog {
+    width: 74;
+    height: auto;
+    max-height: 95%;
+    padding: 1 2;
+    background: $surface;
+    border: round $link-ink;
+}
+
+#help-title {
+    text-align: center;
+    color: $link-ink;
+    text-style: bold;
+    margin-bottom: 1;
+}
+
+#help-table {
+    margin-bottom: 1;
+}
+
+#close-help {
+    width: 100%;
+}
+
+#about-dialog {
+    width: auto;
+    min-width: 50;
+    max-width: 100%;
+    height: auto;
+    max-height: 95%;
+    padding: 1 2;
+    background: $surface;
+    border: round $link-ink;
+}
+
+#ascii-mark {
+    width: 101;
+    height: auto;
+}
+
+/* Global Typography & Feedback */
+Static, Label {
+    height: auto;
+}
+
+.heading {
+    text-style: bold;
+    margin-bottom: 1;
+    color: $foreground;
+}
+
+.muted { color: $muted; }
+.success { color: $success; }
+.warning { color: $warning; }
+.error { color: $error; }
+.field-label { text-style: bold; margin-bottom: 1; color: $foreground; }
+.section-label { text-style: bold; margin-top: 1; }
+.note { margin-top: 1; }
+.description { margin: 1 0; }
+#records-empty { height: auto; padding: 2 1; }
+
+/* Responsive Adaptation */
+.compact TabPane { padding: 0 1; }
+.compact .heading { margin-bottom: 0; }
+.compact .rail { width: 25; margin-right: 1; }
+.compact #run-metrics { display: none; }
+.compact #masthead { height: 1; padding: 0 1; }
+.compact #settings-config-card { width: 1fr; margin-right: 0; }
+.compact #settings-about-card { display: none; }
+.compact #db-rail { width: 16; margin-right: 1; }
+.compact #db-drawer { width: 36; min-width: 30; padding: 0 1; margin-left: 1; }
+
+/* Below 120 columns, row details replace the grid until Back/Escape. */
+DatabasePane.narrow #db-drawer { display: none; }
+DatabasePane.narrow.inspecting #db-rail,
+DatabasePane.narrow.inspecting #db-detail { display: none; }
+DatabasePane.narrow.inspecting #db-drawer {
+    display: block; width: 1fr; min-width: 0; max-width: 100%; margin: 0;
+}
+#drawer-back { display: none; margin-bottom: 1; }
+DatabasePane.narrow #drawer-back { display: block; }
+#inspect-row { display: none; width: auto; margin-top: 1; }
+DatabasePane.narrow #inspect-row { display: block; }
+#records-no-match { padding: 1 2; width: 1fr; }
+#clear-record-search { margin-top: 1; }
+
+Input > .input--placeholder { color: $muted; }
+
+/* Light mode: opaque surfaces and explicit states across every workspace. */
+Screen:light TabPane { background: $background; }
+Screen:light Tab { background: $surface; color: #46535A; text-style: none; }
+Screen:light Tab:hover { background: $block-hover-background; color: $link-ink; }
+Screen:light Tab.-active {
+    background: $action-bg; color: $action-fg;
+    border-bottom: tall $link-ink; text-style: bold;
+}
+Screen:light Tab.-active:hover { background: $action-hover; }
+Screen:light Tabs:focus Tab.-active { text-style: bold underline; }
+Screen:light Underline > .underline--bar { color: $link-ink; background: $line; }
+
+/* Prevent framework focus/pressed tints from changing the specified colors. */
+Screen:light Button, Screen:light Input, Screen:light SelectCurrent,
+Screen:light SelectOverlay, Screen:light DataTable, Screen:light Tree,
+Screen:light Collapsible, Screen:light OptionList {
+    background-tint: transparent; tint: transparent;
+}
+Screen:light Button { background: $surface; color: $foreground; }
+Screen:light Button:hover { background: $block-hover-background; color: $link-ink; border: round $link-ink; }
+Screen:light Button:focus { border: double $link-ink; }
+Screen:light Button.-primary { background: $action-bg; color: $action-fg; }
+Screen:light Button.-primary:hover,
+Screen:light Button.-primary.-active { background: $action-hover; color: $action-fg; }
+Screen:light Button.-primary:focus { border: double $action-fg; }
+Screen:light Button:disabled {
+    background: $panel; color: $muted; border: round $line;
+    opacity: 1; text-opacity: 1; text-style: italic;
+}
+
+/* Records: hover is temporary; the selected record keeps a stronger fill. */
+Screen:light #records-list > ListItem.-hovered { background: $block-hover-background; }
+Screen:light #records-list > ListItem.-highlight { background: $selection; border-left: thick $link-ink; }
+Screen:light #records-list > ListItem.-highlight Label { color: $link-ink; }
+Screen:light #records-list:focus > ListItem.-highlight Label { text-style: bold underline; }
+Screen:light CollapsibleTitle:hover { background: $block-hover-background; color: $link-ink; }
+Screen:light CollapsibleTitle:focus { background: $selection; color: $link-ink; text-style: bold underline; }
+Screen:light #records-search, Screen:light #logs-search { background: $surface; color: $foreground; }
+Screen:light #records-search:focus, Screen:light #logs-search:focus { border: double $link-ink; }
+
+/* Database: explicit zebra, hover, cursor and schema-tree colors. */
+Screen:light #results-table > .datatable--odd-row { background: $surface; color: $foreground; }
+Screen:light #results-table > .datatable--even-row { background: $panel; color: $foreground; }
+Screen:light #results-table > .datatable--header { background: $panel; color: $foreground; background-tint: transparent; }
+Screen:light #results-table > .datatable--hover,
+Screen:light #results-table > .datatable--header-hover { background: $block-hover-background; color: $foreground; }
+Screen:light #results-table > .datatable--cursor { background: $selection; color: $link-ink; }
+Screen:light #results-table:focus > .datatable--cursor { text-style: bold underline; }
+Screen:light #schema-tree > .tree--guides,
+Screen:light #schema-tree > .tree--guides-hover,
+Screen:light #schema-tree > .tree--guides-selected { color: $control-line; }
+Screen:light #schema-tree > .tree--cursor { background: $selection; color: $link-ink; text-style: bold; }
+Screen:light #schema-tree:focus > .tree--cursor { text-style: bold underline; }
+
+/* Logs: the active filter remains distinct from the hovered filter. */
+Screen:light #logs-rail Button { background: $surface; color: $foreground; border: none; }
+Screen:light #logs-rail Button:hover { background: $block-hover-background; color: $link-ink; }
+Screen:light #logs-rail Button.-active { background: $action-bg; color: $action-fg; border-left: thick $link-ink; }
+Screen:light #logs-rail Button:focus { text-style: bold underline; }
+
+/* Settings: both the closed select and its open menu use the same state roles. */
+Screen:light SelectCurrent { background: $surface; color: $foreground; }
+Screen:light SelectCurrent:hover { background: $block-hover-background; }
+Screen:light Select:focus SelectCurrent { border: double $link-ink; }
+Screen:light SelectOverlay { background: $surface; color: $foreground; border: round $link-ink; }
+Screen:light SelectOverlay > .option-list--option-hover { background: $block-hover-background; color: $foreground; }
+Screen:light SelectOverlay > .option-list--option-highlighted { background: $selection; color: $link-ink; text-style: bold; }
+
+/* Evidence has one frame for metadata and a separate quiet JSON reading surface. */
+Screen:light #source-disclosure { background: $surface; }
+Screen:light #detail-fields {
+    background: $surface; color: $foreground; border: none; padding: 0;
+}
+Screen:light #detail-original { background: $panel; color: $foreground; }

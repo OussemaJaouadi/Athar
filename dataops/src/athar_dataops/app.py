@@ -19,6 +19,7 @@ from textual.widgets import (
 
 from athar_dataops.config import Settings
 from athar_dataops.services.database import DatabaseService
+from athar_dataops.services.metrics import ProcessSampler
 from athar_dataops.services.orchestrator import PipelineOrchestrator
 from athar_dataops.themes import DARK, LIGHT
 from athar_dataops.ui.dialogs import AboutScreen, HelpScreen
@@ -29,7 +30,6 @@ from athar_dataops.ui.panes import (
     RunPane,
     SettingsPane,
 )
-from athar_dataops.ui.widgets.progress import PipelineProgress
 
 
 class DataOpsApp(App[None]):
@@ -94,16 +94,16 @@ class DataOpsApp(App[None]):
         orchestrator: PipelineOrchestrator,
         database: DatabaseService,
         config: Settings,
+        sampler: ProcessSampler | None = None,
     ) -> None:
         super().__init__()
         self._orchestrator = orchestrator
         self._database = database
         self._config = config
+        self._sampler = sampler
         self.register_theme(DARK)
         self.register_theme(LIGHT)
-        self.theme = (
-            "athar-light" if self._config.theme == "light" else "athar-dark"
-        )
+        self.theme = "athar-light" if self._config.theme == "light" else "athar-dark"
 
     def compose(self) -> ComposeResult:
         # Workspace identity; this label makes no health claim.
@@ -115,7 +115,9 @@ class DataOpsApp(App[None]):
         # Main workspace tabs
         with TabbedContent(initial="run", id="workspace"):
             with TabPane("Collect", id="run"):
-                yield RunPane(self._orchestrator, database=self._database)
+                yield RunPane(
+                    self._orchestrator, database=self._database, sampler=self._sampler
+                )
             with TabPane("Records", id="inspect"):
                 yield InspectPane(self._database)
             with TabPane("Database", id="database"):
@@ -246,7 +248,10 @@ class DataOpsApp(App[None]):
         except Exception:
             pass
         self.query_one(DatabasePane).on_theme_changed()
-        self.query_one(PipelineProgress).on_theme_changed()
+        try:
+            self.query_one(RunPane).on_theme_changed()
+        except Exception:
+            pass
         try:
             self.query_one(SettingsPane).on_theme_changed()
         except Exception:

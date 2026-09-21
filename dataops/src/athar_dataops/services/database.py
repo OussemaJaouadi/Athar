@@ -319,6 +319,7 @@ class DatabaseService:
                 "UPDATE pipeline_runs SET completed_at=?, status='completed', records_processed=?, review_count=?, snapshot_id=? WHERE id=?",
                 (utc_now(), len(records), review_count, snapshot_id, run_id),
             )
+            await self._complete_step(run_id, "resolve", len(records), f"{review_count} rows need review")
         return PipelineRunResult(
             run_id, "completed", snapshot_id, len(records), review_count
         )
@@ -440,12 +441,21 @@ class DatabaseService:
                 "UPDATE pipeline_runs SET completed_at=?, status='completed', records_processed=?, review_count=?, snapshot_id=? WHERE id=?",
                 (utc_now(), len(records), open_reviews[0]["count"], snapshot_id, run_id),
             )
+            await self._complete_step(run_id, "reconcile", len(records), f"{open_reviews[0]['count']} items need review")
         return PipelineRunResult(
             run_id,
             "completed",
             snapshot_id,
             len(records),
             open_reviews[0]["count"],
+        )
+
+    async def _complete_step(self, run_id: str, name: str, items: int, message: str) -> None:
+        """Commit terminal step status with its data, even if later UI reporting fails."""
+        await self._execute(
+            """UPDATE run_steps SET status='completed', completed_at=?,
+               items_processed=?, message=? WHERE run_id=? AND step_name=?""",
+            (utc_now(), items, message, run_id, name),
         )
 
     async def record_step(

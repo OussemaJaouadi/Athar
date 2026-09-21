@@ -16,6 +16,7 @@
 - Offline "Clean data" over stored evidence: entity, founder, and review-item writes, idempotent re-runs, and the missing-snapshot failure.
 - Corpus reconcile: within-run and cross-corpus duplicate flagging, `is_duplicate` suppression in default listings, founders/description backfill on a legacy-shaped corpus, idempotence across repeated cleans, and `run_steps` recorded with stable start times.
 - Bounded queries, Unicode search across pages, overview failures, and absolute-path validation.
+- Committed terminal steps survive reporting failure; failed startup does not create orphan steps.
 
 ### `test_smoke.py`
 
@@ -25,6 +26,7 @@
 - Narrow-terminal row inspection, keyboard open/close, and resizing.
 - Primary-button contrast in both themes and honest status when database reads fail.
 - About dialog resizing and packaged artwork/migration availability.
+- Live step filtering, preserved tab shortcuts, sampler stop, history isolation, and older runs without step details.
 
 ### `test_logs.py`
 
@@ -36,6 +38,11 @@
 
 - Arabic detection, escaped Unicode decoding, and mojibake repair.
 - Reshaping/reordering mixed and multiline text, including nested objects.
+
+### `test_metrics.py`
+
+- Time-weighted process CPU averages, sampled peak RSS, missing samples, and access failures.
+- Literal messages and status/severity colors in both themes.
 
 ## Run
 

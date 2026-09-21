@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Replaced the coarse progress bar with a run console: the pipeline renders as a full-width road of linked circles (`●` done, `◍` running, `○` waiting, `⊘` cancelled) with per-step timing and row-count badges and live app CPU/RSS metric chips that are session-only.
+- Steps are selectable (arrows move along the road); scoped colored logs bound to the selected step in both Run and Logs panes via shared literal-safe formatting in `ui/log_format.py`.
+- History panel lists recent runs from `pipeline_runs` and reloads stored step summaries from `run_steps`, including runs recorded before step details existed.
+- Orchestrator persists per-stage timing for collect (`fetch → preserve → normalize → resolve`) and clean (`load → normalize → reconcile`), committing the terminal step even if UI reporting fails; quitting bounds cancellation and skips teardown UI/DB work while exiting.
 - Scaffolded the uv package, configuration, and application entry point.
 - Separated services, shared schemas, and UI with explicit dependency injection.
 - Built the Textual workspace, reusable widgets, keyboard navigation, and light/dark themes.

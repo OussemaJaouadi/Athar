@@ -2,24 +2,14 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime
-
-from rich.markup import escape as markup_escape
 from textual import events, on
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.widgets import Button, Input, Label, RichLog, Static
 
-from athar_dataops.themes import DARK, LIGHT
-
-
-@dataclass
-class LogEntry:
-    timestamp: datetime
-    level: str
-    message: str
+from athar_dataops.schemas.logs import LogEntry
+from athar_dataops.ui.log_format import render_entry
 
 
 class LogsPane(Vertical):
@@ -205,18 +195,16 @@ class LogsPane(Vertical):
         self.query_one("#logs-console", RichLog).focus()
 
     def log_entry(self, message: str, level: str = "info") -> None:
-        """Add a log entry to the buffer and write to console if matching filters."""
-        # Normalize level names
-        norm_level = level.lower()
-        if norm_level in ("completed", "ready", "success"):
-            norm_level = "stage"
-        elif norm_level in ("failed",):
-            norm_level = "error"
-        elif norm_level in ("warn",):
-            norm_level = "warning"
+        self.add_entry(LogEntry.create(message, level))
 
-        entry = LogEntry(timestamp=datetime.now(), level=norm_level, message=message)
+    def add_entry(self, entry: LogEntry) -> None:
+        """Retain structured context when forwarding pipeline events."""
         self._entries.append(entry)
+        if len(self._entries) > 2000:
+            del self._entries[:-2000]
+            self._rebuild_console()
+            self._update_stats_bar()
+            return
 
         if self._matches_current_filter(entry):
             self._write_entry(entry)
@@ -226,7 +214,8 @@ class LogsPane(Vertical):
     def _matches_current_filter(self, entry: LogEntry) -> bool:
         if self._current_filter != "all" and entry.level != self._current_filter:
             return False
-        if self._search_query and self._search_query not in entry.message.lower():
+        searchable = f"{entry.message} {entry.step or ''} {entry.run_id or ''} {entry.status or ''}"
+        if self._search_query and self._search_query not in searchable.lower():
             return False
         return True
 
@@ -241,26 +230,9 @@ class LogsPane(Vertical):
         self._update_stats_bar()
 
     def _write_entry(self, entry: LogEntry) -> None:
-        palette = DARK if self._is_dark() else LIGHT
-        muted = palette.variables["muted"]
-        color = {
-            "stage": palette.primary,
-            "error": palette.error,
-            "warning": palette.warning,
-        }.get(entry.level, muted)
-        label = {"stage": "STAGE", "error": "ERROR", "warning": "WARN "}.get(
-            entry.level, "INFO "
+        self.query_one("#logs-console", RichLog).write(
+            render_entry(entry, self._is_dark())
         )
-        time_str = f"[{muted}]{entry.timestamp:%H:%M:%S}[/]"
-        tag = f"[bold {color}]{label}[/]"
-        sep = f"[{palette.variables['line']}]│[/]"
-        text = f"[{palette.foreground}]{markup_escape(entry.message)}[/]"
-
-        try:
-            log_widget = self.query_one("#logs-console", RichLog)
-            log_widget.write(f"{time_str}  {tag}  {sep}  {text}")
-        except Exception:
-            pass
 
     def _update_stats_bar(self) -> None:
         total = len(self._entries)

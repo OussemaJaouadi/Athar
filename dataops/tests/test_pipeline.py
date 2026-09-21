@@ -75,8 +75,56 @@ class PipelineTests(IsolatedAsyncioTestCase):
         self.assertEqual(await self.db.get_run(result.run_id), result)
         self.assertEqual(
             [p.stage_name for p in progress if p.status == "completed"],
-            ["collect", "normalize", "save"],
+            ["fetch", "preserve", "normalize", "resolve"],
         )
+
+    async def test_run_steps_persist_timing_and_items_through_the_run(self):
+        result = await self.pipeline.run_pipeline()
+        steps = await self.db.get_run_steps(result.run_id)
+        by_name = {step["step_name"]: step for step in steps}
+        self.assertEqual(list(by_name), ["fetch", "preserve", "normalize", "resolve"])
+        for name, expected in [
+            ("fetch", 0),
+            ("preserve", 1),
+            ("normalize", 1),
+            ("resolve", 1),
+        ]:
+            step = by_name[name]
+            self.assertEqual(step["status"], "completed")
+            self.assertEqual(step["items_processed"], expected)
+            self.assertIsNotNone(step["started_at"])
+            self.assertIsNotNone(step["completed_at"])
+            self.assertGreaterEqual(step["completed_at"], step["started_at"])
+
+    async def test_committed_steps_survive_later_reporting_failure(self):
+        original = self.db.record_step
+
+        async def fail_final_report(run_id, name, **values):
+            if name in ("resolve", "reconcile") and values["status"] == "completed":
+                raise RuntimeError("Reporting unavailable")
+            await original(run_id, name, **values)
+
+        with patch.object(self.db, "record_step", side_effect=fail_final_report):
+            for operation in (
+                self.pipeline.run_pipeline,
+                self.pipeline.run_clean_pipeline,
+            ):
+                progress = []
+                result = await operation(progress.append)
+                self.assertEqual(result.status, "completed")
+                self.assertEqual(progress[-1].status, "completed")
+                steps = await self.db.get_run_steps(result.run_id)
+                self.assertEqual(steps[-1]["status"], "completed")
+                self.assertIsNotNone(steps[-1]["completed_at"])
+
+    async def test_failed_start_does_not_write_an_orphan_step(self):
+        with patch.object(
+            self.db, "start_run", side_effect=RuntimeError("Cannot start")
+        ):
+            result = await self.pipeline.run_pipeline()
+        self.assertEqual(result.status, "failed")
+        self.assertEqual(result.error, "Cannot start")
+        self.assertFalse(self.pipeline._running)
 
     async def test_reimport_and_reordered_snapshot_reuse_identity(self):
         first = await self.pipeline.run_pipeline()
@@ -314,16 +362,30 @@ class PipelineTests(IsolatedAsyncioTestCase):
                     conn.execute(statement)
             conn.execute(
                 "INSERT INTO schema_migrations VALUES (?, ?, ?)",
-                (1, hashlib.sha256(one.read_bytes()).hexdigest(), "2024-01-01T00:00:00Z"),
+                (
+                    1,
+                    hashlib.sha256(one.read_bytes()).hexdigest(),
+                    "2024-01-01T00:00:00Z",
+                ),
             )
             conn.execute(
                 "INSERT INTO source_snapshots VALUES (?, ?, ?, ?, ?)",
-                ("s1", "https://registry.example", "hash", "2024-01-01T00:00:00Z", b"[]"),
+                (
+                    "s1",
+                    "https://registry.example",
+                    "hash",
+                    "2024-01-01T00:00:00Z",
+                    b"[]",
+                ),
             )
             for number, name in ((1, "Example"), (2, "Second")):
                 conn.execute(
                     "INSERT INTO source_rows VALUES (?, ?, ?)",
-                    ("s1", number, json.dumps(registry_row(name=name), ensure_ascii=False)),
+                    (
+                        "s1",
+                        number,
+                        json.dumps(registry_row(name=name), ensure_ascii=False),
+                    ),
                 )
                 conn.execute(
                     "INSERT INTO normalized_records VALUES (?, ?, ?, ?, ?)",
@@ -349,7 +411,9 @@ class PipelineTests(IsolatedAsyncioTestCase):
         async def fail_if_fetched(*args, **kwargs):
             raise AssertionError("Clean pipeline must stay offline")
 
-        with patch.object(self.pipeline._artifact, "fetch", side_effect=fail_if_fetched):
+        with patch.object(
+            self.pipeline._artifact, "fetch", side_effect=fail_if_fetched
+        ):
             result = await self.pipeline.run_clean_pipeline()
         self.assertEqual(result.status, "completed")
         self.assertEqual(result.records_processed, 1)
@@ -367,7 +431,9 @@ class PipelineTests(IsolatedAsyncioTestCase):
         # One record parked in review; its identity and website entries stay open.
         self.assertEqual(result.review_count, 2)
         reviews = await self.db.table_page("entity_review_items")
-        self.assertIn("Invalid website; original retained", [row[3] for row in reviews.rows])
+        self.assertIn(
+            "Invalid website; original retained", [row[3] for row in reviews.rows]
+        )
 
     async def test_repeated_clean_pipeline_keeps_founders_unique(self):
         await self.pipeline.run_pipeline()
@@ -418,7 +484,9 @@ class PipelineTests(IsolatedAsyncioTestCase):
             "SELECT id FROM entity_review_items WHERE reason = 'Duplicate of row 1; same name and website'"
         )
         for row in reviews:
-            await self.db._execute("DELETE FROM entity_review_items WHERE id=?", (row["id"],))
+            await self.db._execute(
+                "DELETE FROM entity_review_items WHERE id=?", (row["id"],)
+            )
 
     async def test_reconcile_marks_shadows_backfills_and_cleans(self):
         await self._legacy_corpus()
@@ -436,10 +504,13 @@ class PipelineTests(IsolatedAsyncioTestCase):
 
         reviews = await self.db.table_page("entity_review_items")
         self.assertIn(
-            "Duplicate of row 1; same name and website", [row[3] for row in reviews.rows]
+            "Duplicate of row 1; same name and website",
+            [row[3] for row in reviews.rows],
         )
         founders = await self.db.table_page("entity_founders")
-        self.assertEqual(["Example Person", "Example Person"], [row[2] for row in founders.rows])
+        self.assertEqual(
+            ["Example Person", "Example Person"], [row[2] for row in founders.rows]
+        )
         entities = await self.db._rows("SELECT name, description FROM entities")
         self.assertTrue(all(bool(entity["description"]) for entity in entities))
 
@@ -449,22 +520,33 @@ class PipelineTests(IsolatedAsyncioTestCase):
         flags_after_first = await self.db._rows(
             "SELECT row_number, is_duplicate FROM normalized_records ORDER BY row_number"
         )
-        founders_after_first = await self.db._rows("SELECT full_name FROM entity_founders ORDER BY full_name")
-        reviews_after_first = await self.db._rows("SELECT reason FROM entity_review_items ORDER BY reason")
+        founders_after_first = await self.db._rows(
+            "SELECT full_name FROM entity_founders ORDER BY full_name"
+        )
+        reviews_after_first = await self.db._rows(
+            "SELECT reason FROM entity_review_items ORDER BY reason"
+        )
         await self.pipeline.run_clean_pipeline()
         self.assertEqual(
             [f["is_duplicate"] for f in flags_after_first],
-            [f["is_duplicate"] for f in await self.db._rows(
-                "SELECT row_number, is_duplicate FROM normalized_records ORDER BY row_number"
-            )],
+            [
+                f["is_duplicate"]
+                for f in await self.db._rows(
+                    "SELECT row_number, is_duplicate FROM normalized_records ORDER BY row_number"
+                )
+            ],
         )
         self.assertEqual(
             founders_after_first,
-            await self.db._rows("SELECT full_name FROM entity_founders ORDER BY full_name"),
+            await self.db._rows(
+                "SELECT full_name FROM entity_founders ORDER BY full_name"
+            ),
         )
         self.assertEqual(
             reviews_after_first,
-            await self.db._rows("SELECT reason FROM entity_review_items ORDER BY reason"),
+            await self.db._rows(
+                "SELECT reason FROM entity_review_items ORDER BY reason"
+            ),
         )
 
     async def test_collection_flags_within_run_duplicates(self):
@@ -486,7 +568,9 @@ class PipelineTests(IsolatedAsyncioTestCase):
     async def test_record_step_upserts_preserving_started_at(self):
         run_id = "run-steps-test"
         await self.db.start_run(run_id)
-        await self.db.record_step(run_id, "fetch", status="running", started_at="2024-01-01T00:00:00+00:00")
+        await self.db.record_step(
+            run_id, "fetch", status="running", started_at="2024-01-01T00:00:00+00:00"
+        )
         await self.db.record_step(
             run_id,
             "fetch",

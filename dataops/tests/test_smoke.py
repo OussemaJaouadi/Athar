@@ -41,7 +41,9 @@ def render_text(renderable):
 class WorkspaceTests(IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.directory = tempfile.TemporaryDirectory()
-        self.config = Settings(db_path=Path(self.directory.name) / "ui.db", theme="dark")
+        self.config = Settings(
+            db_path=Path(self.directory.name) / "ui.db", theme="dark"
+        )
         self.db = DatabaseService(self.config.db_path)
         await self.db.initialize()
         self.block = False
@@ -375,6 +377,100 @@ class WorkspaceTests(IsolatedAsyncioTestCase):
             await pilot.press("alt+left")
             await pilot.pause()
             self.assertEqual(ws.active, "run")
+
+    async def test_step_selection_filters_live_logs_and_preserves_tab_keys(self):
+        from unittest.mock import Mock
+
+        from textual.widgets import RichLog
+
+        from athar_dataops.schemas.pipeline import StageProgress
+        from athar_dataops.services.metrics import ProcessSample
+        from athar_dataops.ui.widgets.log_view import LogView
+        from athar_dataops.ui.widgets.run_timeline import RunTimeline
+
+        self.block = True
+        app = self.app()
+        async with app.run_test(size=(120, 50)) as pilot:
+            pane = app.query_one(RunPane)
+            sampler = Mock()
+            sampler.sample.return_value = ProcessSample(1, 0.2, 1048576)
+            pane._sampler = sampler
+            await pilot.click("#run-pipeline")
+            await asyncio.wait_for(self.fetch_started.wait(), 5)
+            timeline = pane.query_one(RunTimeline)
+            timeline.focus()
+            await pilot.press("down", "down")
+            self.assertEqual(timeline.selected, "preserve")
+            log = pane.query_one(LogView).query_one(RichLog)
+            self.assertEqual(len(log.lines), 0)
+            pane._progress(
+                StageProgress("fetch", "running", "fetch-only message", run_id="demo")
+            )
+            self.assertEqual(len(log.lines), 0)
+            pane._tick()
+            self.assertIn(
+                "CPU avg",
+                render_text(pane.query_one("#run-resources", Static).render()),
+            )
+            await pilot.press("2")
+            self.assertEqual(
+                app.query_one("#workspace", TabbedContent).active, "inspect"
+            )
+            pane.cancel_collection()
+            await self.wait_for_collection(app, pilot)
+            before = sampler.sample.call_count
+            pane._tick()
+            self.assertEqual(sampler.sample.call_count, before)
+            self.assertFalse(pane.query_one("#recent-runs-list").disabled)
+
+    async def test_history_replaces_live_state_and_handles_legacy_empty_steps(self):
+        from textual.widgets import ListView
+
+        from athar_dataops.schemas.logs import LogEntry
+        from athar_dataops.ui.widgets.run_timeline import RunTimeline
+
+        result = await self.orchestrator.run_pipeline()
+        app = self.app()
+        async with app.run_test(size=(120, 50)) as pilot:
+            pane = app.query_one(RunPane)
+            await pane._load_recent()
+            pane._stage_logs["stale"] = [LogEntry.create("stale entry")]
+            listing = pane.query_one("#recent-runs-list", ListView)
+            await pane._recent_selected(
+                ListView.Selected(listing, listing.children[0], 0)
+            )
+            self.assertEqual(pane._viewing_run_id, result.run_id)
+            self.assertNotIn("stale", pane._stage_logs)
+            self.assertIn(
+                "stored summary",
+                render_text(pane.query_one("#run-log-title", Static).render()),
+            )
+            self.assertIn(
+                "session-only",
+                render_text(pane.query_one("#run-resources", Static).render()),
+            )
+            timeline = pane.query_one(RunTimeline)
+            timeline.select(1)
+            await pilot.pause()
+            app.theme = "athar-light"
+            pane.on_theme_changed()
+            self.assertEqual(timeline.selected, "fetch")
+            pane.collecting = True
+            pane._viewing_run_id = None
+            await pane._recent_selected(
+                ListView.Selected(listing, listing.children[0], 0)
+            )
+            self.assertIsNone(pane._viewing_run_id)
+            pane.collecting = False
+            await self.db.start_run("legacy")
+            await self.db.finish_failed_run("legacy", "failed", "Legacy error")
+            await pane._load_recent()
+            await pane._recent_selected(
+                ListView.Selected(listing, listing.children[0], 0)
+            )
+            self.assertEqual(pane._viewing_run_id, "legacy")
+            self.assertEqual(pane._stage_logs["all"][0].message, "Legacy error")
+            self.assertEqual(timeline.option_count, 1)
 
 
 class PackagedAssetsTests(TestCase):

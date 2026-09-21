@@ -10,6 +10,7 @@ from athar_dataops.app import DataOpsApp
 from athar_dataops.config import Settings
 from athar_dataops.services.artifacts import ArtifactService
 from athar_dataops.services.database import DatabaseService
+from athar_dataops.services.metrics import ProcessSampler
 from athar_dataops.services.orchestrator import PipelineOrchestrator
 from athar_dataops.services.registry import RegistryService
 
@@ -28,7 +29,7 @@ async def run() -> None:
             orchestrator = PipelineOrchestrator(
                 collector, RegistryService(), database, config.pipeline_timeout_seconds
             )
-            app = DataOpsApp(orchestrator, database, config)
+            app = DataOpsApp(orchestrator, database, config, ProcessSampler())
             await app.run_async()
     finally:
         await database.close()

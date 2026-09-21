@@ -24,6 +24,7 @@ class StageProgress:
     status: RunStatus
     message: str
     items_processed: int = 0
+    run_id: str | None = None
 
 
 @dataclass(frozen=True)

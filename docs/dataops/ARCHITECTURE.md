@@ -70,6 +70,7 @@ flowchart TD
 - `DataOpsApp` receives the orchestrator, database, and settings; panes borrow those dependencies.
 - One app session shares one database connection and HTTP client. `RegistryService` is stateless.
 - Constructors make dependencies explicit; there is no DI container or service locator.
+- `main.run()` also injects a `ProcessSampler` through the app into Run; samples cover the app process, not individual functions or the whole host.
 - Textual workers handle asynchronous UI work on the application event loop.
 - Quit waits for collection cancellation bookkeeping; the HTTP context closes its client and `finally` closes the database.
 - Panes must not open their own connections or call nested `asyncio.run()`.
@@ -86,6 +87,7 @@ flowchart TD
 - Services have no Textual dependency; UI consumes service methods and shared types.
 - `schemas/registry.py`: source snapshots, normalized records, and evidence details.
 - `schemas/pipeline.py`: stage/status enums, progress, and run results.
+- `StageProgress.run_id` links live events to their run. `schemas/logs.py` keeps status separate from severity; both log views use `ui/log_format.py` for literal-safe, themed text.
 - `schemas/database.py`: record and table pages, including pagination metadata.
 - Frozen dataclasses carry results; Pydantic validates normalized records and configuration.
 - Scope new types by domain and services by responsibility; extract shared behavior when a second consumer needs it.
@@ -140,6 +142,10 @@ flowchart LR
 ## UI boundaries and working rules
 
 - Panes own interaction and view state; widgets own reusable presentation; dialogs own focused overlays.
+- `RunTimeline` is a focusable linked-circle pipeline; arrows stay local, while number keys keep their tab navigation role.
+- Run samples CPU/RSS every second and at step boundaries; per-step CPU uses cumulative CPU-time deltas, memory peaks are sampled, and timers stop on completion/cancellation.
+- Resource metrics and full logs are session-only. History shows stored step summaries/timings/counts; it never invents missing resource samples.
+- Resolve/reconcile include the actual commit. Their terminal step status commits with the data, before optional UI reporting.
 - Keep HTTP, normalization, identity rules, and SQL inside services.
 - Use shared theme roles and JSON rendering helpers; pane-local CSS still exists alongside `app.tcss`.
 - **DRY:** reuse schemas, normalization, widgets, and theme helpers; avoid copying domain logic into panes.

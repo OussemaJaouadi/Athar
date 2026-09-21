@@ -104,6 +104,37 @@ TabPane {
 #run-status.error { color: $error; }
 #run-status.warning { color: $warning; }
 
+.run-statusbar {
+    height: 1;
+    margin-top: 1;
+}
+
+.run-statusbar #run-status { margin-top: 0; }
+.run-statusbar #run-elapsed,
+.run-statusbar #run-counters {
+    margin-left: 2;
+}
+
+#run-log-title {
+    margin-top: 1;
+    margin-bottom: 1;
+}
+
+#recent-runs {
+    margin-top: 1;
+}
+
+#recent-runs-list {
+    height: auto;
+    max-height: 10;
+    border: round $control-line;
+    background: $surface;
+}
+
+#recent-runs-list:focus-within {
+    border: round $link-ink;
+}
+
 /* Split Rails & Dossier Panels */
 .split {
     height: 1fr;

@@ -29,6 +29,8 @@ class PipelineProgress(Vertical):
         "collect": "1. Acquire Registry Snapshot",
         "normalize": "2. Clean & Validate Records",
         "save": "3. Resolve Entities & Commit",
+        "load": "1. Load Stored Evidence",
+        "reconcile": "2. Reconcile Corpus",
     }
 
     def __init__(self, **kwargs):

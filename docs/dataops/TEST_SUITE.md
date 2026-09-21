@@ -12,8 +12,9 @@
 - Stable identity across reimports; ambiguous, conflicting, and malformed records.
 - Invalid JSON, unexpected payloads, HTTP failures, timeout, and cancellation.
 - Transaction rollback, foreign keys, migrations, reopening, and refusal of unknown legacy schemas.
-- Upgrading a 001-era database with existing evidence through migrations 002 and 003.
+- Upgrading a 001-era database with existing evidence through migrations 002, 003, and 004.
 - Offline "Clean data" over stored evidence: entity, founder, and review-item writes, idempotent re-runs, and the missing-snapshot failure.
+- Corpus reconcile: within-run and cross-corpus duplicate flagging, `is_duplicate` suppression in default listings, founders/description backfill on a legacy-shaped corpus, idempotence across repeated cleans, and `run_steps` recorded with stable start times.
 - Bounded queries, Unicode search across pages, overview failures, and absolute-path validation.
 
 ### `test_smoke.py`

@@ -176,7 +176,9 @@ class RunPane(VerticalScroll):
             self._set_status(
                 {
                     "collect": "Collecting records…",
+                    "load": "Loading stored evidence…",
                     "normalize": "Checking records…",
+                    "reconcile": "Deduplicating and backfilling…",
                     "save": "Saving records…",
                 }[progress.stage_name]
             )

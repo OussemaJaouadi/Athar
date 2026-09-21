@@ -339,7 +339,7 @@ class PipelineTests(IsolatedAsyncioTestCase):
             records = await upgraded.table_page("normalized_records")
             self.assertEqual(len(records.rows), 2)
             migrations = await upgraded.table_page("schema_migrations")
-            self.assertEqual(len(migrations.rows), 3)
+            self.assertEqual(len(migrations.rows), 4)
         finally:
             await upgraded.close()
 
@@ -364,7 +364,8 @@ class PipelineTests(IsolatedAsyncioTestCase):
         await self.pipeline.run_pipeline()
         result = await self.pipeline.run_clean_pipeline()
         self.assertEqual(result.status, "completed")
-        self.assertEqual(result.review_count, 1)
+        # One record parked in review; its identity and website entries stay open.
+        self.assertEqual(result.review_count, 2)
         reviews = await self.db.table_page("entity_review_items")
         self.assertIn("Invalid website; original retained", [row[3] for row in reviews.rows])
 
@@ -395,6 +396,110 @@ class PipelineTests(IsolatedAsyncioTestCase):
         result = await self.pipeline.run_clean_pipeline()
         self.assertEqual(result.status, "failed")
         self.assertIn("No snapshots found", result.error)
+
+    async def _legacy_corpus(self):
+        """Collect a two-company duplicate plus an unrelated row, then erase the
+        derived records a pre-004 corpus would not have (no dup flags, no founders,
+        no descriptions, no duplicate review entries)."""
+        self.body = json.dumps(
+            [
+                registry_row(name="DupCo", website="dup.co"),
+                registry_row(name="DupCo", website="dup.co"),
+                registry_row(name="Other", website="other.co"),
+            ],
+            ensure_ascii=False,
+        ).encode()
+        await self.pipeline.run_pipeline()
+        await self.db._execute("UPDATE source_rows SET is_duplicate=0")
+        await self.db._execute("UPDATE normalized_records SET is_duplicate=0")
+        await self.db._execute("DELETE FROM entity_founders")
+        await self.db._execute("UPDATE entities SET description=''")
+        reviews = await self.db._rows(
+            "SELECT id FROM entity_review_items WHERE reason = 'Duplicate of row 1; same name and website'"
+        )
+        for row in reviews:
+            await self.db._execute("DELETE FROM entity_review_items WHERE id=?", (row["id"],))
+
+    async def test_reconcile_marks_shadows_backfills_and_cleans(self):
+        await self._legacy_corpus()
+        result = await self.pipeline.run_clean_pipeline()
+        self.assertEqual(result.status, "completed")
+        self.assertEqual(result.records_processed, 3)
+
+        flags = await self.db._rows(
+            "SELECT row_number, is_duplicate FROM normalized_records ORDER BY row_number"
+        )
+        self.assertEqual([f["is_duplicate"] for f in flags], [0, 1, 0])
+        visible = await self.db.list_records()
+        self.assertEqual(sorted(r.normalized.name for r in visible), ["DupCo", "Other"])
+        self.assertEqual(len((await self.db.table_page("source_rows")).rows), 3)
+
+        reviews = await self.db.table_page("entity_review_items")
+        self.assertIn(
+            "Duplicate of row 1; same name and website", [row[3] for row in reviews.rows]
+        )
+        founders = await self.db.table_page("entity_founders")
+        self.assertEqual(["Example Person", "Example Person"], [row[2] for row in founders.rows])
+        entities = await self.db._rows("SELECT name, description FROM entities")
+        self.assertTrue(all(bool(entity["description"]) for entity in entities))
+
+    async def test_reconcile_is_idempotent(self):
+        await self._legacy_corpus()
+        await self.pipeline.run_clean_pipeline()
+        flags_after_first = await self.db._rows(
+            "SELECT row_number, is_duplicate FROM normalized_records ORDER BY row_number"
+        )
+        founders_after_first = await self.db._rows("SELECT full_name FROM entity_founders ORDER BY full_name")
+        reviews_after_first = await self.db._rows("SELECT reason FROM entity_review_items ORDER BY reason")
+        await self.pipeline.run_clean_pipeline()
+        self.assertEqual(
+            [f["is_duplicate"] for f in flags_after_first],
+            [f["is_duplicate"] for f in await self.db._rows(
+                "SELECT row_number, is_duplicate FROM normalized_records ORDER BY row_number"
+            )],
+        )
+        self.assertEqual(
+            founders_after_first,
+            await self.db._rows("SELECT full_name FROM entity_founders ORDER BY full_name"),
+        )
+        self.assertEqual(
+            reviews_after_first,
+            await self.db._rows("SELECT reason FROM entity_review_items ORDER BY reason"),
+        )
+
+    async def test_collection_flags_within_run_duplicates(self):
+        self.body = json.dumps(
+            [
+                registry_row(name="DupCo", website="dup.co"),
+                registry_row(name="DupCo", website="dup.co"),
+            ],
+            ensure_ascii=False,
+        ).encode()
+        await self.pipeline.run_pipeline()
+        flags = await self.db._rows(
+            "SELECT row_number, is_duplicate FROM normalized_records ORDER BY row_number"
+        )
+        self.assertEqual([f["is_duplicate"] for f in flags], [0, 1])
+        visible = await self.db.list_records()
+        self.assertEqual([record.normalized.name for record in visible], ["DupCo"])
+
+    async def test_record_step_upserts_preserving_started_at(self):
+        run_id = "run-steps-test"
+        await self.db.start_run(run_id)
+        await self.db.record_step(run_id, "fetch", status="running", started_at="2024-01-01T00:00:00+00:00")
+        await self.db.record_step(
+            run_id,
+            "fetch",
+            status="completed",
+            completed_at="2024-01-01T00:00:10+00:00",
+            items=5,
+            message="done",
+        )
+        steps = await self.db.get_run_steps(run_id)
+        self.assertEqual(steps[0]["status"], "completed")
+        self.assertEqual(steps[0]["started_at"], "2024-01-01T00:00:00+00:00")
+        self.assertEqual(steps[0]["items_processed"], 5)
+        self.assertEqual((await self.db.get_run(run_id)).status, "running")
 
 
 class NormalizationTests(TestCase):

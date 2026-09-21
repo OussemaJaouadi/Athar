@@ -3,7 +3,18 @@
 from dataclasses import dataclass
 from typing import Literal
 
-StageName = Literal["collect", "normalize", "save"]
+StageName = Literal[
+    "collect",
+    "load",
+    "fetch",
+    "preserve",
+    "parse",
+    "normalize",
+    "resolve",
+    "reconcile",
+    "save",
+    "commit",
+]
 RunStatus = Literal["running", "completed", "failed", "cancelled"]
 
 

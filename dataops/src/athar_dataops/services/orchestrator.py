@@ -101,7 +101,7 @@ class PipelineOrchestrator:
             raise RuntimeError("A pipeline operation is already running")
         self._running = True
         run_id = str(uuid4())
-        stage: StageName = "normalize"
+        stage: StageName = "load"
         snapshot_id = None
         started = False
 
@@ -115,16 +115,25 @@ class PipelineOrchestrator:
             async with asyncio.timeout(self._timeout_seconds):
                 report("running", "Reading latest preserved evidence")
                 snapshot_id, rows, row_ids = await self._db.get_latest_snapshot_rows()
+                report(
+                    "completed",
+                    f"{len(rows)} stored rows loaded",
+                    len(rows),
+                )
+                stage = "normalize"
+                report("running", "Normalizing stored evidence")
                 records = self._registry.normalize(rows)
                 report(
                     "completed",
-                    f"Cleaned {len(records)} records from stored evidence",
+                    f"{len(records)} records normalized",
                     len(records),
                 )
-                stage = "save"
-                report("running", "Deduplicating and updating entities")
-                result = await self._db.complete_run(run_id, snapshot_id, records, row_ids)
-            report("completed", f"{result.review_count} rows need review", len(records))
+                stage = "reconcile"
+                report("running", "Deduplicating and backfilling the corpus")
+                result = await self._db.reconcile_corpus(
+                    run_id, snapshot_id, records, row_ids
+                )
+            report("completed", f"{result.review_count} items need review", len(records))
             return result
         except (Exception, asyncio.CancelledError) as exc:
             cancelled = isinstance(exc, asyncio.CancelledError)

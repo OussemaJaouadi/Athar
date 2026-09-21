@@ -217,10 +217,12 @@ class DatabaseService:
             for name, domain in list(by_key) + candidates:
                 names.setdefault(name, set()).add(domain)
                 domains.setdefault(domain, set()).add(name)
+            seen_keys: dict[tuple[str, str], int] = {}
             for record in records:
                 name = self._name_key(record.name)
                 domain = record.domain
                 source_row_id = row_ids.get(record.row_number)
+                is_duplicate = False
                 if not name or not domain:
                     record.review_reasons.append(
                         "Identity needs a valid name and website"
@@ -272,6 +274,19 @@ class DatabaseService:
                             ),
                         )
                     record.entity_id = by_key[key]
+                    # A row with the same name and website already seen in this run
+                    # is a duplicate listing, kept as evidence but hidden from views.
+                    if key in seen_keys:
+                        is_duplicate = True
+                        record.review_reasons.append(
+                            f"Duplicate of row {seen_keys[key]}; same name and website"
+                        )
+                    else:
+                        seen_keys[key] = record.row_number
+                if is_duplicate and source_row_id:
+                    await self._execute(
+                        "UPDATE source_rows SET is_duplicate=1 WHERE id=?", (source_row_id,)
+                    )
                 if record.review_reasons:
                     now_str = utc_now()
                     for reason in record.review_reasons:
@@ -289,13 +304,14 @@ class DatabaseService:
                             (str(uuid4()), record.entity_id, source_row_id, reason, now_str),
                         )
                 await self._execute(
-                    "INSERT INTO normalized_records VALUES (?, ?, ?, ?, ?) ON CONFLICT(snapshot_id, row_number) DO UPDATE SET entity_id=excluded.entity_id, name=excluded.name, record_json=excluded.record_json",
+                    "INSERT INTO normalized_records (snapshot_id, row_number, entity_id, name, record_json, is_duplicate) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(snapshot_id, row_number) DO UPDATE SET entity_id=excluded.entity_id, name=excluded.name, record_json=excluded.record_json, is_duplicate=excluded.is_duplicate",
                     (
                         snapshot_id,
                         record.row_number,
                         record.entity_id,
                         record.name,
                         record.model_dump_json(),
+                        int(is_duplicate),
                     ),
                 )
             review_count = sum(bool(record.review_reasons) for record in records)
@@ -310,6 +326,173 @@ class DatabaseService:
     @staticmethod
     def _name_key(name: str | None) -> str:
         return " ".join((name or "").casefold().split())
+
+    async def reconcile_corpus(
+        self,
+        run_id: str,
+        snapshot_id: str,
+        records: list[NormalizedRecord],
+        row_ids: dict[int, str],
+    ) -> PipelineRunResult:
+        """Offline pass over the stored corpus: mark exact duplicates, backfill
+        founders and descriptions. Evidence rows are never deleted or rewritten."""
+        async with self._transaction():
+            stored = await self._rows(
+                "SELECT row_number, entity_id, record_json, is_duplicate FROM normalized_records"
+            )
+            now_str = utc_now()
+
+            shadow_count = 0
+            groups: dict[tuple[str, str], list[tuple[int, str | None]]] = {}
+            for row in stored:
+                parsed = NormalizedRecord.model_validate_json(row["record_json"])
+                key = (self._name_key(parsed.name), parsed.domain or "")
+                if not key[0] or not key[1]:
+                    continue
+                groups.setdefault(key, []).append((row["row_number"], row["entity_id"]))
+            for key, members in groups.items():
+                if len(members) < 2:
+                    continue
+                members.sort()
+                canonical_row, _ = members[0]
+                for shadow_number, shadow_entity in members[1:]:
+                    sid = row_ids.get(shadow_number)
+                    await self._execute(
+                        "UPDATE source_rows SET is_duplicate=1 WHERE snapshot_id=? AND row_number=?",
+                        (snapshot_id, shadow_number),
+                    )
+                    await self._execute(
+                        "UPDATE normalized_records SET is_duplicate=1 WHERE snapshot_id=? AND row_number=?",
+                        (snapshot_id, shadow_number),
+                    )
+                    if sid:
+                        dup_reason = (
+                            f"Duplicate of row {canonical_row}; same name and website"
+                        )
+                        await self._execute(
+                            "DELETE FROM entity_review_items WHERE source_row_id=? AND reason != ?",
+                            (sid, dup_reason),
+                        )
+                        seen_dup = await self._rows(
+                            "SELECT 1 FROM entity_review_items WHERE source_row_id=? AND reason=?",
+                            (sid, dup_reason),
+                        )
+                        if not seen_dup:
+                            await self._execute(
+                                """INSERT INTO entity_review_items (
+                                    id, entity_id, source_row_id, reason, resolved, created_at
+                                ) VALUES (?, ?, ?, ?, 0, ?)""",
+                                (
+                                    str(uuid4()),
+                                    shadow_entity,
+                                    sid,
+                                    dup_reason,
+                                    now_str,
+                                ),
+                            )
+                    shadow_count += 1
+
+            rows_with_entity = await self._rows(
+                "SELECT entity_id, record_json FROM normalized_records WHERE entity_id IS NOT NULL AND is_duplicate=0"
+            )
+            existing_founders_rows = await self._rows(
+                "SELECT entity_id, full_name FROM entity_founders"
+            )
+            existing_founders: dict[str, set[str]] = {}
+            for row in existing_founders_rows:
+                existing_founders.setdefault(row["entity_id"], set()).add(
+                    row["full_name"]
+                )
+            founder_count = 0
+            descriptions: dict[str, str] = {}
+            for row in rows_with_entity:
+                entity_id = row["entity_id"]
+                parsed = NormalizedRecord.model_validate_json(row["record_json"])
+                if parsed.description and entity_id not in descriptions:
+                    descriptions[entity_id] = parsed.description
+                have = existing_founders.setdefault(entity_id, set())
+                for founder in parsed.founders:
+                    if founder in have:
+                        continue
+                    have.add(founder)
+                    await self._execute(
+                        "INSERT INTO entity_founders (id, entity_id, full_name, created_at) VALUES (?, ?, ?, ?)",
+                        (str(uuid4()), entity_id, founder, now_str),
+                    )
+                    founder_count += 1
+
+            desc_count = 0
+            for entity_id, description in descriptions.items():
+                current = await self._rows(
+                    "SELECT description FROM entities WHERE id=?", (entity_id,)
+                )
+                if current and not current[0]["description"]:
+                    await self._execute(
+                        "UPDATE entities SET description=? WHERE id=?",
+                        (description, entity_id),
+                    )
+                    desc_count += 1
+
+            open_reviews = await self._rows(
+                "SELECT COUNT(*) AS count FROM entity_review_items WHERE resolved=0"
+            )
+            await self._execute(
+                "UPDATE pipeline_runs SET completed_at=?, status='completed', records_processed=?, review_count=?, snapshot_id=? WHERE id=?",
+                (utc_now(), len(records), open_reviews[0]["count"], snapshot_id, run_id),
+            )
+        return PipelineRunResult(
+            run_id,
+            "completed",
+            snapshot_id,
+            len(records),
+            open_reviews[0]["count"],
+        )
+
+    async def record_step(
+        self,
+        run_id: str,
+        step_name: str,
+        *,
+        status: str,
+        started_at: str | None = None,
+        completed_at: str | None = None,
+        items: int = 0,
+        message: str = "",
+    ) -> None:
+        async with self._lock:
+            await self._execute(
+                """INSERT INTO run_steps (run_id, step_name, status, started_at, completed_at, items_processed, message)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(run_id, step_name) DO UPDATE SET
+                       status=excluded.status,
+                       started_at=COALESCE(excluded.started_at, run_steps.started_at),
+                       completed_at=excluded.completed_at,
+                       items_processed=excluded.items_processed,
+                       message=excluded.message""",
+                (
+                    run_id,
+                    step_name,
+                    status,
+                    started_at,
+                    completed_at,
+                    items,
+                    message,
+                ),
+            )
+
+    async def get_run_steps(self, run_id: str) -> list[dict[str, Any]]:
+        async with self._lock:
+            return await self._rows(
+                "SELECT step_name, status, started_at, completed_at, items_processed, message FROM run_steps WHERE run_id=? ORDER BY rowid",
+                (run_id,),
+            )
+
+    async def list_recent_runs(self, limit: int = 8) -> list[dict[str, Any]]:
+        async with self._lock:
+            return await self._rows(
+                "SELECT id, status, started_at, completed_at, records_processed, review_count, snapshot_id FROM pipeline_runs ORDER BY started_at DESC LIMIT ?",
+                (limit,),
+            )
 
     async def finish_failed_run(self, run_id: str, status: str, error: str) -> None:
         if status not in ("failed", "cancelled"):
@@ -365,7 +548,7 @@ class DatabaseService:
                 return RecordPage([], 0, 0)
             snapshot_id = snapshots[0]["snapshot_id"]
             candidates = await self._rows(
-                "SELECT row_number, record_json FROM normalized_records WHERE snapshot_id=? ORDER BY row_number",
+                "SELECT row_number, record_json FROM normalized_records WHERE snapshot_id=? AND is_duplicate=0 ORDER BY row_number",
                 (snapshot_id,),
             )
             # Python's Unicode casefold treats French and other scripts consistently;

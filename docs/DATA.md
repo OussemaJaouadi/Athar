@@ -70,7 +70,7 @@ flowchart TD
 
 ## 2. Product Schema & Relationships (ERD)
 
-All searchable attributes are indexed first-class columns. Duplicate raw BLOBs are eliminated; `source_rows` serves as the sole citation evidence. Staged fields (`retrieval_text`, `detected_language`, `is_embedded`) are pre-allocated and post-filled cleanly.
+All searchable attributes are indexed first-class columns. Duplicate rows are flagged `is_duplicate` on the derived layer and suppressed from default views, never deleted; `source_rows` serves as the sole citation evidence. Staged fields (`retrieval_text`, `detected_language`, `is_embedded`) are pre-allocated and post-filled cleanly.
 
 ```mermaid
 erDiagram
@@ -97,6 +97,7 @@ erDiagram
         string snapshot_id FK
         int row_number "audit/display only"
         string raw_json
+        int is_duplicate "1 when exact name+website dup"
     }
 
     ENTITIES {
@@ -153,6 +154,17 @@ erDiagram
         int records_processed
         int review_count
         string error
+    }
+
+    PIPELINE_RUNS ||--|{ RUN_STEPS : "records each"
+    RUN_STEPS {
+        string run_id PK, FK
+        string step_name PK
+        string status
+        string started_at
+        string completed_at
+        int items_processed
+        string message
     }
 ```
 

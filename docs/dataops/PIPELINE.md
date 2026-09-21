@@ -33,12 +33,13 @@ flowchart TD
 ### Operation 1: Run Clean from Start
 * **Trigger:** "Collect registry" button or scheduled ingest.
 * **Flow:** Network fetch $\rightarrow$ SHA-256 check $\rightarrow$ store raw evidence in `source_rows` $\rightarrow$ clean & deduplicate $\rightarrow$ write canonical `entities`.
-* **Zero Duplication:** No raw payload BLOB in `source_snapshots`.
+* **Within-run duplicates:** a row whose `(name_key, domain)` already appeared in the same run is flagged `is_duplicate=1` and queued (`Duplicate of row N`); the row itself is never deleted.
 
 ### Operation 2: Clean Existing Data
 * **Trigger:** "Clean data" button or offline re-process.
 * **Flow:** Read local `source_rows` $\rightarrow$ re-run cleaning rules & deduplication $\rightarrow$ update `entities`.
-* **Zero Network:** 100% offline, idempotent, safe to run anytime.
+* **Reconcile pass:** flags exact `(name_key, domain)` duplicates across the whole corpus, backfills `entity_founders` and missing `entities.description` from preserved records, supersedes stale review items on shadow rows, and reports the open review count.
+* **Zero Network:** 100% offline, idempotent, safe to run anytime; a repeated run reports 0 new changes.
 
 ---
 
@@ -64,6 +65,8 @@ flowchart TD
 * **Match:** Updates `entities` and links latest evidence row.
 * **New:** Inserts new canonical startup into `entities`.
 * **Conflict:** Name/domain mismatch queued into `entity_review_items` (zero guessing).
+* **Duplicate (same key again in one run):** the later row is flagged `is_duplicate=1` on both `source_rows` and `normalized_records`; it stays readable in the Database pane and its review item records the canonical row it duplicates.
+* **Suppression:** default views (`records_search`, run metrics) read `is_duplicate=0` only; raw evidence is always preserved and no DELETE ever runs against source rows.
 
 ---
 

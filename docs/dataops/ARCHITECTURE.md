@@ -80,7 +80,7 @@ flowchart TD
 | --- | --- |
 | `ArtifactService` | HTTP fetching and hashing original bytes; returns `RegistrySnapshot`. |
 | `RegistryService` | Deterministic field normalization and review reasons; returns `NormalizedRecord` values. |
-| `DatabaseService` | Migrations, evidence, run history, transactional identity resolution, and bounded queries. |
+| `DatabaseService` | Migrations, evidence, run history, `run_steps` timing, transactional identity resolution, corpus reconcile (duplicate suppression, founder/description backfill), and bounded queries. |
 | `PipelineOrchestrator` | Collection and offline cleaning sequences, overlap guard, progress, timeout, and failure/cancellation bookkeeping. |
 
 - Services have no Textual dependency; UI consumes service methods and shared types.

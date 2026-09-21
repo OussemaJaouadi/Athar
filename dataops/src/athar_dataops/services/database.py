@@ -249,6 +249,14 @@ class DatabaseService:
                                 now_str, now_str,
                             ),
                         )
+                        # Founders are written once at entity creation; a re-clean
+                        # updates fields but never duplicates the founder rows.
+                        if record.founders:
+                            for founder in record.founders:
+                                await self._execute(
+                                    "INSERT INTO entity_founders (id, entity_id, full_name, created_at) VALUES (?, ?, ?, ?)",
+                                    (str(uuid4()), by_key[key], founder, now_str),
+                                )
                     else:
                         await self._execute(
                             """UPDATE entities SET
@@ -264,15 +272,16 @@ class DatabaseService:
                             ),
                         )
                     record.entity_id = by_key[key]
-                    if record.founders:
-                        for founder in record.founders:
-                            await self._execute(
-                                "INSERT INTO entity_founders (id, entity_id, full_name, created_at) VALUES (?, ?, ?, ?)",
-                                (str(uuid4()), record.entity_id, founder, now_str),
-                            )
                 if record.review_reasons:
                     now_str = utc_now()
                     for reason in record.review_reasons:
+                        # One open item per row and reason, so repeated cleans are idempotent.
+                        seen = await self._rows(
+                            "SELECT 1 FROM entity_review_items WHERE entity_id IS ? AND source_row_id IS ? AND reason = ?",
+                            (record.entity_id, source_row_id, reason),
+                        )
+                        if seen:
+                            continue
                         await self._execute(
                             """INSERT INTO entity_review_items (
                                 id, entity_id, source_row_id, reason, resolved, created_at

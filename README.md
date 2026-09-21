@@ -1,6 +1,7 @@
 # Athar
 
 An open-source project for exploring Tunisian startups through traceable source data.
+Source: <https://github.com/OussemaJaouadi/Athar>.
 
 - **Available now:** a local DataOps terminal app for the Startup Tunisia registry.
 - Collect records, preserve original evidence, and flag uncertain data for review.

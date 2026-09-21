@@ -23,7 +23,9 @@ class SettingsPane(VerticalScroll):
                 yield Label("Theme Appearance", classes="field-label")
                 yield Select(
                     [("Athar Dark", "athar-dark"), ("Athar Light", "athar-light")],
-                    value="athar-dark",
+                    value=(
+                        "athar-light" if self._config.theme == "light" else "athar-dark"
+                    ),
                     allow_blank=False,
                     id="theme-picker",
                 )

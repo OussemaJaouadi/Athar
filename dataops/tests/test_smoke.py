@@ -41,7 +41,7 @@ def render_text(renderable):
 class WorkspaceTests(IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.directory = tempfile.TemporaryDirectory()
-        self.config = Settings(db_path=Path(self.directory.name) / "ui.db")
+        self.config = Settings(db_path=Path(self.directory.name) / "ui.db", theme="dark")
         self.db = DatabaseService(self.config.db_path)
         await self.db.initialize()
         self.block = False

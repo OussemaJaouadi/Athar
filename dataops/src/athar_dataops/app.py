@@ -101,7 +101,9 @@ class DataOpsApp(App[None]):
         self._config = config
         self.register_theme(DARK)
         self.register_theme(LIGHT)
-        self.theme = "athar-dark"
+        self.theme = (
+            "athar-light" if self._config.theme == "light" else "athar-dark"
+        )
 
     def compose(self) -> ComposeResult:
         # Workspace identity; this label makes no health claim.

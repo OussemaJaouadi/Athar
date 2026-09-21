@@ -13,7 +13,7 @@
 - Invalid JSON, unexpected payloads, HTTP failures, timeout, and cancellation.
 - Transaction rollback, foreign keys, migrations, reopening, and refusal of unknown legacy schemas.
 - Upgrading a 001-era database with existing evidence through migrations 002 and 003.
-- Offline "Clean data" over stored evidence: entity, founder, and review-item writes, plus the missing-snapshot failure.
+- Offline "Clean data" over stored evidence: entity, founder, and review-item writes, idempotent re-runs, and the missing-snapshot failure.
 - Bounded queries, Unicode search across pages, overview failures, and absolute-path validation.
 
 ### `test_smoke.py`

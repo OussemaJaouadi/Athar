@@ -368,6 +368,29 @@ class PipelineTests(IsolatedAsyncioTestCase):
         reviews = await self.db.table_page("entity_review_items")
         self.assertIn("Invalid website; original retained", [row[3] for row in reviews.rows])
 
+    async def test_repeated_clean_pipeline_keeps_founders_unique(self):
+        await self.pipeline.run_pipeline()
+        await self.pipeline.run_clean_pipeline()
+        await self.pipeline.run_clean_pipeline()
+        founders = await self.db.table_page("entity_founders")
+        self.assertEqual([row[2] for row in founders.rows], ["Example Person"])
+
+    async def test_repeated_clean_pipeline_keeps_review_items_unique(self):
+        self.body = json.dumps([registry_row(website="bad host")]).encode()
+        await self.pipeline.run_pipeline()
+        await self.pipeline.run_clean_pipeline()
+        await self.pipeline.run_clean_pipeline()
+        reviews = await self.db.table_page("entity_review_items")
+        self.assertEqual(
+            sorted(row[3] for row in reviews.rows),
+            sorted(
+                [
+                    "Identity needs a valid name and website",
+                    "Invalid website; original retained",
+                ]
+            ),
+        )
+
     async def test_clean_pipeline_reports_missing_snapshot(self):
         result = await self.pipeline.run_clean_pipeline()
         self.assertEqual(result.status, "failed")

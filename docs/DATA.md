@@ -27,6 +27,10 @@ flowchart TD
             T_FND["entity_founders"]
             T_REV["entity_review_items"]
             T_VEC["entity_embeddings"]
+            T_PRP["preparation_usage"]
+            T_TXT["text_preparations"]
+            T_PRO["profiles"]
+            T_QUO["dataops_quotas"]
             T_RUN["pipeline_runs"]
         end
 
@@ -52,7 +56,7 @@ flowchart TD
     classDef table fill:#1E293B,stroke:#94A3B8,color:#F8FAFC
     class DO_WRITE do
     class BE_READ,BE_WRITE be
-    class T_SNAP,T_ROWS,T_ENT,T_FND,T_REV,T_VEC,T_RUN,T_USR,T_HIST,T_USG,T_MIG table
+    class T_SNAP,T_ROWS,T_ENT,T_FND,T_REV,T_VEC,T_PRP,T_TXT,T_PRO,T_QUO,T_RUN,T_USR,T_HIST,T_USG,T_MIG table
 ```
 
 ### Strict Ownership Rules
@@ -70,7 +74,7 @@ flowchart TD
 
 ## 2. Product Schema & Relationships (ERD)
 
-All searchable attributes are indexed first-class columns. Duplicate rows are flagged `is_duplicate` on the derived layer and suppressed from default views, never deleted; `source_rows` serves as the sole citation evidence. Staged fields (`retrieval_text`, `detected_language`, `is_embedded`) are pre-allocated and post-filled cleanly.
+All searchable attributes are indexed first-class columns. Duplicate rows are flagged `is_duplicate` on the derived layer and suppressed from default views, never deleted; `source_rows` serves as the sole citation evidence. Staged fields (`retrieval_text`, `detected_language`, `is_embedded`) are pre-allocated and post-filled cleanly: the Prepare operation fills `retrieval_text`/`detected_language` from a one-call language detection, fluff removal, and English translation, keyed to the exact description hash so unchanged input is never reprocessed. Review findings carry a shared `code`/`category` (automatic, incomplete, or human) so storage and UI classify issues identically; only unresolved human items count as "records needing review".
 
 ```mermaid
 erDiagram
@@ -83,6 +87,10 @@ erDiagram
     SOURCE_ROWS ||--o{ ENTITY_REVIEW_ITEMS : "flagged evidence"
     ENTITIES ||--o| ENTITY_EMBEDDINGS : "vectorized into"
     SOURCE_SNAPSHOTS ||--o{ PIPELINE_RUNS : "produced in"
+    SOURCE_ROWS ||--o{ TEXT_PREPARATIONS : "prepared once per hashed description"
+    ENTITIES ||--o{ TEXT_PREPARATIONS : "canonical output"
+    PIPELINE_RUNS ||--o{ PREPARATION_USAGE : "consumed"
+    SOURCE_ROWS ||--o{ PREPARATION_USAGE : "attempted per record"
 
     SOURCE_SNAPSHOTS {
         string id PK
@@ -134,6 +142,8 @@ erDiagram
         string entity_id FK
         string source_row_id FK
         string reason
+        string code "shared issue code"
+        string category "automatic | incomplete | human"
         int resolved
         string created_at
     }
@@ -147,6 +157,7 @@ erDiagram
 
     PIPELINE_RUNS {
         string id PK
+        string operation "collect | clean | prepare"
         string started_at
         string completed_at
         string snapshot_id FK
@@ -165,6 +176,61 @@ erDiagram
         string completed_at
         int items_processed
         string message
+    }
+
+    TEXT_PREPARATIONS {
+        string cache_key PK
+        string source_row_id FK
+        string entity_id FK
+        string input_hash "sha-256 of the original description"
+        string provider "groq"
+        string model
+        string prompt_version
+        string schema_version
+        string target_language "en"
+        string output_json "detected_language, cleaned_text, english_translation, fluff_excerpts"
+        string created_at
+    }
+
+    PREPARATION_USAGE {
+        string id PK
+        string run_id FK
+        string source_row_id FK
+        string provider
+        string model
+        string profile
+        string key_fingerprint "partial digest; never the key"
+        string started_at
+        number duration_seconds
+        int input_tokens
+        int output_tokens
+        string request_id
+        string outcome "started | completed | failed | cancelled | rate_limited | authentication | transport"
+        string error
+    }
+
+    PROFILES ||--o{ DATAOPS_QUOTAS : "constrained by"
+    PROFILES ||--o{ PREPARATION_USAGE : "accounts for"
+    PROFILES {
+        string id PK
+        string name UK "registry identity; the TOML store is authoritative"
+        string provider "groq"
+        string model
+        string fingerprint "partial digest; never the key"
+        int disabled "1 after failed authentication, until operator repairs"
+        string created_at
+        string updated_at
+    }
+
+    DATAOPS_QUOTAS {
+        string id PK
+        string profile_id FK
+        string task "prepare (embeddings later)"
+        string metric "records_per_day | tokens_per_day | requests_per_minute | estimate_tokens_per_record"
+        number limit_value "0 means unlimited"
+        string period "day | minute"
+        string created_at
+        string updated_at
     }
 ```
 

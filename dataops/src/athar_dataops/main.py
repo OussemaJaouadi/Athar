@@ -10,8 +10,10 @@ from athar_dataops.app import DataOpsApp
 from athar_dataops.config import Settings
 from athar_dataops.services.artifacts import ArtifactService
 from athar_dataops.services.database import DatabaseService
+from athar_dataops.services.groq import GroqPreparationClient
 from athar_dataops.services.metrics import ProcessSampler
 from athar_dataops.services.orchestrator import PipelineOrchestrator
+from athar_dataops.services.preparation import PreparationService
 from athar_dataops.services.registry import RegistryService
 
 
@@ -24,12 +26,26 @@ async def run() -> None:
             headers={"User-Agent": config.registry_user_agent},
             timeout=30,
             follow_redirects=True,
-        ) as client:
+        ) as client, httpx.AsyncClient(timeout=60, follow_redirects=False) as groq_http:
+            registry = RegistryService()
             collector = ArtifactService(client, config.registry_url)
+            groq_client = GroqPreparationClient(groq_http, config)
             orchestrator = PipelineOrchestrator(
-                collector, RegistryService(), database, config.pipeline_timeout_seconds
+                collector,
+                registry,
+                database,
+                config.pipeline_timeout_seconds,
+                PreparationService(groq_client, database),
             )
-            app = DataOpsApp(orchestrator, database, config, ProcessSampler())
+            app = DataOpsApp(
+                orchestrator,
+                database,
+                config,
+                ProcessSampler(),
+                artifact=collector,
+                registry=registry,
+                groq=groq_client,
+            )
             await app.run_async()
     finally:
         await database.close()

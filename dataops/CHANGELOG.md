@@ -2,17 +2,40 @@
 
 ## Unreleased
 
-- Replaced the coarse progress bar with a run console: the pipeline renders as a full-width road of linked circles (`●` done, `◍` running, `○` waiting, `⊘` cancelled) with per-step timing and row-count badges and live app CPU/RSS metric chips that are session-only.
-- Steps are selectable (arrows move along the road); scoped colored logs bound to the selected step in both Run and Logs panes via shared literal-safe formatting in `ui/log_format.py`.
-- History panel lists recent runs from `pipeline_runs` and reloads stored step summaries from `run_steps`, including runs recorded before step details existed.
-- Orchestrator persists per-stage timing for collect (`fetch → preserve → normalize → resolve`) and clean (`load → normalize → reconcile`), committing the terminal step even if UI reporting fails; quitting bounds cancellation and skips teardown UI/DB work while exiting.
-- Scaffolded the uv package, configuration, and application entry point.
-- Separated services, shared schemas, and UI with explicit dependency injection.
-- Built the Textual workspace, reusable widgets, keyboard navigation, and light/dark themes.
-- Added migrations 002 and 003: flattened entity columns and relational tables, plus UUID primary keys for source rows so row number becomes audit-only.
-- Added an offline "Clean data" operation in the Run pane that re-normalizes preserved evidence and updates canonical entities without a network call. Repeated runs are idempotent: fields update in place, founders and review items are never duplicated.
-- Reconciled the stored corpus: exact `(name_key, domain)` duplicates are flagged `is_duplicate` on shadow rows, superseded review items are pruned, founders and missing descriptions are backfilled from preserved records, and shadow rows are suppressed from default searches while raw evidence stays intact.
-- Collapsed industry into sector, dropped junk fields, and wrote founders and review items into relational entity tables.
-- Loaded runtime configuration from a project-local `.env` file with real values injected per machine.
-- Chose the interface theme (dark or light) from `THEME` in the environment before startup.
+- Added a Groq-backed **Prepare text** operation in the Run pane:
+  - one call per uncached description detects the original language, removes only marketing fluff, keeps the cleaned source-language copy, and provides a faithful English translation (strict JSON, `qwen/qwen3.8-27b`);
+  - output populates `entities.retrieval_text` / `detected_language`; the original description stays untouched as provenance;
+  - unchanged descriptions are never re-invoked — cached per source row, description hash, provider, model, and prompt/schema/target versions (including after switching credentials);
+  - outputs are published only while the entity still points at the exact evidence row and description that produced them.
+- Added multi-profile **Groq rotation** via git-ignored `dataops/.env.profiles.toml` (`[[profile]]` blocks; legacy `GROQ_API_KEY` / `GROQ_PROFILE` fallback when absent):
+  - each attempt uses the least-loaded profile with remaining budget;
+  - `401`/`403` permanently disable a profile (persisted); `429`/`503`/`530` cool it and rotate — one round per profile per run;
+  - stops visibly with "resume later"/"reset" semantics when rotation or daily budgets are spent; completed work stays and the cache resumes later;
+  - no paid fallback, and keys are never stored or displayed.
+- Added the `profiles` registry and data-driven `dataops_quotas` (migration 006):
+  - free-tier defaults seeded per profile (`records_per_day` 1000/day, `tokens_per_day` 200000/day, `requests_per_minute` 30/minute, `estimate_tokens_per_record` 1000);
+  - limits are ordinary rows the operator edits directly; cache hits consume nothing;
+  - Settings pane lists each profile's quotas, today's usage, and disabled status; the profile list caps at six entries with a per-profile usage summary and a "… and N more profiles" note.
+- Every preparation attempt is accounted for in `preparation_usage` (profile and key fingerprint, model, tokens, duration, request ID, outcome); unknown consumption stays explicitly unknown.
+- Preparation runs on the same timeline, logs, and metrics as Collect/Clean; without a key only this operation is disabled.
+- Reclassified review findings with shared codes and categories (automatic / incomplete / human) via migration 005; only unresolved genuine conflicts count toward "records needing review".
+- The Records pane exposes original, cleaned, and translated text under a **Prepared retrieval text** disclosure, rendered as a structured card (detected language, producing Groq profile and model, cleaned original, English translation, flagged fluff); list rows, collapsibles, and detail boxes were unified with roomier spacing.
+- Redesigned the **Checkpoints** tab (`5`; `ctrl/alt+5`) as a control panel with a header banner (title, subtitle, live status chip, cancel while running) and two read-only probes, each with its own card, colored accent, and last-run chip:
+  - **Record probe** fetches, hashes, parses, and normalizes a single row exactly as Collect would — nothing is written to the database;
+  - **Prepare probe** sends exactly one prompt for one description with no caching, quota, or writes;
+  - a filterable Groq profile picker appears when more than six profiles are configured;
+  - busy states tint the card borders and re-disable their buttons.
+- The Database tab (`6`) now shows applied migrations and a **Wipe data** tool with a two-step confirmation; wiping clears all tables in FK-safe order and re-runs migrations.
+- Tab navigation is fully keyboard-driven; hidden-pane focus restoration can no longer swallow programmatic tab switches.
+- The Logs rail is fully usable from the keyboard: `Up`/`Down` cycle the seven filter and action buttons with wraparound, `Enter` activates, and `Esc` returns to the console; hovering a rail button gives a distinct highlight from the active filter.
+- Profiles loading tolerates a malformed `.env.profiles.toml` (falls back to the legacy single key) instead of failing startup.
+- Replaced the progress bar with a run console: pipeline road of linked circles (`●` done, `◍` running, `○` waiting, `⊘` cancelled), per-step timing and row-count badges, and live session-only CPU/RSS metric chips.
+- Steps are selectable; scoped colored logs bind to the selected step in both Run and Logs panes.
+- History lists recent runs from `pipeline_runs`; the orchestrator persists per-stage timing for collect and clean, even when UI reporting fails.
+- Added an offline "Clean data" operation (re-normalize preserved evidence, update canonical entities; idempotent).
+- Reconciled the stored corpus: duplicates flagged, superseded review items pruned, founders/descriptions backfilled, shadow rows suppressed from default searches.
+- Added migrations 002/003: flattened entity columns and relational tables, plus UUID source-row keys (row number becomes audit-only).
+- Collapsed industry into sector and wrote founders and review items into relational tables.
+- Loaded runtime configuration from a project-local `.env`; theme chosen from `THEME`.
+- Built the uv package scaffold, service/schema/UI separation with dependency injection, the Textual workspace, keyboard navigation, and dark/light themes.
 - Added pipeline and UI tests plus architecture, pipeline, data-contract, and design guides, moved under `docs/`.

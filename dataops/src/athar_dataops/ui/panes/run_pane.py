@@ -32,7 +32,8 @@ CLEAN_STEPS = [
     ("normalize", "Normalize records"),
     ("reconcile", "Reconcile corpus & commit"),
 ]
-_STEP_TITLES = dict(COLLECT_STEPS + CLEAN_STEPS)
+PREPARE_STEPS = [("load", "Load descriptions"), ("prepare", "Prepare text")]
+_STEP_TITLES = dict(COLLECT_STEPS + CLEAN_STEPS + PREPARE_STEPS)
 _STEP_TITLES.update(
     collect="Collect registry",
     save="Save records",
@@ -86,6 +87,9 @@ class RunPane(VerticalScroll):
             yield Button("Clean data", id="clean-pipeline")
             yield Button("Cancel", id="cancel-pipeline", disabled=True)
             yield Button("View records", id="view-records")
+        with Horizontal(classes="actions"):
+            yield Button("Prepare text", id="prepare-pipeline", disabled=not self._orchestrator.preparation_available)
+            yield Static(f"Groq · {self._orchestrator.preparation_marker}", classes="muted", markup=False)
         yield Static("Ready", id="run-status", markup=False)
         with Horizontal(classes="run-statusbar"):
             yield Static("", id="run-elapsed", classes="muted", markup=False)
@@ -138,7 +142,11 @@ class RunPane(VerticalScroll):
     def start_cleaning(self) -> None:
         self._begin_flow(True)
 
-    def _begin_flow(self, cleaning: bool) -> None:
+    @on(Button.Pressed, "#prepare-pipeline")
+    def start_preparation(self) -> None:
+        self._begin_flow(False, preparing=True)
+
+    def _begin_flow(self, cleaning: bool, preparing: bool = False) -> None:
         if self.collecting:
             return
         self._view_generation += 1
@@ -152,7 +160,7 @@ class RunPane(VerticalScroll):
         self._running_stage = None
         self._viewing_run_id = self._run_id = None
         self._flow_start = monotonic()
-        self._timeline().set_steps(CLEAN_STEPS if cleaning else COLLECT_STEPS)
+        self._timeline().set_steps(PREPARE_STEPS if preparing else CLEAN_STEPS if cleaning else COLLECT_STEPS)
         self._render_log("all")
         self.query_one("#run-counters", Static).update("")
         self.query_one("#run-resources", Static).update("App process · CPU — · RSS —")
@@ -160,7 +168,7 @@ class RunPane(VerticalScroll):
         self._timer.resume()
         self._tick()
         self._collection_worker = self.run_worker(
-            self._collect(cleaning), group="collection", exit_on_error=False
+            self._collect(cleaning, preparing), group="collection", exit_on_error=False
         )
         self.query_one("#cancel-pipeline", Button).focus()
 
@@ -259,6 +267,7 @@ class RunPane(VerticalScroll):
 
     def _set_running(self, running: bool) -> None:
         self.collecting = running
+        self.query_one("#prepare-pipeline", Button).disabled = running or not self._orchestrator.preparation_available
         for selector in ("#run-pipeline", "#clean-pipeline", "#recent-runs-list"):
             self.query_one(selector).disabled = running
         cancel = self.query_one("#cancel-pipeline", Button)
@@ -334,7 +343,7 @@ class RunPane(VerticalScroll):
     def _progress(self, progress: StageProgress) -> None:
         name = progress.stage_name
         self._run_id = progress.run_id
-        if progress.status == "running":
+        if progress.status == "running" and name != self._running_stage:
             self._stage_starts[name] = monotonic()
             sample = self._sample()
             self._metrics[name] = StepMetrics(sample)
@@ -374,12 +383,12 @@ class RunPane(VerticalScroll):
             )
         self.query_one("#run-activity", Collapsible).collapsed = False
 
-    async def _collect(self, cleaning: bool) -> None:
-        mode = "Cleaning" if cleaning else "Collection"
+    async def _collect(self, cleaning: bool, preparing: bool = False) -> None:
+        mode = "Preparation" if preparing else "Cleaning" if cleaning else "Collection"
         try:
             operation = (
-                self._orchestrator.run_clean_pipeline
-                if cleaning
+                self._orchestrator.run_preparation if preparing else self._orchestrator.run_clean_pipeline
+                if cleaning or preparing
                 else self._orchestrator.run_pipeline
             )
             result = await operation(self._progress)
@@ -422,6 +431,11 @@ class RunPane(VerticalScroll):
                     pass
                 await self._load_recent()
                 await self._update_stats()
+
+    async def refresh_overview(self) -> None:
+        """Re-read overview stats and recent runs after external data changes."""
+        await self._update_stats()
+        await self._load_recent()
 
     async def _load_recent(self) -> None:
         if self._database is None:

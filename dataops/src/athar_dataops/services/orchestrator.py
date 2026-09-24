@@ -14,6 +14,7 @@ from athar_dataops.schemas.pipeline import (
 from athar_dataops.schemas.registry import utc_now
 from athar_dataops.services.artifacts import ArtifactService
 from athar_dataops.services.database import DatabaseService
+from athar_dataops.services.preparation import PreparationService
 from athar_dataops.services.registry import RegistryService
 
 
@@ -24,12 +25,33 @@ class PipelineOrchestrator:
         registry: RegistryService,
         database: DatabaseService,
         timeout_seconds: float = 300,
+        preparation: PreparationService | None = None,
     ):
         self._artifact = artifact
         self._registry = registry
         self._db = database
         self._timeout_seconds = timeout_seconds
         self._running = False
+        self._preparation = preparation
+
+    @property
+    def preparation_available(self) -> bool:
+        return self._preparation is not None and self._preparation.available
+
+    @property
+    def preparation_marker(self) -> str:
+        return self._preparation.marker if self._preparation else "not configured"
+
+    async def run_preparation(self, progress=None) -> PipelineRunResult:
+        if self._running:
+            raise RuntimeError("A pipeline operation is already running")
+        if not self.preparation_available:
+            raise RuntimeError("Set GROQ_API_KEY to prepare text")
+        self._running = True
+        try:
+            return await self._preparation.run(progress)
+        finally:
+            self._running = False
 
     async def run_pipeline(
         self, progress: Callable[[StageProgress], None] | None = None

@@ -1,0 +1,1 @@
+ALTER TABLE text_preparations ADD COLUMN profile TEXT;

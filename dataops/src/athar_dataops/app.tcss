@@ -186,7 +186,7 @@ TabPane {
 }
 
 #records-list > ListItem {
-    padding: 0 1;
+    padding: 0 2;
     height: auto;
     margin-bottom: 0;
     border-left: blank transparent;
@@ -246,15 +246,16 @@ TabPane {
 }
 
 #detail-description {
-    padding: 1;
+    padding: 1 2;
     background: $panel;
-    border-left: solid $link-ink;
+    border: round $line;
+    border-left: thick $link-ink;
     margin: 1 0;
 }
 
 #detail-normalized {
-    padding: 1;
-    background: $surface;
+    padding: 1 2;
+    background: $panel;
     border: round $line;
     margin-bottom: 1;
 }
@@ -262,19 +263,25 @@ TabPane {
 #review-section {
     border: round $warning;
     background: $surface;
-    padding: 1;
+    padding: 1 2;
     margin: 1 0;
 }
 
 #detail-fields {
-    padding: 1;
+    padding: 1 2;
     background: $panel;
     border: round $line;
     margin-bottom: 1;
 }
 
 #detail-original {
-    padding: 1;
+    padding: 1 2;
+    background: $panel;
+    border: round $line;
+}
+
+#prepared-disclosure Static {
+    padding: 1 2;
     background: $panel;
     border: round $line;
 }
@@ -283,8 +290,8 @@ TabPane {
 Collapsible {
     border: round $control-line;
     background: $panel;
-    padding: 0 1;
-    margin-top: 1;
+    padding: 0 2;
+    margin-top: 2;
 }
 
 Collapsible:focus-within {
@@ -292,7 +299,7 @@ Collapsible:focus-within {
 }
 
 Collapsible > Contents {
-    padding: 1 0;
+    padding: 1 1 1 0;
 }
 
 CollapsibleTitle {
@@ -437,6 +444,157 @@ Button:disabled {
     border: round $link-ink;
 }
 
+#db-toolbar {
+    height: 3;
+    margin-bottom: 1;
+}
+
+#db-toolbar #db-migrations-summary {
+    margin-left: 2;
+    margin-right: 2;
+    width: 1fr;
+}
+
+#db-toolbar #db-wipe {
+    width: 14;
+    min-width: 14;
+}
+
+#db-migrations {
+    margin-top: 0;
+    margin-bottom: 1;
+}
+
+#db-migrations-table {
+    padding: 1;
+    background: $panel;
+    border: round $line;
+}
+
+/* Checkpoints */
+#checkpoint-header {
+    background: $surface;
+    border: round $control-line;
+    padding: 1 2;
+    margin-bottom: 1;
+    height: auto;
+    align-vertical: middle;
+}
+
+#checkpoint-header-title {
+    width: 1fr;
+    height: auto;
+}
+
+#checkpoint-header-title .heading {
+    margin-bottom: 1;
+}
+
+#checkpoint-header .chip {
+    margin-right: 2;
+}
+
+#checkpoint-header #checkpoint-cancel {
+    width: 12;
+    min-width: 12;
+}
+
+.probe-card {
+    background: $surface;
+    border: round $control-line;
+    padding: 1 2;
+    margin-bottom: 1;
+}
+
+#checkpoint-registry {
+    border-left: thick $link-ink;
+}
+
+#checkpoint-prepare-card {
+    border-left: thick $success;
+}
+
+.probe-card.-busy {
+    border: round $warning;
+    border-left: thick $warning;
+}
+
+.probe-card:focus-within {
+    border: round $link-ink;
+    border-left: thick $link-ink;
+}
+
+.card-head {
+    height: auto;
+    align-vertical: middle;
+    margin-bottom: 1;
+}
+
+.card-head .section-label {
+    width: 1fr;
+    margin: 0;
+}
+
+.chip {
+    background: $panel;
+    border: round $line;
+    color: $muted;
+    padding: 0 2;
+}
+
+.chip.success { color: $success; border: round $success; }
+.chip.error { color: $error; border: round $error; }
+.chip.warning { color: $warning; border: round $warning; }
+
+#checkpoint-status { width: auto; }
+
+.probe-actions {
+    height: 3;
+    margin: 1 0;
+}
+
+.probe-actions Button {
+    margin-left: 1;
+}
+
+#checkpoint-row {
+    width: 14;
+    margin-right: 0;
+}
+
+#checkpoint-profile-pick {
+    margin-top: 1;
+}
+
+#checkpoint-profile-pick Input {
+    margin-bottom: 1;
+}
+
+#checkpoint-profile {
+    width: 100%;
+}
+
+#checkpoint-desc {
+    height: 6;
+    background: $panel;
+    border: round $control-line;
+    color: $foreground;
+    margin-top: 1;
+}
+
+#checkpoint-desc:focus {
+    border: round $link-ink;
+}
+
+#checkpoint-registry-output,
+#checkpoint-prepare-output {
+    background: $panel;
+    border: round $line;
+    padding: 1;
+    margin-top: 1;
+    min-height: 6;
+}
+
 /* Logs Pane Split View & Rail Buttons */
 #logs-split {
     height: 1fr;
@@ -487,13 +645,15 @@ Button:disabled {
 }
 
 #logs-rail Button:hover {
-    background: $selection;
-    color: $foreground;
+    background: $boost;
+    color: $link-ink;
+    text-style: bold;
 }
 
 #logs-rail Button:focus {
     background: $selection;
-    color: $foreground;
+    color: $link-ink;
+    text-style: bold;
 }
 
 #logs-rail Button.-active {
@@ -583,6 +743,13 @@ Button:disabled {
     margin-bottom: 1;
 }
 
+#settings-usage {
+    padding: 1;
+    background: $panel;
+    border: round $line;
+    color: $foreground;
+}
+
 #settings-arch-table {
     margin-top: 1;
     margin-bottom: 1;
@@ -603,9 +770,31 @@ Select:focus SelectCurrent {
 }
 
 /* Dialogs */
-HelpScreen, AboutScreen {
+HelpScreen, AboutScreen, WipeConfirmScreen {
     align: center middle;
     background: $background 80%;
+}
+
+#wipe-dialog {
+    width: 72;
+    height: auto;
+    max-height: 95%;
+    padding: 1 2;
+    background: $surface;
+    border: round $error;
+}
+
+#wipe-warning {
+    margin-bottom: 1;
+}
+
+#wipe-actions {
+    height: 3;
+}
+
+#wipe-actions Button {
+    width: 1fr;
+    margin-right: 1;
 }
 
 #help-dialog {
@@ -711,7 +900,7 @@ Screen:light Underline > .underline--bar { color: $link-ink; background: $line; 
 /* Prevent framework focus/pressed tints from changing the specified colors. */
 Screen:light Button, Screen:light Input, Screen:light SelectCurrent,
 Screen:light SelectOverlay, Screen:light DataTable, Screen:light Tree,
-Screen:light Collapsible, Screen:light OptionList {
+Screen:light Collapsible, Screen:light OptionList, Screen:light TextArea {
     background-tint: transparent; tint: transparent;
 }
 Screen:light Button { background: $surface; color: $foreground; }
@@ -735,6 +924,9 @@ Screen:light CollapsibleTitle:hover { background: $block-hover-background; color
 Screen:light CollapsibleTitle:focus { background: $selection; color: $link-ink; text-style: bold underline; }
 Screen:light #records-search, Screen:light #logs-search { background: $surface; color: $foreground; }
 Screen:light #records-search:focus, Screen:light #logs-search:focus { border: double $link-ink; }
+Screen:light #checkpoint-desc { background: $surface; color: $foreground; }
+Screen:light #checkpoint-desc:focus { border: double $link-ink; }
+Screen:light #db-toolbar Button { background: $surface; }
 
 /* Database: explicit zebra, hover, cursor and schema-tree colors. */
 Screen:light #results-table > .datatable--odd-row { background: $surface; color: $foreground; }

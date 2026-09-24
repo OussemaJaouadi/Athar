@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from rich.text import Text
 from textual import events, on
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -9,16 +10,29 @@ from textual.containers import Horizontal, Vertical
 from textual.widgets import Button, Input, Label, RichLog, Static
 
 from athar_dataops.schemas.logs import LogEntry
-from athar_dataops.ui.log_format import render_entry
+from athar_dataops.themes import DARK, LIGHT
+from athar_dataops.ui.log_format import render_entry, severity_color
 
 
 class LogsPane(Vertical):
     """Dedicated system logs console with live keyword search and severity filtering."""
 
+    RAIL_BUTTONS = (
+        "filter-all",
+        "filter-stage",
+        "filter-info",
+        "filter-warning",
+        "filter-error",
+        "toggle-scroll",
+        "clear-logs",
+    )
+
     BINDINGS = [
         Binding("slash", "focus_search", "Search Logs", show=False),
         Binding("ctrl+f", "focus_search", "Search Logs", show=False),
         Binding("ctrl+l", "clear_console", "Clear", show=False),
+        Binding("up", "rail_previous", "Previous sidebar item", show=False),
+        Binding("down", "rail_next", "Next sidebar item", show=False),
     ]
 
     DEFAULT_CSS = """
@@ -75,13 +89,15 @@ class LogsPane(Vertical):
     }
 
     #logs-rail Button:hover {
-        background: $selection;
-        color: $foreground;
+        background: $boost;
+        color: $link-ink;
+        text-style: bold;
     }
 
     #logs-rail Button:focus {
         background: $selection;
-        color: $foreground;
+        color: $link-ink;
+        text-style: bold;
     }
 
     #logs-rail Button.-active {
@@ -176,6 +192,29 @@ class LogsPane(Vertical):
             return
         self.clear_logs()
 
+    def _rail_index(self, focused) -> int:
+        for i, button_id in enumerate(self.RAIL_BUTTONS):
+            if focused is not None and focused.id == button_id:
+                return i
+        return -1
+
+    def action_rail_next(self) -> None:
+        self._move_rail_focus(1)
+
+    def action_rail_previous(self) -> None:
+        self._move_rail_focus(-1)
+
+    def _move_rail_focus(self, delta: int) -> None:
+        index = self._rail_index(self.app.focused)
+        if index < 0:
+            index = 0 if delta > 0 else len(self.RAIL_BUTTONS) - 1
+        else:
+            index = (index + delta) % len(self.RAIL_BUTTONS)
+        try:
+            self.query_one(f"#{self.RAIL_BUTTONS[index]}", Button).focus()
+        except Exception:  # noqa: S110, BLE001 - rail buttons are static; never break the pane
+            pass
+
     def on_key(self, event: events.Key) -> None:
         if event.key == "escape":
             try:
@@ -242,11 +281,22 @@ class LogsPane(Vertical):
         errors = sum(1 for e in self._entries if e.level == "error")
 
         try:
-            self.query_one("#filter-all", Button).label = f"● All ({total})"
-            self.query_one("#filter-stage", Button).label = f"● Stages ({stages})"
-            self.query_one("#filter-info", Button).label = f"● Info ({info})"
-            self.query_one("#filter-warning", Button).label = f"● Warnings ({warnings})"
-            self.query_one("#filter-error", Button).label = f"● Errors ({errors})"
+            palette = DARK if self._is_dark() else LIGHT
+            self.query_one("#filter-all", Button).label = self._rail_label(
+                "all", total, palette
+            )
+            self.query_one("#filter-stage", Button).label = self._rail_label(
+                "stage", stages, palette
+            )
+            self.query_one("#filter-info", Button).label = self._rail_label(
+                "info", info, palette
+            )
+            self.query_one("#filter-warning", Button).label = self._rail_label(
+                "warning", warnings, palette
+            )
+            self.query_one("#filter-error", Button).label = self._rail_label(
+                "error", errors, palette
+            )
             console = self.query_one("#logs-console", RichLog)
             filter_label = (
                 self._current_filter.title() if self._current_filter != "all" else "All"
@@ -254,6 +304,15 @@ class LogsPane(Vertical):
             console.border_title = f"Console Stream · {filter_label} ({total} events)"
         except Exception:
             pass
+
+    def _rail_label(self, level: str, count: int, palette) -> Text:
+        """Severity-colored dot, aligned name and right-aligned count."""
+        name = "All" if level == "all" else level.title()
+        label = Text()
+        label.append("● ", style=f"bold {severity_color(level, palette)}")
+        label.append(name.ljust(10), style=palette.foreground)
+        label.append(str(count), style=palette.variables["muted"])
+        return label
 
     def _rebuild_console(self) -> None:
         try:

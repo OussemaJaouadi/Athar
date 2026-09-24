@@ -5,6 +5,7 @@ import asyncio
 from rich import box
 from rich.markup import escape
 from rich.table import Table
+from rich.text import Text
 from textual import on
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -120,8 +121,10 @@ class InspectPane(Vertical):
                 )
                 yield Static("", id="detail-normalized", markup=False)
                 with Vertical(id="review-section"):
-                    yield Label("Needs review", classes="section-label warning")
+                    yield Label("Data notes", classes="section-label")
                     yield Static("", id="detail-review", markup=False)
+                with Collapsible(title="Prepared retrieval text", collapsed=True, id="prepared-disclosure"):
+                    yield Static("", id="detail-prepared", markup=False)
                 with Collapsible(
                     title="Source evidence & snapshot",
                     collapsed=True,
@@ -212,7 +215,7 @@ class InspectPane(Vertical):
 
     def _record_item(self, detail: RecordDetail) -> ListItem:
         label = escape(format_arabic(detail.normalized.name or "Unnamed row"))
-        if detail.normalized.review_reasons:
+        if detail.normalized.needs_review:
             label += f"  {review_chip(dark=self._is_dark())}"
         return ListItem(Label(label, markup=True))
 
@@ -266,7 +269,7 @@ class InspectPane(Vertical):
         listing = self.query_one("#records-list", ListView)
         for item, detail in zip(listing.children, self._records):
             text = escape(format_arabic(detail.normalized.name or "Unnamed row"))
-            if detail.normalized.review_reasons:
+            if detail.normalized.needs_review:
                 text += f"  {review_chip(dark=self._is_dark())}"
             item.query_one(Label).update(text)
         index = listing.index
@@ -290,7 +293,7 @@ class InspectPane(Vertical):
             format_arabic(record.name or "Unnamed source row")
         )
         badge = self.query_one("#detail-badge", Static)
-        if record.review_reasons:
+        if record.needs_review:
             badge.update(review_badge(dark=is_dark))
             badge.display = True
         else:
@@ -321,10 +324,17 @@ class InspectPane(Vertical):
 
         self.query_one("#review-section").display = bool(record.review_reasons)
         self.query_one("#detail-review", Static).update(
-            format_arabic("\n".join(f"• {r}" for r in record.review_reasons))
+            format_arabic("\n".join(
+                f"• { {'human': 'Needs review', 'incomplete': 'Incomplete', 'automatic': 'Handled'}[issue.category]}: {issue.message}"
+                for issue in record.issues
+            ))
         )
+        output = detail.prepared
+        self.query_one("#prepared-disclosure").display = output is not None
+        prepared_view = self.query_one("#detail-prepared", Static)
+        prepared_view.update(self._prepared_card(output, is_dark, pri) if output else "")
 
-        # Source values keep full contrast; the container's muted style is for labels.
+    # Source values keep full contrast; the container's muted style is for labels.
         palette = DARK if is_dark else LIGHT
         fields_table = Table(
             box=box.ROUNDED,
@@ -349,3 +359,45 @@ class InspectPane(Vertical):
         )
         self.query_one("#source-disclosure", Collapsible).collapsed = True
         self.query_one(".detail", VerticalScroll).scroll_home(animate=False)
+
+    def _prepared_card(self, output: dict, is_dark: bool, pri: str) -> Text:
+        """Structured view of one prepared description: meta strip, blocks, flags."""
+        pal = DARK if is_dark else LIGHT
+        muted = pal.variables["muted"]
+        lang = str(output.get("detected_language") or "—")
+        profile = output.get("profile")
+        model = output.get("model")
+        cleaned = output.get("cleaned_text") or ""
+        translation = output.get("english_translation")
+        fluff = output.get("fluff_excerpts") or []
+
+        text = Text()
+        text.append("LANGUAGE  ", style=f"bold {muted}")
+        text.append(lang.upper(), style=f"bold {pri}")
+        producers = " · ".join(str(value) for value in (profile, model) if value)
+        if producers:
+            text.append("   PRODUCED BY  ", style=f"bold {muted}")
+            text.append(producers, style=pal.foreground)
+        text.append("\n\n")
+
+        def block(title: str, body: str, accent: bool) -> None:
+            text.append(title, style=f"bold {pri}")
+            text.append("\n")
+            text.append(
+                format_arabic(body), style=pal.foreground if accent else muted
+            )
+            text.append("\n\n")
+
+        block("Cleaned original", cleaned, True)
+        block(
+            "English translation",
+            translation or "Already English",
+            translation is not None,
+        )
+        text.append("Flagged fluff  ", style=f"bold {pri}")
+        text.append(
+            " · ".join(format_arabic(f) for f in fluff) if fluff else "None",
+            style=muted,
+        )
+        text.append("\n")
+        return text

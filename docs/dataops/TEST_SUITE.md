@@ -27,6 +27,24 @@
 - Primary-button contrast in both themes and honest status when database reads fail.
 - About dialog resizing and packaged artwork/migration availability.
 - Live step filtering, preserved tab shortcuts, sampler stop, history isolation, and older runs without step details.
+- Checkpoints tab: prepared record is listed with a stable ID and marker, completion marking, and status/empty states.
+- Tab keybindings: number keys and `]`/`[` cycling still switch panes through hidden-pane focus restoration.
+
+### `test_checkpoints.py`
+
+- Checkpoints tab reflects prepared records, checkpoint IDs and markers, completion marking with a partial-IDs safety check, refresh without UI duplicates, and statuses.
+- Completion requires profiles; without any profile the prepare action is disabled on the Run pane.
+
+### `test_preparation.py`
+
+- Prepare lifecycle: records, caching, usage/marker tracking, key switching, and the issue classification pipeline.
+- Missing keys disable only preparation; authentication and rate limits stop without rotation or token guessing.
+
+### `test_profiles.py`
+
+- Groq rotation: least-loaded selection, 401/403 permanent disable, throttling and cooldown (one round per profile), "resume later"/"reset" stops, and unknown-usage outcomes.
+- Legacy single-key fallback, free-tier quota seeding per profile, quota-aware rotation, and loss of last eligible profile.
+- TOML profiles loading, including a malformed file yielding no profiles.
 
 ### `test_logs.py`
 

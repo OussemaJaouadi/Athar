@@ -18,18 +18,42 @@ from textual.widgets import (
 )
 
 from athar_dataops.config import Settings
+from athar_dataops.services.artifacts import ArtifactService
 from athar_dataops.services.database import DatabaseService
+from athar_dataops.services.groq import GroqPreparationClient
 from athar_dataops.services.metrics import ProcessSampler
 from athar_dataops.services.orchestrator import PipelineOrchestrator
+from athar_dataops.services.registry import RegistryService
 from athar_dataops.themes import DARK, LIGHT
 from athar_dataops.ui.dialogs import AboutScreen, HelpScreen
 from athar_dataops.ui.panes import (
+    CheckpointsPane,
     DatabasePane,
     InspectPane,
     LogsPane,
     RunPane,
     SettingsPane,
 )
+
+
+class Workspace(TabbedContent):
+    """Tabbed workspace that ignores focus-restoration tab reverts.
+
+    When a programmatic tab switch hides the previously active pane, Textual
+    repairs focus into a widget of that pane; the stock `TabPane.Focused`
+    handler then yanks `active` back to the pane being left, swallowing the
+    switch. A focus event can only legitimately originate from a *visible*
+    pane, so ignore `TabPane.Focused` for hidden panes. `prevent_default()`
+    keeps the base class handler from also running.
+    """
+
+    def _on_tab_pane_focused(self, event: TabPane.Focused) -> None:
+        event.stop()
+        event.prevent_default()
+        if not event.tab_pane.display:
+            return
+        if event.tab_pane.id != self.active:
+            self.active = event.tab_pane.id
 
 
 class DataOpsApp(App[None]):
@@ -39,14 +63,15 @@ class DataOpsApp(App[None]):
     CSS_PATH = "app.tcss"
     ENABLE_COMMAND_PALETTE = False
 
-    PANES = ["run", "inspect", "database", "logs", "settings"]
+    PANES = ["run", "inspect", "database", "logs", "checkpoints", "settings"]
 
     BINDINGS = [
         Binding("1", "navigate('run')", "Collect", priority=False),
         Binding("2", "navigate('inspect')", "Records", priority=False),
         Binding("3", "navigate('database')", "Database", priority=False),
         Binding("4", "navigate('logs')", "Logs", priority=False),
-        Binding("5", "navigate('settings')", "Settings", priority=False),
+        Binding("5", "navigate('checkpoints')", "Checkpoints", priority=False),
+        Binding("6", "navigate('settings')", "Settings", priority=False),
         Binding("ctrl+1", "navigate('run')", "Collect", show=False, priority=True),
         Binding("ctrl+2", "navigate('inspect')", "Records", show=False, priority=True),
         Binding(
@@ -54,13 +79,27 @@ class DataOpsApp(App[None]):
         ),
         Binding("ctrl+4", "navigate('logs')", "Logs", show=False, priority=True),
         Binding(
-            "ctrl+5", "navigate('settings')", "Settings", show=False, priority=True
+            "ctrl+5",
+            "navigate('checkpoints')",
+            "Checkpoints",
+            show=False,
+            priority=True,
+        ),
+        Binding(
+            "ctrl+6", "navigate('settings')", "Settings", show=False, priority=True
         ),
         Binding("alt+1", "navigate('run')", "Collect", show=False, priority=True),
         Binding("alt+2", "navigate('inspect')", "Records", show=False, priority=True),
         Binding("alt+3", "navigate('database')", "Database", show=False, priority=True),
         Binding("alt+4", "navigate('logs')", "Logs", show=False, priority=True),
-        Binding("alt+5", "navigate('settings')", "Settings", show=False, priority=True),
+        Binding(
+            "alt+5",
+            "navigate('checkpoints')",
+            "Checkpoints",
+            show=False,
+            priority=True,
+        ),
+        Binding("alt+6", "navigate('settings')", "Settings", show=False, priority=True),
         Binding("[", "prev_tab", "Prev Tab", show=False, priority=False),
         Binding("]", "next_tab", "Next Tab", show=False, priority=False),
         Binding(
@@ -95,12 +134,19 @@ class DataOpsApp(App[None]):
         database: DatabaseService,
         config: Settings,
         sampler: ProcessSampler | None = None,
+        *,
+        artifact: ArtifactService | None = None,
+        registry: RegistryService | None = None,
+        groq: GroqPreparationClient | None = None,
     ) -> None:
         super().__init__()
         self._orchestrator = orchestrator
         self._database = database
         self._config = config
         self._sampler = sampler
+        self._artifact = artifact
+        self._registry_service = registry
+        self._groq = groq
         self.register_theme(DARK)
         self.register_theme(LIGHT)
         self.theme = "athar-light" if self._config.theme == "light" else "athar-dark"
@@ -113,7 +159,7 @@ class DataOpsApp(App[None]):
             yield Static("Local workspace", id="masthead-status", markup=False)
 
         # Main workspace tabs
-        with TabbedContent(initial="run", id="workspace"):
+        with Workspace(initial="run", id="workspace"):
             with TabPane("Collect", id="run"):
                 yield RunPane(
                     self._orchestrator, database=self._database, sampler=self._sampler
@@ -124,8 +170,16 @@ class DataOpsApp(App[None]):
                 yield DatabasePane(self._database)
             with TabPane("Logs", id="logs"):
                 yield LogsPane()
+            with TabPane("Checkpoints", id="checkpoints"):
+                yield CheckpointsPane(
+                    self._config,
+                    artifact=self._artifact,
+                    registry=self._registry_service,
+                    groq=self._groq,
+                    id="checkpoints-pane",
+                )
             with TabPane("Settings", id="settings"):
-                yield SettingsPane(self._config)
+                yield SettingsPane(self._config, self._database)
 
         yield Footer()
 
@@ -253,6 +307,10 @@ class DataOpsApp(App[None]):
         except Exception:
             pass
         try:
+            self.query_one(CheckpointsPane).on_theme_changed()
+        except Exception:
+            pass
+        try:
             self.query_one(SettingsPane).on_theme_changed()
         except Exception:
             pass
@@ -282,10 +340,14 @@ class DataOpsApp(App[None]):
             ),
             "database": "#schema-tree",
             "logs": "#filter-all",
+            "checkpoints": "#checkpoints-pane",
             "settings": "#theme-picker",
         }
         if pane in selectors:
-            self.query_one(selectors[pane]).focus()
+            try:
+                self.query_one(selectors[pane]).focus()
+            except Exception:
+                pass
 
     @on(RunPane.CollectionFinished)
     async def collection_finished(self) -> None:
@@ -294,6 +356,16 @@ class DataOpsApp(App[None]):
         )
         await self.query_one(InspectPane).refresh_records()
         await self.query_one(DatabasePane).refresh_schema()
+
+    @on(DatabasePane.DatabaseWiped)
+    async def database_wiped(self, event: DatabasePane.DatabaseWiped) -> None:
+        self.log_workspace_event(
+            f"Workspace data wiped · {event.deleted} rows deleted · "
+            "schema and migrations kept",
+            "stage",
+        )
+        await self.query_one(InspectPane).refresh_records()
+        await self.query_one(RunPane).refresh_overview()
 
     @on(Button.Pressed, "#about")
     def show_about(self) -> None:

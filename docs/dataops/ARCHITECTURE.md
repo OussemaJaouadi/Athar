@@ -1,6 +1,6 @@
 # DataOps architecture
 
-- Current implementation: registry collection, offline cleaning of preserved evidence, and terminal inspection.
+- Current implementation: registry collection, offline cleaning of preserved evidence, Groq-backed Prepare text, and terminal inspection.
 - Python with uv, Textual, and local embedded Turso (`pyturso` / `turso.aio`).
 
 ## File map
@@ -11,12 +11,14 @@ Paths below are relative to `src/athar_dataops/`.
 | --- | --- |
 | `main.py`, `__main__.py` | Entry point, dependency construction, resource cleanup. |
 | `config.py` | Validated settings and absolute database path. |
-| `services/` | Acquisition, normalization, persistence, and pipeline coordination. |
-| `schemas/` | Shared records, progress events, and query results. |
+| `services/` | Acquisition, normalization, persistence, prepare (Groq), and pipeline coordination. |
+| `schemas/` | Shared records, progress events, prepared output, issue classification, and query results. |
 | `migrations/` | Numbered SQL migrations with recorded checksums. |
 | `app.py` | Application shell, navigation, refresh events, and quit handling. |
-| `ui/panes/` | Run, Records (`inspect_pane.py`), Database, Logs, and Settings. |
+| `ui/panes/` | Run, Records (`inspect_pane.py`), Database (`database_pane.py`), Logs, Checkpoints (`checkpoints_pane.py`), and Settings. |
 | `ui/widgets/` | Artwork, progress, logs, metrics, and badges. |
+| `services/groq.py` | HTTP transport for Groq preparation; never touches the database or UI. |
+| `services/preparation.py` | Prepare run loop: candidates, caching, usage accounting, run history. |
 | `ui/dialogs/` | Help and About dialogs. |
 | `themes.py`, `app.tcss` | Theme roles, JSON rendering, layout, and interaction states. |
 | `ui/arabic.py` | Display-only Arabic formatting. |
@@ -31,26 +33,33 @@ Paths below are relative to `src/athar_dataops/`.
 flowchart TD
     MAIN["main.py: run()"]
     CFG["config.py: Settings"]
-    HTTP["httpx: AsyncClient"]
+    HTTP["httpx: AsyncClient (registry)"]
+    GROQ_HTTP["httpx: AsyncClient (Groq)"]
     
     ART["ArtifactService<br/>fetch & hash bytes"]
     REG["RegistryService<br/>deterministic normalization"]
+    GROQ["GroqPreparationClient<br/>strict-JSON prepare"]
+    PREP["PreparationService<br/>caching & usage"]
     DB["DatabaseService<br/>migrations & Turso storage"]
     ORCH["PipelineOrchestrator<br/>run flow & timeouts"]
     
     APP["DataOpsApp (Textual)"]
-    PANES["Panes: Run · Records · Database · Logs · Settings"]
+    PANES["Panes: Run · Records · Database · Logs · Checkpoints · Settings"]
 
     MAIN --> CFG
     MAIN --> HTTP
+    MAIN --> GROQ_HTTP
     MAIN --> DB
     
     HTTP --> ART
+    GROQ_HTTP --> GROQ
     MAIN --> REG
     MAIN --> ORCH
     
     ART --> ORCH
     REG --> ORCH
+    GROQ --> PREP
+    PREP --> ORCH
     DB --> ORCH
     
     ORCH --> APP
@@ -60,15 +69,19 @@ flowchart TD
     classDef core fill:#0C447C,stroke:#85B7EB,color:#FFFFFF
     classDef svc fill:#145443,stroke:#63D5AF,color:#FFFFFF
     classDef ui fill:#563175,stroke:#C798FF,color:#FFFFFF
-    class MAIN,CFG,HTTP core
-    class ART,REG,DB,ORCH svc
+    class MAIN,CFG,HTTP,GROQ_HTTP core
+    class ART,REG,DB,ORCH,PREP,GROQ svc
     class APP,PANES ui
 ```
 
 - `main.run()` constructs settings, initializes the database, and opens one HTTP client.
 - It injects the client into `ArtifactService`, then passes collector, normalizer, database, and timeout into `PipelineOrchestrator`.
+- `main.run()` opens a second, independent HTTP client for Groq and wraps it in `GroqPreparationClient` + `PreparationService`, injected into the orchestrator. The client holds one `_Profile` per Groq key (from `dataops/.env.profiles.toml`, falling back to a single legacy `GROQ_API_KEY`); preparation is disabled entirely when no key is configured.
+- `PreparationService` seeds the `profiles` registry and free-tier `dataops_quotas` rows, then drives a per-run `_QuotaLedger` that selects the least-loaded eligible profile per attempt (excluding profiles that already spent a throttling round), smooths onto remaining daily envelopes across profiles, and stops visibly ("resume later"/"resume after reset") when rotation and budgets are exhausted. `401`/`403` persist `profiles.disabled=1`; throttling rounds cool the profile and rotate to the next.
 - `DataOpsApp` receives the orchestrator, database, and settings; panes borrow those dependencies.
-- One app session shares one database connection and HTTP client. `RegistryService` is stateless.
+- The workspace is a `TabbedContent` subclass whose `TabPane.Focused` handling ignores hidden panes: programmatic tab switches survive Textual's focus restoration into the pane being left.
+- The Checkpoints pane lists prepared records (stable checkpoint IDs and completion marking); the Database pane shows applied migrations and a confirmed, FK-safe wipe that clears tables in dependency order and re-runs migrations.
+- One app session shares one database connection and HTTP client; Groq calls use their own client. `RegistryService` is stateless.
 - Constructors make dependencies explicit; there is no DI container or service locator.
 - `main.run()` also injects a `ProcessSampler` through the app into Run; samples cover the app process, not individual functions or the whole host.
 - Textual workers handle asynchronous UI work on the application event loop.
@@ -81,8 +94,10 @@ flowchart TD
 | --- | --- |
 | `ArtifactService` | HTTP fetching and hashing original bytes; returns `RegistrySnapshot`. |
 | `RegistryService` | Deterministic field normalization and review reasons; returns `NormalizedRecord` values. |
-| `DatabaseService` | Migrations, evidence, run history, `run_steps` timing, transactional identity resolution, corpus reconcile (duplicate suppression, founder/description backfill), and bounded queries. |
-| `PipelineOrchestrator` | Collection and offline cleaning sequences, overlap guard, progress, timeout, and failure/cancellation bookkeeping. |
+| `GroqPreparationClient` | Single-credential Groq transport: strict-JSON one-call detection/translation/fluff removal, secret never surfaced. |
+| `PreparationService` | Prepare run loop: candidate selection, per-description caching, usage accounting, run history. |
+| `DatabaseService` | Migrations, evidence, run history, `run_steps` timing, transactional identity resolution, corpus reconcile (duplicate suppression, founder/description backfill), prepare storage/usage, and bounded queries. |
+| `PipelineOrchestrator` | Collection, offline cleaning, and preparation sequences, overlap guard, progress, timeout, and failure/cancellation bookkeeping. |
 
 - Services have no Textual dependency; UI consumes service methods and shared types.
 - `schemas/registry.py`: source snapshots, normalized records, and evidence details.

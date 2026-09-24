@@ -24,7 +24,7 @@ class ArabicDisplayTests(unittest.TestCase):
 
     def test_repair_mojibake(self):
         # UTF-8 for "أثر" decoded as Latin-1
-        mojibake = "أثر".encode("utf-8").decode("latin1")
+        mojibake = "أثر".encode().decode("latin1")
         self.assertEqual(repair_mojibake(mojibake), "أثر")
 
     def test_format_arabic_reshapes_and_reorders(self):

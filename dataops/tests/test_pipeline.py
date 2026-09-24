@@ -154,7 +154,7 @@ class PipelineTests(IsolatedAsyncioTestCase):
         ).encode()
         result = await self.pipeline.run_pipeline()
         self.assertEqual(result.status, "completed")
-        self.assertEqual(result.review_count, 4)
+        self.assertEqual(result.review_count, 2)  # Only the two conflicting identities.
         records = await self.db.list_records()
         self.assertEqual(len(records), 4)
         self.assertTrue(all(record.normalized.entity_id is None for record in records))
@@ -315,9 +315,8 @@ class PipelineTests(IsolatedAsyncioTestCase):
     async def test_overview_failure_is_not_reported_as_ready(self):
         with patch.object(
             self.db, "_rows", side_effect=RuntimeError("database unavailable")
-        ):
-            with self.assertRaisesRegex(RuntimeError, "database unavailable"):
-                await self.db.get_overview_stats()
+        ), self.assertRaisesRegex(RuntimeError, "database unavailable"):
+            await self.db.get_overview_stats()
 
     async def test_reopen_preserves_data_and_migration_history(self):
         result = await self.pipeline.run_pipeline()
@@ -401,7 +400,7 @@ class PipelineTests(IsolatedAsyncioTestCase):
             records = await upgraded.table_page("normalized_records")
             self.assertEqual(len(records.rows), 2)
             migrations = await upgraded.table_page("schema_migrations")
-            self.assertEqual(len(migrations.rows), 4)
+            self.assertEqual(len(migrations.rows), 7)
         finally:
             await upgraded.close()
 
@@ -423,13 +422,13 @@ class PipelineTests(IsolatedAsyncioTestCase):
         founders = await self.db.table_page("entity_founders")
         self.assertIn("Example Person", [row[2] for row in founders.rows])
 
-    async def test_clean_pipeline_queues_review_for_stored_rows(self):
+    async def test_clean_pipeline_retains_incomplete_notes_without_human_review(self):
         self.body = json.dumps([registry_row(website="bad host")]).encode()
         await self.pipeline.run_pipeline()
         result = await self.pipeline.run_clean_pipeline()
         self.assertEqual(result.status, "completed")
         # One record parked in review; its identity and website entries stay open.
-        self.assertEqual(result.review_count, 2)
+        self.assertEqual(result.review_count, 0)
         reviews = await self.db.table_page("entity_review_items")
         self.assertIn(
             "Invalid website; original retained", [row[3] for row in reviews.rows]

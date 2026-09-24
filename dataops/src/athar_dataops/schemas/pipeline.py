@@ -14,6 +14,7 @@ StageName = Literal[
     "reconcile",
     "save",
     "commit",
+    "prepare",
 ]
 RunStatus = Literal["running", "completed", "failed", "cancelled"]
 

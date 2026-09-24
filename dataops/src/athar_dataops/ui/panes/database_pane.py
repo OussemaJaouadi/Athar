@@ -2,23 +2,34 @@
 
 import json
 
+from rich import box
 from rich.console import Group
 from rich.padding import Padding
 from rich.rule import Rule
+from rich.table import Table
 from rich.text import Text
 from textual import on
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
-from textual.widgets import Button, DataTable, Input, Label, Static, Tree
+from textual.message import Message
+from textual.widgets import Button, Collapsible, DataTable, Input, Label, Static, Tree
 
 from athar_dataops.schemas.database import TablePage
 from athar_dataops.services.database import DatabaseService
 from athar_dataops.themes import DARK, LIGHT, themed_json
 from athar_dataops.ui.arabic import format_arabic, format_arabic_obj
+from athar_dataops.ui.dialogs.wipe import WipeConfirmScreen
 
 
 class DatabasePane(Vertical):
+    class DatabaseWiped(Message):
+        """Data rows were deleted outside any pipeline run."""
+
+        def __init__(self, deleted: int) -> None:
+            super().__init__()
+            self.deleted = deleted
+
     BINDINGS = [
         Binding("p", "prev_page", "Prev Page", show=False, priority=False),
         Binding("n", "next_page", "Next Page", show=False, priority=False),
@@ -37,8 +48,18 @@ class DatabasePane(Vertical):
         self._offset = 0
         self._current_page: TablePage | None = None
         self._inspecting = False
+        self._migration_rows: list[dict] = []
+        self._wiping = False
 
     def compose(self) -> ComposeResult:
+        with Horizontal(id="db-toolbar"):
+            yield Label("Schema migrations", classes="field-label")
+            yield Static(
+                "Checking…", id="db-migrations-summary", classes="muted", markup=False
+            )
+            yield Button("Wipe data", id="db-wipe")
+        with Collapsible(title="Migration details", collapsed=True, id="db-migrations"):
+            yield Static("Loading…", id="db-migrations-table", markup=False)
         with Horizontal(classes="split"):
             with Vertical(classes="rail", id="db-rail"):
                 yield Tree("Tables", id="schema-tree")
@@ -62,6 +83,7 @@ class DatabasePane(Vertical):
     async def on_mount(self) -> None:
         self._sync_layout()
         await self.refresh_schema()
+        await self.refresh_migrations()
 
     def on_resize(self) -> None:
         self._sync_layout()
@@ -116,6 +138,96 @@ class DatabasePane(Vertical):
                 f"Could not load schema: {exc}"
             )
 
+    async def refresh_migrations(self) -> None:
+        summary = self.query_one("#db-migrations-summary", Static)
+        try:
+            rows = await self._db.migration_status()
+        except Exception as exc:
+            summary.update(f"Migrations unknown: {exc}")
+            summary.set_classes("muted error")
+            return
+        self._migration_rows = rows
+        ok = [row for row in rows if row["status"] == "ok"]
+        issues = [row for row in rows if row["status"] != "ok"]
+        if not rows:
+            summary.update("No migrations recorded")
+            summary.set_classes("muted")
+        elif issues:
+            details = ", ".join(
+                f"{row['version']} {row['status']}" for row in issues
+            )
+            summary.update(f"{len(ok)}/{len(rows)} ok · {details}")
+            summary.set_classes("muted error")
+        else:
+            summary.update(f"{len(rows)} applied · checksums verified")
+            summary.set_classes("muted success")
+        self._render_migrations_table()
+
+    def _render_migrations_table(self) -> None:
+        is_dark = self._is_dark()
+        pri = (DARK if is_dark else LIGHT).primary
+        table = Table(
+            box=box.ROUNDED,
+            expand=True,
+            show_header=True,
+            header_style=f"bold {pri}",
+        )
+        table.add_column("Version", style=f"bold {pri}", width=10)
+        table.add_column("File", style="bold")
+        table.add_column("Status")
+        table.add_column("Applied")
+        for row in self._migration_rows:
+            table.add_row(
+                str(row["version"]),
+                row["name"],
+                row["status"],
+                (row["applied_at"] or "—")[:16],
+            )
+        try:
+            self.query_one("#db-migrations-table", Static).update(table)
+        except Exception:
+            pass
+
+    @on(Button.Pressed, "#db-wipe")
+    def confirm_wipe(self) -> None:
+        if self._wiping:
+            return
+        try:
+            if self.app.query_one("#run-pipeline", Button).disabled:
+                self.query_one("#results-label", Label).update(
+                    "Wait for the running pipeline before wiping."
+                )
+                return
+        except Exception:
+            pass
+        self.app.push_screen(WipeConfirmScreen(), self._wipe_confirmed)
+
+    async def _wipe_confirmed(self, confirmed: bool | None) -> None:
+        if not confirmed:
+            return
+        self._wiping = True
+        self.query_one("#db-wipe", Button).disabled = True
+        summary = self.query_one("#db-migrations-summary", Static)
+        summary.update("Wiping data…")
+        summary.set_classes("muted")
+        try:
+            deleted = await self._db.wipe_data()
+        except Exception as exc:
+            summary.update(f"Wipe failed: {exc}")
+            summary.set_classes("muted error")
+            self.query_one("#db-wipe", Button).disabled = False
+            self._wiping = False
+            return
+        self._table = None
+        self._offset = 0
+        self.query_one("#db-wipe", Button).disabled = False
+        self._wiping = False
+        await self.refresh_schema()
+        await self.refresh_migrations()
+        summary.update(f"Wiped {deleted} rows · schema and migrations kept")
+        summary.set_classes("muted success")
+        self.post_message(self.DatabaseWiped(deleted))
+
     @on(Tree.NodeHighlighted, "#schema-tree")
     async def select_table(self, event: Tree.NodeHighlighted) -> None:
         if event.node.data:
@@ -166,6 +278,7 @@ class DatabasePane(Vertical):
             return True
 
     def on_theme_changed(self) -> None:
+        self._render_migrations_table()
         table = self.query_one("#results-table", DataTable)
         if (
             table.cursor_row is not None

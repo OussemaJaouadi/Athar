@@ -2,18 +2,23 @@
 
 from rich import box
 from rich.table import Table
+from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import Horizontal, VerticalScroll
 from textual.widgets import Label, Select, Static
 
 from athar_dataops.config import Settings
+from athar_dataops.services.database import DatabaseService
 from athar_dataops.themes import DARK, LIGHT
+
+PROFILE_CAP = 6
 
 
 class SettingsPane(VerticalScroll):
-    def __init__(self, config: Settings, **kwargs):
+    def __init__(self, config: Settings, database: DatabaseService | None = None, **kwargs):
         super().__init__(**kwargs)
         self._config = config
+        self._database = database
 
     def compose(self) -> ComposeResult:
         with Horizontal(classes="split", id="settings-split"):
@@ -34,6 +39,8 @@ class SettingsPane(VerticalScroll):
                     "Workspace Settings", classes="heading", id="settings-env-heading"
                 )
                 yield Static(id="settings-env-table")
+                yield Label("Groq usage", classes="heading")
+                yield Static("No requests recorded", id="settings-usage", markup=False)
 
             # Right Column: Application Identity (No modal, no internal dev fluff)
             with VerticalScroll(classes="detail", id="settings-about-card"):
@@ -48,6 +55,56 @@ class SettingsPane(VerticalScroll):
 
     def on_mount(self) -> None:
         self.update_tables()
+
+    def on_show(self) -> None:
+        if self._database:
+            self.run_worker(self._load_usage(), exclusive=True, group="usage", exit_on_error=False)
+
+    async def _load_usage(self) -> None:
+        try:
+            rows = await self._database.profile_overview()
+            self.query_one("#settings-usage", Static).update(
+                self._profile_usage(rows)
+            )
+        except Exception:  # noqa: BLE001 - usage is optional UI; never crash the settings tab
+            self.query_one("#settings-usage", Static).update("Usage unavailable")
+
+    def _profile_usage(self, rows: list[dict]) -> Text:
+        """Compact per-profile lines capped for many profiles."""
+        dark = getattr(self.app, "theme", "athar-dark") != "athar-light"
+        pal = DARK if dark else LIGHT
+        text = Text()
+        for entry in rows[:PROFILE_CAP]:
+            dot_style = pal.error if entry["disabled"] else pal.success
+            state = "disabled" if entry["disabled"] else "active"
+            text.append("● ", style=f"bold {dot_style}")
+            text.append(f"{entry['name']} · {entry['model']}", style=pal.foreground)
+            text.append(f"  {state}", style=pal.variables["muted"])
+            text.append("\n")
+            today = entry["tokens_today"]
+            text.append(
+                f"    {entry['calls']} calls · {entry['requests_today']} today · "
+                f"{today if today is not None else '—'} tokens today",
+                style=pal.variables["muted"],
+            )
+            text.append("\n")
+        if len(rows) > PROFILE_CAP:
+            text.append(
+                f"… and {len(rows) - PROFILE_CAP} more profiles",
+                style=pal.variables["muted"],
+            )
+        text.rstrip()
+        if not rows:
+            return Text("No Groq profiles registered", style=pal.variables["muted"])
+        return text
+
+    def _profiles_summary(self) -> str:
+        names = [profile.name for profile in self._config.groq_profiles]
+        if not names:
+            return "not configured"
+        if len(names) <= 2:
+            return ", ".join(names)
+        return f"{len(names)} profiles · {names[0]}, {names[1]} …"
 
     def on_theme_changed(self) -> None:
         self.update_tables()
@@ -66,6 +123,8 @@ class SettingsPane(VerticalScroll):
         env_table.add_column("Value")
         env_table.add_row("Registry Source", str(self._config.registry_url))
         env_table.add_row("Database Location", str(self._config.db_path))
+        env_table.add_row("Groq profiles", self._profiles_summary())
+        env_table.add_row("Groq default model", self._config.groq_model)
         env_table.add_row(
             "Pipeline Timeout", f"{self._config.pipeline_timeout_seconds}s"
         )

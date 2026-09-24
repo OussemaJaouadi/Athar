@@ -128,7 +128,7 @@ class WorkspaceTests(IsolatedAsyncioTestCase):
         async with app.run_test(size=(80, 24)) as pilot:
             await pilot.click("#run-pipeline")
             await asyncio.wait_for(self.fetch_started.wait(), 5)
-            await pilot.press("ctrl+5")
+            await pilot.press("ctrl+6")
             self.assertEqual(
                 app.query_one("#workspace", TabbedContent).active, "settings"
             )
@@ -353,6 +353,10 @@ class WorkspaceTests(IsolatedAsyncioTestCase):
             self.assertEqual(ws.active, "logs")
 
             await pilot.press("5")
+            await pilot.pause()
+            self.assertEqual(ws.active, "checkpoints")
+
+            await pilot.press("6")
             await pilot.pause()
             self.assertEqual(ws.active, "settings")
 

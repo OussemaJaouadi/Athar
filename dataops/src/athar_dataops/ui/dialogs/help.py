@@ -40,8 +40,8 @@ class HelpScreen(ModalScreen):
             table.add_column("Action / Scope")
 
             table.add_row(
-                "1 – 5 / Alt+1–5",
-                "Switch tab: Collect · Records · Database · Logs · Settings",
+                "1 – 6 / Alt+1–6",
+                "Switch tab: Collect · Records · Database · Logs · Checkpoints · Settings",
             )
             table.add_row("[  /  ]", "Cycle previous / next workspace tab")
             table.add_row("Alt+← / Alt+→", "Cycle previous / next workspace tab")

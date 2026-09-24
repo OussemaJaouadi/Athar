@@ -1,14 +1,16 @@
 """Derived registry records. Original JSON stays alongside these values."""
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import BaseModel, Field
 
+from athar_dataops.schemas.issues import RecordIssue, classify_issue
+
 
 def utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 @dataclass(frozen=True)
@@ -34,6 +36,14 @@ class NormalizedRecord(BaseModel):
     entity_id: str | None = None
     review_reasons: list[str] = Field(default_factory=list)
 
+    @property
+    def issues(self) -> list[RecordIssue]:
+        return [classify_issue(reason) for reason in self.review_reasons]
+
+    @property
+    def needs_review(self) -> bool:
+        return any(issue.category == "human" for issue in self.issues)
+
 
 @dataclass(frozen=True)
 class RecordDetail:
@@ -42,3 +52,4 @@ class RecordDetail:
     content_hash: str
     original: Any
     normalized: NormalizedRecord
+    prepared: dict[str, Any] | None = None

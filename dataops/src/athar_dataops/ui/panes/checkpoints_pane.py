@@ -50,9 +50,9 @@ class CheckpointsPane(VerticalScroll):
     def compose(self) -> ComposeResult:
         with Horizontal(id="checkpoint-header"):
             with Vertical(id="checkpoint-header-title"):
-                yield Label("Stage checkpoints", classes="heading")
+                yield Label("Stage probes", classes="heading")
                 yield Static(
-                    "Probe one stage on one element — nothing is written to the database.",
+                    "Test one stage on one element. Nothing is written to the database.",
                     id="checkpoint-subtitle",
                     classes="muted",
                 )
@@ -63,68 +63,72 @@ class CheckpointsPane(VerticalScroll):
             cancel.display = False
             yield cancel
 
-        with Vertical(classes="probe-card", id="checkpoint-registry"):
-            with Horizontal(classes="card-head"):
-                yield Label("Record probe", classes="section-label")
-                chip = Static("", id="checkpoint-registry-chip", markup=False)
-                chip.set_classes("chip")
-                chip.display = False
-                yield chip
-            yield Static(
-                "Fetch, hash, parse and normalize a single row, exactly as Collect would.",
-                classes="muted",
-            )
-            with Horizontal(classes="probe-actions"):
-                yield Input("1", id="checkpoint-row", placeholder="row number")
-                yield Button(
-                    "Fetch & normalize 1 record",
-                    id="checkpoint-fetch",
-                    variant="primary",
-                    disabled=self._artifact is None,
-                )
-            yield Static("", id="checkpoint-registry-output", markup=False)
+        with Horizontal(id="checkpoint-grid"):
+            with Vertical(classes="probe-card", id="checkpoint-registry"):
+                with Horizontal(classes="card-head"):
+                    yield Label("Record probe", classes="section-label")
+                    chip = Static("", id="checkpoint-registry-chip", markup=False)
+                    chip.set_classes("chip")
+                    chip.display = False
+                    yield chip
+                yield Static("Fetch, hash, parse and normalize one row.", classes="muted")
+                with Horizontal(classes="probe-actions"):
+                    yield Input("1", id="checkpoint-row", placeholder="row number")
+                    yield Button("Fetch 1 record", id="checkpoint-fetch", variant="primary", disabled=self._artifact is None)
+                    yield Button("Clear", id="checkpoint-registry-clear", disabled=True)
+                with Horizontal(id="checkpoint-registry-result-header"):
+                    yield Label("Result", classes="section-label")
+                    yield Static("No result", id="checkpoint-registry-result-label", classes="muted")
+                with VerticalScroll(id="checkpoint-registry-result"):
+                    yield Static("", id="checkpoint-registry-output", classes="probe-output", markup=False)
 
-        with Vertical(classes="probe-card", id="checkpoint-prepare-card"):
-            with Horizontal(classes="card-head"):
-                yield Label("Prepare probe", classes="section-label")
-                chip = Static("", id="checkpoint-prepare-chip", markup=False)
-                chip.set_classes("chip")
-                chip.display = False
-                yield chip
-            yield Static(
-                "Send exactly one prompt for one description; no cache, quota, or writes.",
-                classes="muted",
-            )
-            with Vertical(id="checkpoint-profile-pick"):
-                if len(self._profile_names) > 8:
-                    yield Input(
-                        placeholder="Filter profiles…",
-                        id="checkpoint-profile-filter",
-                    )
-                select_kwargs: dict[str, Any] = {
-                    "id": "checkpoint-profile",
-                    "prompt": "No profiles configured",
-                    "disabled": not self._profile_names,
-                }
-                if self._profile_names:
-                    select_kwargs["value"] = self._profile_names[0]
-                yield Select(
-                    [(name, name) for name in self._profile_names],
-                    **select_kwargs,
-                )
-            yield TextArea(
-                placeholder="Paste one description…",
-                id="checkpoint-desc",
-                soft_wrap=True,
-            )
-            with Horizontal(classes="probe-actions"):
-                yield Button(
-                    "Prepare once",
-                    id="checkpoint-prepare",
-                    variant="primary",
-                    disabled=self._groq is None or not self._profile_names,
-                )
-            yield Static("", id="checkpoint-prepare-output", markup=False)
+            with Vertical(classes="probe-card", id="checkpoint-prepare-card"):
+                with Horizontal(classes="card-head"):
+                    yield Label("Prepare probe", classes="section-label")
+                    chip = Static("", id="checkpoint-prepare-chip", markup=False)
+                    chip.set_classes("chip")
+                    chip.display = False
+                    yield chip
+                yield Static("One description · one provider call · no database writes.", classes="muted")
+                with Vertical(id="checkpoint-profile-pick"):
+                    if self._profile_names:
+                        if len(self._profile_names) > 8:
+                            yield Input(placeholder="Filter profiles…", id="checkpoint-profile-filter")
+                        yield Select(
+                            [(name, name) for name in self._profile_names],
+                            id="checkpoint-profile",
+                            value=self._profile_names[0],
+                            prompt="No profiles configured",
+                        )
+                    else:
+                        yield Static("No Groq profiles configured", classes="muted")
+                yield TextArea(placeholder="Paste one description…", id="checkpoint-desc", soft_wrap=True)
+                with Horizontal(classes="probe-actions"):
+                    yield Button("Prepare once", id="checkpoint-prepare", variant="primary", disabled=self._groq is None or not self._profile_names)
+                    yield Button("Clear", id="checkpoint-prepare-clear", disabled=True)
+                with Horizontal(id="checkpoint-prepare-result-header"):
+                    yield Label("Result", classes="section-label")
+                    yield Static("No result", id="checkpoint-prepare-result-label", classes="muted")
+                with VerticalScroll(id="checkpoint-prepare-result"):
+                    yield Static("", id="checkpoint-prepare-output", classes="probe-output", markup=False)
+
+    @on(Button.Pressed, "#checkpoint-registry-clear")
+    def clear_registry(self) -> None:
+        self._registry_result = None
+        self.query_one("#checkpoint-registry-output", Static).update("")
+        self.query_one("#checkpoint-registry-result-label", Static).update("No probe result yet")
+        self.query_one("#checkpoint-registry-chip", Static).display = False
+        self.query_one("#checkpoint-registry-clear", Button).disabled = True
+        self._set_status("Record result cleared", "")
+
+    @on(Button.Pressed, "#checkpoint-prepare-clear")
+    def clear_prepare(self) -> None:
+        self._prepare_reply = None
+        self.query_one("#checkpoint-prepare-output", Static).update("")
+        self.query_one("#checkpoint-prepare-result-label", Static).update("No probe result yet")
+        self.query_one("#checkpoint-prepare-chip", Static).display = False
+        self.query_one("#checkpoint-prepare-clear", Button).disabled = True
+        self._set_status("Prepare result cleared", "")
 
     @on(Input.Changed, "#checkpoint-profile-filter")
     def filter_profiles(self, event: Input.Changed) -> None:
@@ -146,6 +150,7 @@ class CheckpointsPane(VerticalScroll):
     @on(Button.Pressed, "#checkpoint-cancel")
     def cancel(self) -> None:
         if self._worker is not None and not self._worker.is_cancelled:
+            self._set_status("Cancelling…", "warning")
             self._worker.cancel()
 
     def _launch(self, coroutine) -> None:
@@ -155,8 +160,10 @@ class CheckpointsPane(VerticalScroll):
         self.query_one("#checkpoint-prepare-output", Static).update("")
         self._card_chip("registry", "")
         self._card_chip("prepare", "")
+        self.query_one("#checkpoint-registry-clear", Button).disabled = True
+        self.query_one("#checkpoint-prepare-clear", Button).disabled = True
         self._set_busy(True)
-        self._set_status("Connecting…")
+        self._set_status("Working…", "warning")
         self._worker = self.run_worker(
             coroutine, group="checkpoint", exit_on_error=False
         )
@@ -172,6 +179,11 @@ class CheckpointsPane(VerticalScroll):
         cancel = self.query_one("#checkpoint-cancel", Button)
         cancel.disabled = not busy
         cancel.display = busy
+        self.query_one("#checkpoint-row", Input).disabled = busy
+        self.query_one("#checkpoint-profile", Select).disabled = busy or not self._profile_names
+        self.query_one("#checkpoint-desc", TextArea).disabled = busy
+        self.query_one("#checkpoint-registry-clear", Button).disabled = busy or self._registry_result is None
+        self.query_one("#checkpoint-prepare-clear", Button).disabled = busy or self._prepare_reply is None
         for card_id in ("#checkpoint-registry", "#checkpoint-prepare-card"):
             card = self.query_one(card_id)
             if busy:
@@ -293,6 +305,10 @@ class CheckpointsPane(VerticalScroll):
                 themed_json(format_arabic_obj(result["raw"]), dark=is_dark),
             )
         )
+        self.query_one("#checkpoint-registry-result-label", Static).update(
+            f"Row {result['requested']} · {record.name or 'Unnamed'}"
+        )
+        self.query_one("#checkpoint-registry-clear", Button).disabled = False
 
     async def _run_prepare(self) -> None:
         try:
@@ -370,6 +386,8 @@ class CheckpointsPane(VerticalScroll):
                     detail,
                 )
             )
+            self.query_one("#checkpoint-prepare-result-label", Static).update("Provider rejected request")
+            self.query_one("#checkpoint-prepare-clear", Button).disabled = False
             return
 
         output = reply.output
@@ -403,6 +421,10 @@ class CheckpointsPane(VerticalScroll):
                 themed_json(format_arabic_obj(output.model_dump()), dark=is_dark),
             )
         )
+        self.query_one("#checkpoint-prepare-result-label", Static).update(
+            f"{output.detected_language} · {reply.profile or 'provider'}"
+        )
+        self.query_one("#checkpoint-prepare-clear", Button).disabled = False
 
     def _clear_busy(self) -> None:
         try:

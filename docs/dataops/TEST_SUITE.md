@@ -26,18 +26,19 @@
 - Narrow-terminal row inspection, keyboard open/close, and resizing.
 - Primary-button contrast in both themes and honest status when database reads fail.
 - About dialog resizing and packaged artwork/migration availability.
-- Live step filtering, preserved tab shortcuts, sampler stop, history isolation, and older runs without step details.
-- Checkpoints tab: prepared record is listed with a stable ID and marker, completion marking, and status/empty states.
-- Tab keybindings: number keys and `]`/`[` cycling still switch panes through hidden-pane focus restoration.
+- Live step filtering, preserved tab shortcuts, sampler stop, History isolation, and older runs without step details.
+- First-class History: persisted run metadata, operation, outcome, filter/refresh, and step-summary inspection.
+- Normal Logs and Probes tabs, filtered log counts, no-match states, probe result separation, bounded probe output areas, and probe busy-state input locking.
+- Tab keybindings: number keys and `]`/`[` cycling switch all primary panes.
 
 ### `test_checkpoints.py`
 
-- Checkpoints tab reflects prepared records, checkpoint IDs and markers, completion marking with a partial-IDs safety check, refresh without UI duplicates, and statuses.
-- Completion requires profiles; without any profile the prepare action is disabled on the Run pane.
+- Normal Probes tab reflects read-only record and prepare probes, validates results, and confirms no database writes.
+- Probe inputs are disabled during requests; result labels and clear actions are available; completion requires profiles.
 
 ### `test_preparation.py`
 
-- Prepare lifecycle: records, caching, usage/marker tracking, key switching, and the issue classification pipeline.
+- Prepare lifecycle: records, caching, usage/marker tracking, key switching, the issue classification pipeline, and confirmation before model calls.
 - Missing keys disable only preparation; authentication and rate limits stop without rotation or token guessing.
 
 ### `test_profiles.py`
@@ -50,7 +51,7 @@
 
 - Entry formatting, severity filtering, and text search.
 - Search focus, Escape behavior, clearing logs, and unintended shortcut prevention.
-- Retained entries when rebuilding for light mode; not a full color audit.
+- Retained entries when rebuilding for light mode; active sidebar label contrast and filtered states.
 
 ### `test_arabic.py`
 

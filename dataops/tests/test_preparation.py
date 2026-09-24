@@ -167,9 +167,26 @@ class PreparationTests(IsolatedAsyncioTestCase):
             await self.pipeline.run_preparation()
         self.assertEqual((await self.pipeline.run_clean_pipeline()).status, "completed")
 
-    async def test_prepare_button_records_panel_and_usage_panel(self):
+    async def test_prepare_requires_confirmation_before_model_calls(self):
         from test_smoke import render_text
         from textual.widgets import Static
+        from athar_dataops.app import DataOpsApp
+
+        app = DataOpsApp(self.pipeline, self.db, self.config)
+        async with app.run_test(size=(120, 50)) as pilot:
+            await pilot.click("#prepare-pipeline")
+            await pilot.pause()
+            self.assertTrue(app.query_one("#prepare-preview").display)
+            self.assertIn("Uncached model calls", render_text(app.query_one("#prepare-preview-body", Static).render()))
+            self.assertEqual(len(await self.db.preparation_usage_summary()), 0)
+            await pilot.click("#prepare-cancel")
+            await pilot.pause()
+            self.assertFalse(app.query_one("#prepare-preview").display)
+            self.assertEqual(len(await self.db.preparation_usage_summary()), 0)
+
+    async def test_prepare_button_records_panel_and_usage_panel(self):
+        from test_smoke import render_text
+        from textual.widgets import DataTable, Static
 
         from athar_dataops.app import DataOpsApp
         from athar_dataops.ui.panes.run_pane import RunPane
@@ -177,6 +194,10 @@ class PreparationTests(IsolatedAsyncioTestCase):
         app = DataOpsApp(self.pipeline, self.db, self.config)
         async with app.run_test(size=(120, 50)) as pilot:
             await pilot.click("#prepare-pipeline")
+            await pilot.pause()
+            self.assertTrue(app.query_one("#prepare-preview").display)
+            self.assertIn("Uncached model calls", render_text(app.query_one("#prepare-preview-body", Static).render()))
+            await pilot.click("#prepare-confirm")
             async with asyncio.timeout(10):
                 while app.query_one(RunPane).collecting:
                     await pilot.pause(0.05)
@@ -190,11 +211,10 @@ class PreparationTests(IsolatedAsyncioTestCase):
             app.action_navigate("settings")
             await pilot.pause()
             async with asyncio.timeout(10):
-                while "account-a" not in render_text(
-                    app.query_one("#settings-usage", Static).render()
-                ):
+                while not app.query_one("#settings-usage", DataTable).rows:
                     await pilot.pause(0.05)
-            self.assertIn("account-a", render_text(app.query_one("#settings-usage", Static).render()))
+            usage = app.query_one("#settings-usage", DataTable)
+            self.assertEqual(usage.get_row_at(0)[0], "account-a")
             self.assertNotIn("fake-secret", render_text(app.query_one("#settings-env-table", Static).render()))
 
     async def test_upgrade_reclassifies_existing_flags_without_losing_evidence(self):

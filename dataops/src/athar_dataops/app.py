@@ -29,6 +29,7 @@ from athar_dataops.ui.dialogs import AboutScreen, HelpScreen
 from athar_dataops.ui.panes import (
     CheckpointsPane,
     DatabasePane,
+    HistoryPane,
     InspectPane,
     LogsPane,
     RunPane,
@@ -63,43 +64,30 @@ class DataOpsApp(App[None]):
     CSS_PATH = "app.tcss"
     ENABLE_COMMAND_PALETTE = False
 
-    PANES = ["run", "inspect", "database", "logs", "checkpoints", "settings"]
+    PANES = ["run", "inspect", "history", "database", "logs", "probes", "settings"]
 
     BINDINGS = [
         Binding("1", "navigate('run')", "Collect", priority=False),
         Binding("2", "navigate('inspect')", "Records", priority=False),
-        Binding("3", "navigate('database')", "Database", priority=False),
-        Binding("4", "navigate('logs')", "Logs", priority=False),
-        Binding("5", "navigate('checkpoints')", "Checkpoints", priority=False),
-        Binding("6", "navigate('settings')", "Settings", priority=False),
+        Binding("3", "navigate('history')", "History", priority=False),
+        Binding("4", "navigate('database')", "Database", priority=False),
+        Binding("5", "navigate('logs')", "Logs", priority=False),
+        Binding("6", "navigate('probes')", "Probes", priority=False),
+        Binding("7", "navigate('settings')", "Settings", priority=False),
         Binding("ctrl+1", "navigate('run')", "Collect", show=False, priority=True),
         Binding("ctrl+2", "navigate('inspect')", "Records", show=False, priority=True),
-        Binding(
-            "ctrl+3", "navigate('database')", "Database", show=False, priority=True
-        ),
-        Binding("ctrl+4", "navigate('logs')", "Logs", show=False, priority=True),
-        Binding(
-            "ctrl+5",
-            "navigate('checkpoints')",
-            "Checkpoints",
-            show=False,
-            priority=True,
-        ),
-        Binding(
-            "ctrl+6", "navigate('settings')", "Settings", show=False, priority=True
-        ),
+        Binding("ctrl+3", "navigate('history')", "History", show=False, priority=True),
+        Binding("ctrl+4", "navigate('database')", "Database", show=False, priority=True),
+        Binding("ctrl+5", "navigate('logs')", "Logs", show=False, priority=True),
+        Binding("ctrl+6", "navigate('probes')", "Probes", show=False, priority=True),
+        Binding("ctrl+7", "navigate('settings')", "Settings", show=False, priority=True),
         Binding("alt+1", "navigate('run')", "Collect", show=False, priority=True),
         Binding("alt+2", "navigate('inspect')", "Records", show=False, priority=True),
-        Binding("alt+3", "navigate('database')", "Database", show=False, priority=True),
-        Binding("alt+4", "navigate('logs')", "Logs", show=False, priority=True),
-        Binding(
-            "alt+5",
-            "navigate('checkpoints')",
-            "Checkpoints",
-            show=False,
-            priority=True,
-        ),
-        Binding("alt+6", "navigate('settings')", "Settings", show=False, priority=True),
+        Binding("alt+3", "navigate('history')", "History", show=False, priority=True),
+        Binding("alt+4", "navigate('database')", "Database", show=False, priority=True),
+        Binding("alt+5", "navigate('logs')", "Logs", show=False, priority=True),
+        Binding("alt+6", "navigate('probes')", "Probes", show=False, priority=True),
+        Binding("alt+7", "navigate('settings')", "Settings", show=False, priority=True),
         Binding("[", "prev_tab", "Prev Tab", show=False, priority=False),
         Binding("]", "next_tab", "Next Tab", show=False, priority=False),
         Binding(
@@ -152,25 +140,25 @@ class DataOpsApp(App[None]):
         self.theme = "athar-light" if self._config.theme == "light" else "athar-dark"
 
     def compose(self) -> ComposeResult:
-        # Workspace identity; this label makes no health claim.
         with Horizontal(id="masthead"):
             yield Label("athar", id="wordmark")
             yield Label("DataOps", id="app-name")
-            yield Static("Local workspace", id="masthead-status", markup=False)
+            yield Static("Ready · no active operation", id="masthead-status", markup=False)
 
-        # Main workspace tabs
         with Workspace(initial="run", id="workspace"):
-            with TabPane("Collect", id="run"):
+            with TabPane("Run", id="run"):
                 yield RunPane(
                     self._orchestrator, database=self._database, sampler=self._sampler
                 )
             with TabPane("Records", id="inspect"):
                 yield InspectPane(self._database)
+            with TabPane("History", id="history"):
+                yield HistoryPane(self._database)
             with TabPane("Database", id="database"):
                 yield DatabasePane(self._database)
             with TabPane("Logs", id="logs"):
                 yield LogsPane()
-            with TabPane("Checkpoints", id="checkpoints"):
+            with TabPane("Probes", id="probes"):
                 yield CheckpointsPane(
                     self._config,
                     artifact=self._artifact,
@@ -180,7 +168,6 @@ class DataOpsApp(App[None]):
                 )
             with TabPane("Settings", id="settings"):
                 yield SettingsPane(self._config, self._database)
-
         yield Footer()
 
     def on_mount(self) -> None:
@@ -215,6 +202,11 @@ class DataOpsApp(App[None]):
         if current in self.PANES:
             idx = self.PANES.index(current)
             self.action_navigate(self.PANES[(idx + 1) % len(self.PANES)])
+
+    def set_workspace_status(self, text: str, state: str = "") -> None:
+        status = self.query_one("#masthead-status", Static)
+        status.update(text)
+        status.set_classes(state)
 
     def action_toggle_source(self) -> None:
         if isinstance(self.focused, Input):
@@ -327,6 +319,7 @@ class DataOpsApp(App[None]):
             "run": "#cancel-pipeline"
             if self.query_one(RunPane).collecting
             else "#run-pipeline",
+            "history": "#history-list",
             "inspect": (
                 "#records-list"
                 if self.query_one("#records-detail").display
@@ -340,7 +333,7 @@ class DataOpsApp(App[None]):
             ),
             "database": "#schema-tree",
             "logs": "#filter-all",
-            "checkpoints": "#checkpoints-pane",
+            "probes": "#checkpoint-fetch",
             "settings": "#theme-picker",
         }
         if pane in selectors:
@@ -356,6 +349,7 @@ class DataOpsApp(App[None]):
         )
         await self.query_one(InspectPane).refresh_records()
         await self.query_one(DatabasePane).refresh_schema()
+        await self.query_one(HistoryPane).refresh_runs()
 
     @on(DatabasePane.DatabaseWiped)
     async def database_wiped(self, event: DatabasePane.DatabaseWiped) -> None:
@@ -366,6 +360,7 @@ class DataOpsApp(App[None]):
         )
         await self.query_one(InspectPane).refresh_records()
         await self.query_one(RunPane).refresh_overview()
+        await self.query_one(HistoryPane).refresh_runs()
 
     @on(Button.Pressed, "#about")
     def show_about(self) -> None:

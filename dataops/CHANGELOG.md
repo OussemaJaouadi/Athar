@@ -2,7 +2,16 @@
 
 ## Unreleased
 
-- Added a Groq-backed **Prepare text** operation in the Run pane:
+- Reorganized the workspace around seven primary tabs: **Run**, **Records**, **History**, **Database**, **Logs**, **Probes**, and **Settings**.
+- Added a first-class History view with refresh, filtering, stable selection, run outcomes, and step summaries.
+- Reworked Probes into explicit result surfaces with clear actions, result labels, and light/dark theme states.
+- Added an operational masthead state for running, completed, cancelled, and failed operations.
+- Added a Prepare all preview/confirmation showing eligible descriptions, uncached model calls, profiles, models, and provider limits before any model call.
+- Added structured Groq profile/provider-limit summaries to Run and Settings.
+- Improved Logs filtered counts and empty/no-match feedback, including light-mode sidebar contrast.
+- Made Probe inputs immutable while a request is running and exposed cancellation immediately.
+
+- Added a Groq-backed **Prepare all** operation in the Run pane with preview/confirmation:
   - one call per uncached description detects the original language, removes only marketing fluff, keeps the cleaned source-language copy, and provides a faithful English translation (strict JSON, `qwen/qwen3.8-27b`);
   - output populates `entities.retrieval_text` / `detected_language`; the original description stays untouched as provenance;
   - unchanged descriptions are never re-invoked — cached per source row, description hash, provider, model, and prompt/schema/target versions (including after switching credentials);
@@ -20,12 +29,12 @@
 - Preparation runs on the same timeline, logs, and metrics as Collect/Clean; without a key only this operation is disabled.
 - Reclassified review findings with shared codes and categories (automatic / incomplete / human) via migration 005; only unresolved genuine conflicts count toward "records needing review".
 - The Records pane exposes original, cleaned, and translated text under a **Prepared retrieval text** disclosure, rendered as a structured card (detected language, producing Groq profile and model, cleaned original, English translation, flagged fluff); list rows, collapsibles, and detail boxes were unified with roomier spacing.
-- Redesigned the **Checkpoints** tab (`5`; `ctrl/alt+5`) as a control panel with a header banner (title, subtitle, live status chip, cancel while running) and two read-only probes, each with its own card, colored accent, and last-run chip:
+- Redesigned the **Probes** tab (`6`; `ctrl/alt+6`) as a control panel with two bounded, read-only probe cards, explicit result labels, clear-result actions, and responsive internal scrolling:
   - **Record probe** fetches, hashes, parses, and normalizes a single row exactly as Collect would — nothing is written to the database;
   - **Prepare probe** sends exactly one prompt for one description with no caching, quota, or writes;
   - a filterable Groq profile picker appears when more than six profiles are configured;
   - busy states tint the card borders and re-disable their buttons.
-- The Database tab (`6`) now shows applied migrations and a **Wipe data** tool with a two-step confirmation; wiping clears all tables in FK-safe order and re-runs migrations.
+- The Database tab (`4`) now shows applied migrations and a **Wipe data** tool with a two-step confirmation; wiping clears all tables in FK-safe order and re-runs migrations.
 - Tab navigation is fully keyboard-driven; hidden-pane focus restoration can no longer swallow programmatic tab switches.
 - The Logs rail is fully usable from the keyboard: `Up`/`Down` cycle the seven filter and action buttons with wraparound, `Enter` activates, and `Esc` returns to the console; hovering a rail button gives a distinct highlight from the active filter.
 - Profiles loading tolerates a malformed `.env.profiles.toml` (falls back to the legacy single key) instead of failing startup.

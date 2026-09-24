@@ -82,7 +82,7 @@ Fields pre-allocated in `entities`:
 
 ## 5. Prepare Text Operation
 
-A separate "Prepare text" run (independent of Collect/Clean, shown on the same timeline):
+A separate "Prepare all" run (independent of Collect/Clean, shown on the same timeline):
 
 * **Engine:** one Groq call per uncached description (`qwen/qwen3.8-27b`, strict JSON) that detects the original language, removes only subjective marketing fluff, preserves all concrete facts, keeps cleaned text in the source language, and provides a faithful English translation (`cleaned_text` is always retained; English is the translation target).
 * **Candidates:** canonical, nonduplicate entities with a non-empty description (`is_duplicate=0`, `latest_row_id` evidence). Rows without a description are skipped; nothing is invented.

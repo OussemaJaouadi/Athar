@@ -42,6 +42,21 @@ class PipelineOrchestrator:
     def preparation_marker(self) -> str:
         return self._preparation.marker if self._preparation else "not configured"
 
+    @property
+    def preparation_profiles(self) -> list[dict]:
+        return self._preparation.profile_summaries if self._preparation else []
+
+    async def preparation_preview(self) -> dict:
+        if not self._preparation:
+            return {
+                "available": False,
+                "profiles": [],
+                "eligible": 0,
+                "uncached": 0,
+                "cached": 0,
+            }
+        return await self._preparation.preview()
+
     async def run_preparation(self, progress=None) -> PipelineRunResult:
         if self._running:
             raise RuntimeError("A pipeline operation is already running")

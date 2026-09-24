@@ -141,6 +141,53 @@ class PreparationService:
         names = ", ".join(status.name for status in self.provider.profiles)
         return f"profiles: {names}" if names else "not configured"
 
+    @property
+    def profile_summaries(self) -> list[dict]:
+        return [
+            {
+                "name": status.name,
+                "model": status.model,
+                "fingerprint": status.fingerprint,
+            }
+            for status in self.provider.profiles
+        ]
+
+    async def preview(self) -> dict:
+        if not self.available:
+            return {
+                "available": False,
+                "profiles": [],
+                "eligible": 0,
+                "uncached": 0,
+                "cached": 0,
+            }
+        await self._db.sync_profiles(list(self.provider.profiles), list(GROQ_DEFAULT_QUOTAS))
+        candidates = await self._db.preparation_candidates()
+        profiles = [
+            {
+                "name": status.name,
+                "model": status.model,
+                "fingerprint": status.fingerprint,
+            }
+            for status in self.provider.profiles
+        ]
+        cached_ids: set[str] = set()
+        for status in self.provider.profiles:
+            for candidate in candidates:
+                key, input_hash = preparation_key(candidate, status.model)
+                if await self._db.prepared_text(
+                    key, candidate["entity_id"], input_hash, status.model
+                ):
+                    cached_ids.add(candidate["entity_id"])
+                    break
+        return {
+            "available": True,
+            "profiles": profiles,
+            "eligible": len(candidates),
+            "uncached": len(candidates) - len(cached_ids),
+            "cached": len(cached_ids),
+        }
+
     async def run(self, progress: Callable[[StageProgress], None] | None = None) -> PipelineRunResult:
         if not self.available:
             raise RuntimeError("No Groq credentials: set GROQ_API_KEY or add profiles to .env.profiles.toml")

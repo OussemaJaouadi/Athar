@@ -176,7 +176,9 @@
 
 ### Current TUI refinement — awaiting visual review
 
-- Keep the accepted five-tab layout, bordered panels, and terminal typography.
+- Keep the accepted seven-tab primary layout, bordered panels, and terminal typography.
+- Keep Logs and Probes as normal primary tabs with consistent focus, empty, error, and loading states.
+- Keep the masthead operational: show active operation state, completion, cancellation, or failure before the user opens a detail view.
 - The web palette above remains its approved baseline; these are terminal-specific light overrides.
 - Light surfaces: canvas `#E6EAEC`, content `#FFFFFF`, inset `#F2F4F5`.
 - Light text: primary `#1C1D1F`, secondary `#5A5D61`, cyan emphasis `#075E73`.

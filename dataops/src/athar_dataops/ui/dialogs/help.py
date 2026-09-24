@@ -40,8 +40,8 @@ class HelpScreen(ModalScreen):
             table.add_column("Action / Scope")
 
             table.add_row(
-                "1 – 6 / Alt+1–6",
-                "Switch tab: Collect · Records · Database · Logs · Checkpoints · Settings",
+                "1 – 7 / Alt+1–7",
+                "Switch tab: Run · Records · History · Database · Logs · Probes · Settings",
             )
             table.add_row("[  /  ]", "Cycle previous / next workspace tab")
             table.add_row("Alt+← / Alt+→", "Cycle previous / next workspace tab")
@@ -69,6 +69,7 @@ class HelpScreen(ModalScreen):
                 "PageUp / PageDown", "Previous / next page (Records & Database)"
             )
             table.add_row("↑  /  ↓", "Navigate records, tables, and rows")
+            table.add_row("Prepare all", "Preview uncached model work, then confirm before starting")
             table.add_row("F1", "Toggle this Help modal")
             table.add_row("F6", "Toggle light / dark theme")
             table.add_row("Ctrl+Q", "Graceful quit (cancels active pipeline safely)")

@@ -529,7 +529,7 @@ class DatabaseService:
     async def list_recent_runs(self, limit: int = 8) -> list[dict[str, Any]]:
         async with self._lock:
             return await self._rows(
-                "SELECT id, status, started_at, completed_at, records_processed, review_count, snapshot_id FROM pipeline_runs ORDER BY started_at DESC LIMIT ?",
+                "SELECT id, status, operation, started_at, completed_at, records_processed, review_count, snapshot_id, error FROM pipeline_runs ORDER BY started_at DESC LIMIT ?",
                 (limit,),
             )
 
@@ -546,7 +546,7 @@ class DatabaseService:
     async def get_run(self, run_id: str) -> PipelineRunResult:
         async with self._lock:
             rows = await self._rows(
-                "SELECT id AS run_id, status, snapshot_id, records_processed, review_count, error FROM pipeline_runs WHERE id=?",
+                "SELECT id AS run_id, status, snapshot_id, records_processed, review_count, error, operation FROM pipeline_runs WHERE id=?",
                 (run_id,),
             )
         return PipelineRunResult(**rows[0])

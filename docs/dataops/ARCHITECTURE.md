@@ -1,6 +1,6 @@
 # DataOps architecture
 
-- Current implementation: registry collection, offline cleaning of preserved evidence, Groq-backed Prepare text, and terminal inspection.
+- Current implementation: registry collection, offline cleaning of preserved evidence, Groq-backed Prepare all with preview/confirmation, and terminal inspection.
 - Python with uv, Textual, and local embedded Turso (`pyturso` / `turso.aio`).
 
 ## File map
@@ -14,8 +14,8 @@ Paths below are relative to `src/athar_dataops/`.
 | `services/` | Acquisition, normalization, persistence, prepare (Groq), and pipeline coordination. |
 | `schemas/` | Shared records, progress events, prepared output, issue classification, and query results. |
 | `migrations/` | Numbered SQL migrations with recorded checksums. |
-| `app.py` | Application shell, navigation, refresh events, and quit handling. |
-| `ui/panes/` | Run, Records (`inspect_pane.py`), Database (`database_pane.py`), Logs, Checkpoints (`checkpoints_pane.py`), and Settings. |
+| `app.py` | Application shell, seven primary tabs, navigation, refresh events, and quit handling. |
+| `ui/panes/` | Run, Records, History, Database, Logs, Probes (`checkpoints_pane.py`), and Settings. |
 | `ui/widgets/` | Artwork, progress, logs, metrics, and badges. |
 | `services/groq.py` | HTTP transport for Groq preparation; never touches the database or UI. |
 | `services/preparation.py` | Prepare run loop: candidates, caching, usage accounting, run history. |
@@ -44,7 +44,9 @@ flowchart TD
     ORCH["PipelineOrchestrator<br/>run flow & timeouts"]
     
     APP["DataOpsApp (Textual)"]
-    PANES["Panes: Run · Records · Database · Logs · Checkpoints · Settings"]
+     PANES["Panes: Run · Records · History · Database · Logs · Probes · Settings"]
+     CONTEXT["Context panels: none"]
+
 
     MAIN --> CFG
     MAIN --> HTTP
@@ -64,14 +66,16 @@ flowchart TD
     
     ORCH --> APP
     DB --> APP
-    APP --> PANES
+     APP --> PANES
+
 
     classDef core fill:#0C447C,stroke:#85B7EB,color:#FFFFFF
     classDef svc fill:#145443,stroke:#63D5AF,color:#FFFFFF
     classDef ui fill:#563175,stroke:#C798FF,color:#FFFFFF
     class MAIN,CFG,HTTP,GROQ_HTTP core
     class ART,REG,DB,ORCH,PREP,GROQ svc
-    class APP,PANES ui
+     class APP,PANES ui
+
 ```
 
 - `main.run()` constructs settings, initializes the database, and opens one HTTP client.
@@ -80,7 +84,8 @@ flowchart TD
 - `PreparationService` seeds the `profiles` registry and free-tier `dataops_quotas` rows, then drives a per-run `_QuotaLedger` that selects the least-loaded eligible profile per attempt (excluding profiles that already spent a throttling round), smooths onto remaining daily envelopes across profiles, and stops visibly ("resume later"/"resume after reset") when rotation and budgets are exhausted. `401`/`403` persist `profiles.disabled=1`; throttling rounds cool the profile and rotate to the next.
 - `DataOpsApp` receives the orchestrator, database, and settings; panes borrow those dependencies.
 - The workspace is a `TabbedContent` subclass whose `TabPane.Focused` handling ignores hidden panes: programmatic tab switches survive Textual's focus restoration into the pane being left.
-- The Checkpoints pane lists prepared records (stable checkpoint IDs and completion marking); the Database pane shows applied migrations and a confirmed, FK-safe wipe that clears tables in dependency order and re-runs migrations.
+- The workspace exposes seven primary tabs: Run, Records, History, Database, Logs, Probes, and Settings.
+- The History pane reads persisted run metadata and step summaries. Refresh and filtering automatically load the first or preserved run detail. The Probes pane is a read-only, single-stage test surface with bounded result areas and no database writes.
 - One app session shares one database connection and HTTP client; Groq calls use their own client. `RegistryService` is stateless.
 - Constructors make dependencies explicit; there is no DI container or service locator.
 - `main.run()` also injects a `ProcessSampler` through the app into Run; samples cover the app process, not individual functions or the whole host.
@@ -122,7 +127,8 @@ flowchart LR
     end
     
     TURSO[("Turso DB<br/>athar.db")]
-    UI["Textual Panes<br/>Run · Records · Database"]
+     UI["Textual Panes<br/>Run · Records · History · Database · Logs · Probes"]
+
 
     EXT --> S1
     S1 --> S2
@@ -145,7 +151,7 @@ flowchart LR
 1. Run pane starts a worker; the orchestrator records a run and fetches the registry.
 2. Original bytes are saved, read back, parsed, and preserved as source rows.
 3. Normalization produces records and review reasons; identity resolution and derived writes commit together.
-4. Progress callbacks update Run; completion refreshes Records and Database.
+4. Progress callbacks update Run and the global operational masthead; completion refreshes Records, History, and Database.
 5. Inspection calls database query methods; widgets render records, evidence, and JSON.
 
 - Failed parsing or processing retains evidence already saved; failed derived writes roll back.
@@ -159,7 +165,7 @@ flowchart LR
 - Panes own interaction and view state; widgets own reusable presentation; dialogs own focused overlays.
 - `RunTimeline` is a focusable linked-circle pipeline; arrows stay local, while number keys keep their tab navigation role.
 - Run samples CPU/RSS every second and at step boundaries; per-step CPU uses cumulative CPU-time deltas, memory peaks are sampled, and timers stop on completion/cancellation.
-- Resource metrics and full logs are session-only. History shows stored step summaries/timings/counts; it never invents missing resource samples.
+- Resource metrics and full logs are session-only. The History tab shows persisted run outcomes, operation identity, errors, and stored step summaries/timings/counts; it never invents missing resource samples.
 - Resolve/reconcile include the actual commit. Their terminal step status commits with the data, before optional UI reporting.
 - Keep HTTP, normalization, identity rules, and SQL inside services.
 - Use shared theme roles and JSON rendering helpers; pane-local CSS still exists alongside `app.tcss`.

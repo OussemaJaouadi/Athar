@@ -12,7 +12,7 @@ import httpx
 from rich.console import Console
 from test_pipeline import registry_row
 from textual.visual import RichVisual
-from textual.widgets import Button, Static, TabbedContent, TextArea
+from textual.widgets import Button, Static, TextArea
 
 from athar_dataops.app import DataOpsApp
 from athar_dataops.config import Settings
@@ -127,11 +127,12 @@ class CheckpointTests(IsolatedAsyncioTestCase):
         return not app.query_one("#checkpoint-fetch", Button).disabled
 
     async def _go_checkpoints(self, pilot):
-        await pilot.press("5")
+        await pilot.press("6")
         await pilot.pause()
         self.assertEqual(
-            pilot.app.query_one("#workspace", TabbedContent).active, "checkpoints"
+            pilot.app.query_one("#workspace").active, "probes"
         )
+        self.assertTrue(pilot.app.query_one(CheckpointsPane).display)
 
     async def test_registry_checkpoint_renders_and_writes_nothing(self):
         app = self.app()

@@ -36,3 +36,4 @@ class PipelineRunResult:
     records_processed: int = 0
     review_count: int = 0
     error: str | None = None
+    operation: str = "collect"

@@ -89,9 +89,9 @@ class LogsPane(Vertical):
     }
 
     #logs-rail Button:hover {
-        background: $boost;
-        color: $link-ink;
-        text-style: bold;
+        background: $block-hover-background;
+        color: $foreground;
+        text-style: none;
     }
 
     #logs-rail Button:focus {
@@ -171,6 +171,11 @@ class LogsPane(Vertical):
             with Vertical(id="logs-stream"):
                 yield Input(
                     placeholder="Search logs… (/ or Ctrl+F to focus)", id="logs-search"
+                )
+                yield Static(
+                    "No matching log entries. Clear the search or choose another filter.",
+                    id="logs-empty",
+                    classes="muted",
                 )
                 yield RichLog(
                     id="logs-console",
@@ -297,21 +302,27 @@ class LogsPane(Vertical):
             self.query_one("#filter-error", Button).label = self._rail_label(
                 "error", errors, palette
             )
+            visible = sum(1 for entry in self._entries if self._matches_current_filter(entry))
             console = self.query_one("#logs-console", RichLog)
             filter_label = (
                 self._current_filter.title() if self._current_filter != "all" else "All"
             )
-            console.border_title = f"Console Stream · {filter_label} ({total} events)"
+            console.border_title = f"Console Stream · {filter_label} ({visible}/{total})"
+            empty = self.query_one("#logs-empty", Static)
+            empty.display = visible == 0
+            empty.update(
+                "No log entries yet." if not total else "No matching log entries. Clear the search or choose another filter."
+            )
         except Exception:
             pass
 
     def _rail_label(self, level: str, count: int, palette) -> Text:
-        """Severity-colored dot, aligned name and right-aligned count."""
+        """Keep the label unstyled so the active button owns its contrast pair."""
         name = "All" if level == "all" else level.title()
         label = Text()
         label.append("● ", style=f"bold {severity_color(level, palette)}")
-        label.append(name.ljust(10), style=palette.foreground)
-        label.append(str(count), style=palette.variables["muted"])
+        label.append(name.ljust(10), style="")
+        label.append(str(count), style="")
         return label
 
     def _rebuild_console(self) -> None:
@@ -351,6 +362,7 @@ class LogsPane(Vertical):
     def on_search_changed(self, event: Input.Changed) -> None:
         self._search_query = event.value.strip().lower()
         self._rebuild_console()
+        self._update_stats_bar()
 
     @on(Button.Pressed, "#toggle-scroll")
     def toggle_scroll_btn(self) -> None:

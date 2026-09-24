@@ -11,7 +11,7 @@ From the repository root:
 uv run --project dataops athar-dataops
 ```
 
-- Choose **Collect registry** to fetch data, **Clean data** to re-process stored evidence, or **Prepare text** to detect language, strip fluff, and translate descriptions to English via Groq. Credentials come from `dataops/.env.profiles.toml` (`[[profile]]` name/api_key blocks, git-ignored) or a single legacy `GROQ_API_KEY`; without any key only preparation is disabled.
+- Choose **Run** to collect or clean registry data, **History** to inspect persisted runs, **Records** to search and inspect preserved evidence, **Logs** to inspect runtime events, or **Probes** to test one stage without database writes.
 - Database: `~/.local/share/athar/athar.db`. Override with an absolute `DB_PATH`.
 - One DataOps process per database. `.env` files are not loaded automatically.
 
@@ -22,7 +22,8 @@ Checked items are available; unchecked items are planned.
 - [x] Collect registry data and preserve original source snapshots.
 - [x] Normalize records, resolve conservative identities, and flag review items.
 - [x] Search records, inspect evidence/JSON, and browse database tables.
-- [x] Collection logs/cancellation, keyboard navigation, and light/dark themes.
+- [x] First-class History view for persisted run outcomes and step summaries.
+- [x] Seven-tab workspace with normal Logs and Probes views.
 - [x] One-call language detection, translation, and fluff removal; originals retained and prepared text cached per description.
 - [ ] Local embeddings, retrieval indexes, and same-/cross-language retrieval checks for RAG.
 - [ ] Claim/excerpt links, review handling, and personal-data filtering for public output.
@@ -31,8 +32,7 @@ Checked items are available; unchecked items are planned.
 
 ## Keys
 
-- `1–5`: tabs · `/`: search · `Tab` / arrows: navigate.
-- `Enter` / `Escape`: open/close Database row details in narrow terminals.
+- `1–7`: Run · Records · History · Database · Logs · Probes · Settings.
 - `F1`: full help · `F6`: theme · `Ctrl+Q`: quit.
 
 - [Architecture](../docs/dataops/ARCHITECTURE.md) · [Tests](../docs/dataops/TEST_SUITE.md)

@@ -1111,6 +1111,24 @@ HelpScreen, AboutScreen, WipeConfirmScreen {
     margin-right: 1;
 }
 
+#wipe-confirm {
+    background: $warning;
+    color: $background;
+    border: round $warning;
+}
+
+#wipe-confirm:hover {
+    background: $warning;
+    color: $background;
+    border: round $warning;
+}
+
+#wipe-confirm:focus {
+    background: $warning;
+    color: $background;
+    border: round $action-fg;
+}
+
 #help-dialog {
     width: 74;
     height: auto;

@@ -32,7 +32,7 @@ class WipeConfirmScreen(ModalScreen[bool]):
                 classes="muted",
             )
             with Horizontal(id="wipe-actions"):
-                yield Button("Wipe everything", id="wipe-confirm", variant="error")
+                yield Button("Wipe everything", id="wipe-confirm", variant="warning")
                 yield Button("Cancel", id="wipe-cancel", variant="primary")
 
     @on(Button.Pressed, "#wipe-confirm")

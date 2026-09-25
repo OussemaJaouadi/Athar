@@ -52,6 +52,9 @@ class DatabaseService:
         self.path = path
         self._conn: turso.aio.Connection | None = None
         self._lock = asyncio.Lock()
+        # Schema only changes through migrations (run in initialize), so one
+        # process reuses it instead of re-running PRAGMAs for every page.
+        self._schema_cache: dict[str, list[str]] | None = None
 
     @property
     def connection(self) -> turso.aio.Connection:
@@ -91,6 +94,7 @@ class DatabaseService:
                 raise
 
     async def initialize(self) -> None:
+        self._schema_cache = None
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = await turso.aio.connect(str(self.path), isolation_level=None)
         try:
@@ -612,7 +616,11 @@ class DatabaseService:
         return (await self.record_page(offset=offset)).records
 
     async def record_page(self, query: str = "", offset: int = 0) -> RecordPage:
-        """Search the latest completed snapshot, then load at most 100 original rows."""
+        """Search the latest completed snapshot, then load at most 100 original rows.
+
+        The corpus scan only holds one candidate batch plus matching row numbers
+        in memory; record JSON is fetched and validated for the visible page alone.
+        """
 
         def search_text(value: str) -> str:
             # NFC normalization is the identity on ASCII, so only pay for the rest.
@@ -621,6 +629,7 @@ class DatabaseService:
             return unicodedata.normalize("NFC", value).casefold()
 
         needle = search_text(query.strip())
+        offset = max(0, offset)
         async with self._lock:
             snapshots = await self._rows(
                 """SELECT snapshot_id FROM pipeline_runs
@@ -630,29 +639,66 @@ class DatabaseService:
             if not snapshots:
                 return RecordPage([], 0, 0)
             snapshot_id = snapshots[0]["snapshot_id"]
-            candidates = await self._rows(
-                "SELECT row_number, record_json FROM normalized_records WHERE snapshot_id=? AND is_duplicate=0 ORDER BY row_number",
-                (snapshot_id,),
-            )
-            # Python's Unicode casefold treats French and other scripts consistently;
-            # SQLite-compatible lower() is ASCII-only. Browse never inspects fields,
-            # so per-row validation is deferred to the visible page.
+            unfiltered = (
+                await self._rows(
+                    """SELECT COUNT(*) AS n FROM normalized_records
+                    WHERE snapshot_id=? AND is_duplicate=0""",
+                    (snapshot_id,),
+                )
+            )[0]["n"]
             if not needle:
-                matches: list[dict[str, Any]] = list(candidates)
+                total = unfiltered
+                page_numbers = tuple(
+                    row["row_number"]
+                    for row in await self._rows(
+                        """SELECT row_number FROM normalized_records
+                        WHERE snapshot_id=? AND is_duplicate=0
+                        ORDER BY row_number LIMIT 100 OFFSET ?""",
+                        (snapshot_id, offset),
+                    )
+                )
             else:
-                matches = []
-                for candidate in candidates:
-                    record = NormalizedRecord.model_validate_json(candidate["record_json"])
-                    fields = (record.name, record.sector, record.description)
-                    if any(needle in search_text(field or "") for field in fields):
-                        matches.append(candidate)
-            offset = max(0, offset)
-            selected = matches[offset : offset + 100]
-            if not selected:
-                return RecordPage([], len(matches), len(candidates))
+                # Python's Unicode casefold treats French and other scripts
+                # consistently; SQLite lower() is ASCII-only. Keyset batches walk
+                # the primary key so the scan never holds more than one batch.
+                base = """SELECT row_number, record_json FROM normalized_records
+                    WHERE snapshot_id=? AND is_duplicate=0"""
+                matches: list[int] = []
+                after = None
+                while True:
+                    if after is None:
+                        batch = await self._rows(
+                            base + " ORDER BY row_number LIMIT 1000", (snapshot_id,)
+                        )
+                    else:
+                        batch = await self._rows(
+                            base + " AND row_number > ? ORDER BY row_number LIMIT 1000",
+                            (snapshot_id, after),
+                        )
+                    for row in batch:
+                        record = NormalizedRecord.model_validate_json(row["record_json"])
+                        fields = (record.name, record.sector, record.description)
+                        if any(needle in search_text(field or "") for field in fields):
+                            matches.append(row["row_number"])
+                    if len(batch) < 1000:
+                        break
+                    after = batch[-1]["row_number"]
+                total = len(matches)
+                page_numbers = tuple(matches[offset : offset + 100])
+            if not page_numbers:
+                return RecordPage([], total, unfiltered)
+            slots = ",".join("?" for _ in page_numbers)
+            stored = {
+                row["row_number"]: row["record_json"]
+                for row in await self._rows(
+                    f"""SELECT row_number, record_json FROM normalized_records
+                    WHERE snapshot_id=? AND row_number IN ({slots})""",
+                    (snapshot_id, *page_numbers),
+                )
+            }
             records = [
-                NormalizedRecord.model_validate_json(candidate["record_json"])
-                for candidate in selected
+                NormalizedRecord.model_validate_json(stored[number])
+                for number in page_numbers
             ]
             placeholders = ",".join("?" for _ in records)
             rows = await self._rows(
@@ -662,7 +708,6 @@ class DatabaseService:
                 (snapshot_id, *(record.row_number for record in records)),
             )
             # Only the visible page's preparations and review decisions are needed.
-            page_numbers = tuple(record.row_number for record in records)
             page_slots = ",".join("?" for _ in page_numbers)
             preparations = await self._rows(
                 f"""SELECT s.row_number,p.input_hash,p.profile,p.model,p.output_json
@@ -700,9 +745,11 @@ class DatabaseService:
                     prepared.get((record.row_number, hashlib.sha256((record.description or "").encode()).hexdigest())),
                 )
             )
-        return RecordPage(details, len(matches), len(candidates))
+        return RecordPage(details, total, unfiltered)
 
     async def schema(self) -> dict[str, list[str]]:
+        if self._schema_cache is not None:
+            return self._schema_cache
         async with self._lock:
             tables = await self._rows(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
@@ -713,6 +760,7 @@ class DatabaseService:
                 quoted = name.replace('"', '""')
                 columns = await self._rows(f'PRAGMA table_info("{quoted}")')
                 result[name] = [row["name"] for row in columns]
+            self._schema_cache = result
             return result
 
     async def table_page(self, table: str, offset: int = 0) -> TablePage:

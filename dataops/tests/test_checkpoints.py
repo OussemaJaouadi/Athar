@@ -386,6 +386,7 @@ class CheckpointTests(IsolatedAsyncioTestCase):
 
             await self._press(pilot, "#db-wipe")
             await pilot.pause()
+            self.assertEqual(app.screen.query_one("#wipe-confirm").variant, "warning")
             await self._press(pilot, "#wipe-confirm", root=app.screen)
             await self.wait_until(
                 pilot,

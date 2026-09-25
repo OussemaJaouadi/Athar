@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Record search and browse stay bounded in memory: the corpus scan walks matching row numbers in 1000-row keyset batches and record JSON is fetched only for the visible 100 rows, so a large corpus never sits in RAM as one list. Table browsing reuses a cached schema instead of re-running PRAGMAs for every page.
+- The wipe confirmation button is now amber (`$warning`) instead of red; the dialog still reads as destructive via its red border and warning text.
 - Preparation preview and quota state are now typed records (`PreparePreview`, `ProfileQuotaState`, `ProfileOverview` in `schemas/preparation.py`) with one owner per field instead of plain dicts passed through services and panes.
 - Record search measured and tightened (audit C7): browse no longer validates every corpus row before showing the visible 100, and ASCII queries skip NFC normalization (a no-op for ASCII). Measured on this machine: real corpus 923 rows 30ms→14ms browse / 30ms→22ms search; synthetic 10k 152ms→82ms, 50k 767ms→385ms, 100k 1.6s→0.95s browse. An indexed/cached search representation is not justified while the registry stays in the low thousands of rows.
 - Correctness from the code audit: Clean now reads from the latest *completed* collect snapshot (A→B→A no longer reuses stale rows), the preparation ledger only counts configured profiles, migration 003 preserves stored review decisions, Prepare preview counts every cached candidate under one profile, unknown token counts consume the daily estimate after a restart, and the Collection card only describes collect runs.

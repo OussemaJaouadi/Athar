@@ -15,6 +15,7 @@ from textual.worker import Worker, WorkerCancelled
 
 from athar_dataops.schemas.logs import LogEntry
 from athar_dataops.schemas.pipeline import StageProgress
+from athar_dataops.schemas.preparation import PreparePreview
 from athar_dataops.services.database import DatabaseService
 from athar_dataops.services.metrics import ProcessSampler, StepMetrics
 from athar_dataops.services.orchestrator import PipelineOrchestrator
@@ -79,7 +80,7 @@ class RunPane(VerticalScroll):
         self._run_id: str | None = None
         self._terminal_status: str | None = None
         self._terminal_text: str | None = None
-        self._prepare_preview: dict | None = None
+        self._prepare_preview: PreparePreview | None = None
         self._active_step_titles: dict[str, str] = dict(COLLECT_STEPS)
 
     def _timeline(self) -> RunTimeline:

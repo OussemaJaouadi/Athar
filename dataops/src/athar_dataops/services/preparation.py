@@ -13,6 +13,9 @@ from athar_dataops.schemas.preparation import (
     PROMPT_VERSION,
     SCHEMA_VERSION,
     TARGET_LANGUAGE,
+    PreparePreview,
+    PreviewProfile,
+    ProfileQuotaState,
 )
 from athar_dataops.schemas.registry import utc_now
 from athar_dataops.services.database import DatabaseService
@@ -33,7 +36,7 @@ def preparation_key(candidate: dict, model: str) -> tuple[str, str]:
 class _ProfileQuota:
     """In-memory budget state for one profile, seeded from the database."""
 
-    def __init__(self, entry: dict):
+    def __init__(self, entry: ProfileQuotaState):
         self.name = entry["name"]
         self.model = entry["model"]
         self.disabled = entry["disabled"]
@@ -74,7 +77,7 @@ class _ProfileQuota:
 
 
 class _QuotaLedger:
-    def __init__(self, state: list[dict]):
+    def __init__(self, state: list[ProfileQuotaState]):
         self.profiles = [_ProfileQuota(entry) for entry in state]
 
     def model_for(self, name: str) -> str:
@@ -142,7 +145,7 @@ class PreparationService:
         return f"profiles: {names}" if names else "not configured"
 
     @property
-    def profile_summaries(self) -> list[dict]:
+    def profile_summaries(self) -> list[PreviewProfile]:
         return [
             {
                 "name": status.name,
@@ -152,7 +155,7 @@ class PreparationService:
             for status in self.provider.profiles
         ]
 
-    async def preview(self) -> dict:
+    async def preview(self) -> PreparePreview:
         if not self.available:
             return {
                 "available": False,

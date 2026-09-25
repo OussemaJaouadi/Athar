@@ -11,7 +11,9 @@ from textual.css.query import NoMatches
 from textual.widgets import DataTable, Label, Select, Static
 
 from athar_dataops.config import Settings
+from athar_dataops.schemas.preparation import ProfileOverview
 from athar_dataops.services.database import DatabaseService
+from athar_dataops.services.groq import PROVIDER
 from athar_dataops.themes import DARK, LIGHT
 
 PROFILE_CAP = 6
@@ -86,16 +88,22 @@ class SettingsPane(VerticalScroll):
             for profile in self._config.groq_profiles:
                 if profile.name not in registered:
                     rows.append(
-                        {
-                            "name": profile.name,
-                            "model": profile.model or self._config.groq_model,
-                            "registered": False,
-                            "disabled": False,
-                            "calls": 0,
-                            "requests_today": 0,
-                            "requests_minute": 0,
-                            "tokens_today": 0,
-                        }
+                        ProfileOverview(
+                            name=profile.name,
+                            provider=PROVIDER,
+                            model=profile.model or self._config.groq_model,
+                            fingerprint="",
+                            registered=False,
+                            disabled=False,
+                            quotas={},
+                            calls=0,
+                            requests_today=0,
+                            requests_minute=0,
+                            tokens_today=0.0,
+                            input_tokens=0,
+                            output_tokens=0,
+                            unknown_tokens=0,
+                        )
                     )
             self._profile_usage(rows)
             self._profile_limits(rows)
@@ -114,7 +122,7 @@ class SettingsPane(VerticalScroll):
         self._clear_table(table)
         table.add_row(message, *["" for _ in range(len(table.columns) - 1)])
 
-    def _profile_usage(self, rows: list[dict]) -> None:
+    def _profile_usage(self, rows: list[ProfileOverview]) -> None:
         table = self.query_one("#settings-usage", DataTable)
         self._clear_table(table)
         if not rows:
@@ -145,7 +153,7 @@ class SettingsPane(VerticalScroll):
             + (f" … and {len(rows) - PROFILE_CAP} more profiles" if len(rows) > PROFILE_CAP else "")
         )
 
-    def _profile_limits(self, rows: list[dict]) -> None:
+    def _profile_limits(self, rows: list[ProfileOverview]) -> None:
         table = self.query_one("#settings-limits", DataTable)
         self._clear_table(table)
         if not rows:

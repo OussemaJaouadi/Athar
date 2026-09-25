@@ -16,6 +16,11 @@ import turso.aio
 from athar_dataops.schemas.database import RecordPage, TablePage
 from athar_dataops.schemas.issues import classify_issue
 from athar_dataops.schemas.pipeline import PipelineRunResult
+from athar_dataops.schemas.preparation import (
+    ProfileOverview,
+    ProfileQuotaState,
+    QuotaLimit,
+)
 from athar_dataops.schemas.registry import (
     NormalizedRecord,
     RecordDetail,
@@ -610,6 +615,9 @@ class DatabaseService:
         """Search the latest completed snapshot, then load at most 100 original rows."""
 
         def search_text(value: str) -> str:
+            # NFC normalization is the identity on ASCII, so only pay for the rest.
+            if value.isascii():
+                return value.casefold()
             return unicodedata.normalize("NFC", value).casefold()
 
         needle = search_text(query.strip())
@@ -627,28 +635,34 @@ class DatabaseService:
                 (snapshot_id,),
             )
             # Python's Unicode casefold treats French and other scripts consistently;
-            # SQLite-compatible lower() is ASCII-only. The registry is a small corpus.
-            matches = []
-            for candidate in candidates:
-                record = NormalizedRecord.model_validate_json(candidate["record_json"])
-                fields = (record.name, record.sector, record.description)
-                if not needle or any(
-                    needle in search_text(field or "") for field in fields
-                ):
-                    matches.append(record)
+            # SQLite-compatible lower() is ASCII-only. Browse never inspects fields,
+            # so per-row validation is deferred to the visible page.
+            if not needle:
+                matches: list[dict[str, Any]] = list(candidates)
+            else:
+                matches = []
+                for candidate in candidates:
+                    record = NormalizedRecord.model_validate_json(candidate["record_json"])
+                    fields = (record.name, record.sector, record.description)
+                    if any(needle in search_text(field or "") for field in fields):
+                        matches.append(candidate)
             offset = max(0, offset)
             selected = matches[offset : offset + 100]
             if not selected:
                 return RecordPage([], len(matches), len(candidates))
-            placeholders = ",".join("?" for _ in selected)
+            records = [
+                NormalizedRecord.model_validate_json(candidate["record_json"])
+                for candidate in selected
+            ]
+            placeholders = ",".join("?" for _ in records)
             rows = await self._rows(
                 f"""SELECT r.row_number, r.raw_json, s.source_url, s.content_hash
                 FROM source_rows r JOIN source_snapshots s ON s.id=r.snapshot_id
                 WHERE r.snapshot_id=? AND r.row_number IN ({placeholders}) ORDER BY r.row_number""",
-                (snapshot_id, *(record.row_number for record in selected)),
+                (snapshot_id, *(record.row_number for record in records)),
             )
             # Only the visible page's preparations and review decisions are needed.
-            page_numbers = tuple(record.row_number for record in selected)
+            page_numbers = tuple(record.row_number for record in records)
             page_slots = ",".join("?" for _ in page_numbers)
             preparations = await self._rows(
                 f"""SELECT s.row_number,p.input_hash,p.profile,p.model,p.output_json
@@ -673,7 +687,7 @@ class DatabaseService:
         resolved_reasons = {(row["row_number"], row["reason"]) for row in resolved}
         originals = {row["row_number"]: row for row in rows}
         details = []
-        for record in selected:
+        for record in records:
             record.review_reasons = [reason for reason in record.review_reasons if (record.row_number, reason) not in resolved_reasons]
             source = originals[record.row_number]
             details.append(
@@ -942,7 +956,7 @@ class DatabaseService:
 
     async def preparation_quota_state(
         self, task: str = "prepare", names: list[str] | None = None
-    ) -> list[dict[str, Any]]:
+    ) -> list[ProfileQuotaState]:
         """Per-profile limits, disabled flag, and consumption since day/minute windows.
 
         With ``names``, only those profiles are returned; stored rows for profiles
@@ -974,13 +988,13 @@ class DatabaseService:
         day_by = {row["profile"]: row for row in day_usage}
         minute_by = {row["profile"]: row for row in minute_usage}
         allowed = set(names) if names is not None else None
-        quotas_by_profile: dict[str, dict[str, dict[str, Any]]] = {}
+        quotas_by_profile: dict[str, dict[str, QuotaLimit]] = {}
         for row in quota_rows:
             quotas_by_profile.setdefault(row["profile_id"], {})[row["metric"]] = {
                 "limit": row["limit_value"],
                 "period": row["period"],
             }
-        state = []
+        state: list[ProfileQuotaState] = []
         for profile in profiles:
             if allowed is not None and profile["name"] not in allowed:
                 continue
@@ -1018,7 +1032,7 @@ class DatabaseService:
                 (int(disabled), utc_now(), name),
             )
 
-    async def profile_overview(self) -> list[dict[str, Any]]:
+    async def profile_overview(self) -> list[ProfileOverview]:
         """Settings view: per-profile quota rows, status, all-time and today usage."""
         state = await self.preparation_quota_state()
         async with self._lock:
@@ -1029,7 +1043,7 @@ class DatabaseService:
                 FROM preparation_usage GROUP BY profile ORDER BY profile"""
             )
         by_name = {row["profile"]: row for row in rows}
-        overview = []
+        overview: list[ProfileOverview] = []
         for entry in state:
             usage = by_name.get(
                 entry["name"],

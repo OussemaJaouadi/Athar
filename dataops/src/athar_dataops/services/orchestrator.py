@@ -10,6 +10,7 @@ from athar_dataops.schemas.pipeline import (
     StageName,
     StageProgress,
 )
+from athar_dataops.schemas.preparation import PreparePreview, PreviewProfile
 from athar_dataops.schemas.registry import utc_now
 from athar_dataops.services.artifacts import ArtifactService, parse_registry_payload
 from athar_dataops.services.database import DatabaseService
@@ -46,10 +47,10 @@ class PipelineOrchestrator:
         return self._preparation.marker if self._preparation else "not configured"
 
     @property
-    def preparation_profiles(self) -> list[dict]:
+    def preparation_profiles(self) -> list[PreviewProfile]:
         return self._preparation.profile_summaries if self._preparation else []
 
-    async def preparation_preview(self) -> dict:
+    async def preparation_preview(self) -> PreparePreview:
         if not self._preparation:
             return {
                 "available": False,

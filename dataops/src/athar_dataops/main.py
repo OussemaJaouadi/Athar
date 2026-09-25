@@ -7,7 +7,7 @@ import httpx
 from pydantic import ValidationError
 
 from athar_dataops.app import DataOpsApp
-from athar_dataops.config import Settings
+from athar_dataops.config import _ENV_FILE, Settings, credential_file_warnings
 from athar_dataops.services.artifacts import ArtifactService
 from athar_dataops.services.database import DatabaseService
 from athar_dataops.services.groq import GroqPreparationClient
@@ -19,6 +19,8 @@ from athar_dataops.services.registry import RegistryService
 
 async def run() -> None:
     config = Settings()
+    for warning in credential_file_warnings((_ENV_FILE, config.groq_profiles_path)):
+        print(warning, file=sys.stderr)
     database = DatabaseService(config.db_path)
     try:
         await database.initialize()
@@ -28,7 +30,9 @@ async def run() -> None:
             follow_redirects=True,
         ) as client, httpx.AsyncClient(timeout=60, follow_redirects=False) as groq_http:
             registry = RegistryService()
-            collector = ArtifactService(client, config.registry_url)
+            collector = ArtifactService(
+                client, config.registry_url, config.registry_max_bytes
+            )
             groq_client = GroqPreparationClient(groq_http, config)
             orchestrator = PipelineOrchestrator(
                 collector,

@@ -13,7 +13,7 @@ uv run --project dataops athar-dataops
 
 - Choose **Run** to collect or clean registry data, **History** to inspect persisted runs, **Records** to search and inspect preserved evidence, **Logs** to inspect runtime events, or **Probes** to test one stage without database writes.
 - Database: `~/.local/share/athar/athar.db`. Override with an absolute `DB_PATH`.
-- One DataOps process per database. `.env` files are not loaded automatically.
+- One DataOps process per database. `.env` and `.env.profiles.toml` next to `pyproject.toml` are loaded automatically; keep them `chmod 600` so only your account can read them (the app warns at startup otherwise).
 
 ## Status
 

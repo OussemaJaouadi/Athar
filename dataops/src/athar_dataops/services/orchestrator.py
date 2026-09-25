@@ -1,7 +1,6 @@
 """One collection flow. Preserve first, derive second, declare success after commit."""
 
 import asyncio
-import json
 from collections.abc import Callable
 from uuid import uuid4
 
@@ -12,7 +11,7 @@ from athar_dataops.schemas.pipeline import (
     StageProgress,
 )
 from athar_dataops.schemas.registry import utc_now
-from athar_dataops.services.artifacts import ArtifactService
+from athar_dataops.services.artifacts import ArtifactService, parse_registry_payload
 from athar_dataops.services.database import DatabaseService
 from athar_dataops.services.preparation import PreparationService
 from athar_dataops.services.registry import RegistryService
@@ -121,11 +120,7 @@ class PipelineOrchestrator:
                 await begin("preserve", "Storing source rows")
                 # Read back the stored artifact: derived data must have a durable source.
                 stored = await self._db.get_snapshot(snapshot_id)
-                rows = json.loads(stored.raw_content)
-                if not isinstance(rows, list):
-                    raise TypeError(
-                        "Registry response must be a JSON array; source bytes retained"
-                    )
+                rows = parse_registry_payload(stored.raw_content)
                 row_ids = await self._db.preserve_rows(snapshot_id, rows)
                 await finish("preserve", f"{len(rows)} source rows stored", len(rows))
 
@@ -214,7 +209,7 @@ class PipelineOrchestrator:
             emit(name, "completed", message, items)
 
         try:
-            await self._db.start_run(run_id)
+            await self._db.start_run(run_id, "clean")
             started = True
             async with asyncio.timeout(self._timeout_seconds):
                 await begin("load", "Reading latest preserved evidence")

@@ -1,7 +1,6 @@
 """Read-only stage probes: one stage, one element, zero database writes."""
 
 import asyncio
-import json
 from typing import Any
 
 import httpx
@@ -19,7 +18,7 @@ from textual.worker import Worker, WorkerCancelled
 
 from athar_dataops.config import Settings
 from athar_dataops.schemas.preparation import PreparationReply
-from athar_dataops.services.artifacts import ArtifactService
+from athar_dataops.services.artifacts import ArtifactService, parse_registry_payload
 from athar_dataops.services.groq import GroqPreparationClient
 from athar_dataops.services.registry import RegistryService
 from athar_dataops.themes import DARK, LIGHT, themed_json
@@ -81,7 +80,7 @@ class CheckpointsPane(VerticalScroll):
                     yield Button("Clear", id="checkpoint-registry-clear", disabled=True)
                 with Horizontal(id="checkpoint-registry-result-header"):
                     yield Label("Result", classes="section-label")
-                    yield Static("No result", id="checkpoint-registry-result-label", classes="muted")
+                    yield Static("No result", id="checkpoint-registry-result-label", classes="muted", markup=False)
                 with VerticalScroll(id="checkpoint-registry-result") as registry_result:
                     registry_result.display = False
                     yield Static("", id="checkpoint-registry-output", classes="probe-output", markup=False)
@@ -112,7 +111,7 @@ class CheckpointsPane(VerticalScroll):
                     yield Button("Clear", id="checkpoint-prepare-clear", disabled=True)
                 with Horizontal(id="checkpoint-prepare-result-header"):
                     yield Label("Result", classes="section-label")
-                    yield Static("No result", id="checkpoint-prepare-result-label", classes="muted")
+                    yield Static("No result", id="checkpoint-prepare-result-label", classes="muted", markup=False)
                 with VerticalScroll(id="checkpoint-prepare-result") as prepare_result:
                     prepare_result.display = False
                     yield Static("", id="checkpoint-prepare-output", classes="probe-output", markup=False)
@@ -217,9 +216,7 @@ class CheckpointsPane(VerticalScroll):
     async def _fetch(self) -> None:
         try:
             snapshot = await self._artifact.fetch()
-            rows = json.loads(snapshot.raw_content)
-            if not isinstance(rows, list):
-                raise TypeError("Registry response must be a JSON array")
+            rows = parse_registry_payload(snapshot.raw_content)
             raw_index = (self.query_one("#checkpoint-row", Input).value or "1").strip()
             try:
                 requested = int(raw_index)
@@ -323,7 +320,7 @@ class CheckpointsPane(VerticalScroll):
             )
         )
         self.query_one("#checkpoint-registry-result-label", Static).update(
-            f"Row {result['requested']} · {record.name or 'Unnamed'}"
+            format_arabic(f"Row {result['requested']} · {record.name or 'Unnamed'}")
         )
         self.query_one("#checkpoint-registry-result").display = True
         self.query_one("#checkpoint-registry-clear", Button).disabled = False
@@ -442,7 +439,7 @@ class CheckpointsPane(VerticalScroll):
             )
         )
         self.query_one("#checkpoint-prepare-result-label", Static).update(
-            f"{output.detected_language} · {reply.profile or 'provider'}"
+            format_arabic(f"{output.detected_language} · {reply.profile or 'provider'}")
         )
         self.query_one("#checkpoint-prepare-result").display = True
         self.query_one("#checkpoint-prepare-clear", Button).disabled = False

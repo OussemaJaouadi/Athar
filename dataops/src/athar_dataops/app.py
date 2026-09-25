@@ -7,6 +7,7 @@ from textual import on
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal
+from textual.css.query import NoMatches
 from textual.widgets import (
     Button,
     Collapsible,
@@ -220,7 +221,7 @@ class DataOpsApp(App[None]):
         ws = self.query_one("#workspace", TabbedContent)
         if ws.active != "inspect":
             self.action_navigate("inspect")
-        with suppress(Exception):
+        with suppress(NoMatches):
             col = self.query_one("#source-disclosure", Collapsible)
             col.collapsed = not col.collapsed
             if not col.collapsed:
@@ -232,10 +233,10 @@ class DataOpsApp(App[None]):
         tabbed = self.query_one("#workspace", TabbedContent)
         active = tabbed.active
         if active == "inspect":
-            with suppress(Exception):
+            with suppress(NoMatches):
                 self.query_one(InspectPane).action_prev_page()
         elif active == "database":
-            with suppress(Exception):
+            with suppress(NoMatches):
                 self.query_one(DatabasePane).action_prev_page()
 
     def action_next_page(self) -> None:
@@ -244,15 +245,15 @@ class DataOpsApp(App[None]):
         tabbed = self.query_one("#workspace", TabbedContent)
         active = tabbed.active
         if active == "inspect":
-            with suppress(Exception):
+            with suppress(NoMatches):
                 self.query_one(InspectPane).action_next_page()
         elif active == "database":
-            with suppress(Exception):
+            with suppress(NoMatches):
                 self.query_one(DatabasePane).action_next_page()
 
     def action_navigation(self) -> None:
         if len(self.screen_stack) == 1:
-            with suppress(Exception):
+            with suppress(NoMatches):
                 self.query_one(Tabs).focus()
 
     def action_help(self) -> None:
@@ -274,23 +275,23 @@ class DataOpsApp(App[None]):
 
     def set_appearance(self, theme: str) -> None:
         self.theme = theme
-        with suppress(Exception):
+        with suppress(NoMatches):
             self.query_one("#theme-picker", Select).value = theme
         self.log_workspace_event(f"Appearance theme switched to '{theme}'", "info")
-        with suppress(Exception):
+        with suppress(NoMatches):
             self.query_one(LogsPane).on_theme_changed()
-        with suppress(Exception):
+        with suppress(NoMatches):
             self.query_one(InspectPane).on_theme_changed()
         self.query_one(DatabasePane).on_theme_changed()
-        with suppress(Exception):
+        with suppress(NoMatches):
             self.query_one(RunPane).on_theme_changed()
-        with suppress(Exception):
+        with suppress(NoMatches):
             self.query_one(CheckpointsPane).on_theme_changed()
-        with suppress(Exception):
+        with suppress(NoMatches):
             self.query_one(SettingsPane).on_theme_changed()
 
     def log_workspace_event(self, message: str, level: str = "info") -> None:
-        with suppress(Exception):
+        with suppress(NoMatches):
             self.query_one(LogsPane).log_entry(message, level)
 
     def focus_pane(self) -> None:
@@ -317,7 +318,7 @@ class DataOpsApp(App[None]):
             "settings": "#theme-picker",
         }
         if pane in selectors:
-            with suppress(Exception):
+            with suppress(NoMatches):
                 self.query_one(selectors[pane]).focus()
 
     @on(RunPane.CollectionFinished)

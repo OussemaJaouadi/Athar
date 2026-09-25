@@ -76,13 +76,10 @@ class RunPane(VerticalScroll):
         self._metrics: dict[str, StepMetrics] = {}
         self._running_stage: str | None = None
         self._flow_start = 0.0
-        self._viewing_run_id: str | None = None
         self._run_id: str | None = None
-        self._view_generation = 0
         self._terminal_status: str | None = None
         self._terminal_text: str | None = None
         self._prepare_preview: dict | None = None
-        self._prepare_confirming = False
         self._active_step_titles: dict[str, str] = dict(COLLECT_STEPS)
 
     def _timeline(self) -> RunTimeline:
@@ -152,13 +149,23 @@ class RunPane(VerticalScroll):
         if not configured and not rows:
             summary = "No Groq profiles configured"
         else:
+            # Configured (TOML/env) is truth on first launch; registered/disabled
+            # rows arrive once seeding or state changes happen.
             names = list(configured) or [row["name"] for row in rows]
-            active = sum(
-                1
-                for row in rows
-                if row["name"] in configured and not row.get("disabled")
+            registered = (
+                sum(1 for row in rows if row["name"] in configured)
+                if configured
+                else len(rows)
             )
-            summary = f"{len(names)} profile{'s' if len(names) != 1 else ''} · {active} active"
+            disabled = sum(
+                1 for row in rows if row["name"] in names and row.get("disabled")
+            )
+            if configured:
+                summary = f"{len(names)} configured · {registered} registered"
+            else:
+                summary = f"{registered} registered"
+            if disabled:
+                summary += f" · {disabled} disabled"
             if len(names) <= 2:
                 summary += f" · {', '.join(names)}"
             else:
@@ -241,6 +248,8 @@ class RunPane(VerticalScroll):
         self.query_one("#prepare-cancel", Button).display = True
         self._set_status("Review the preparation preview before starting model calls.", "warning")
         self.query_one("#prepare-confirm", Button).focus()
+        # preview() seeds registered profiles; refresh the summary to match.
+        self.run_worker(self._load_profile_summary(), exit_on_error=False)
 
     @on(Button.Pressed, "#prepare-confirm")
     def confirm_preparation(self) -> None:
@@ -262,17 +271,20 @@ class RunPane(VerticalScroll):
     def _begin_flow(self, cleaning: bool, preparing: bool = False) -> None:
         if self.collecting:
             return
-        self._view_generation += 1
         self._terminal_status = None
         self._terminal_text = None
         self._set_running(True)
         self.query_one("#run-activity").display = True
-        self.query_one("#run-activity", Collapsible).collapsed = False
+        if not self.app.has_class("compact"):
+            # Expanding the panel makes Textual scroll it into view, which would
+            # push the primary actions off-screen at 80x24; compact users expand
+            # it themselves (that manual expand still reveals the panel).
+            self.query_one("#run-activity", Collapsible).collapsed = False
         self._stage_logs = {"all": []}
         self._stage_starts.clear()
         self._metrics.clear()
         self._running_stage = None
-        self._viewing_run_id = self._run_id = None
+        self._run_id = None
         self._flow_start = monotonic()
         steps = (
             PREPARE_STEPS if preparing else CLEAN_STEPS if cleaning else COLLECT_STEPS
@@ -369,8 +381,6 @@ class RunPane(VerticalScroll):
             title = self._active_step_titles.get(
                 step_name, _STEP_TITLES.get(step_name, step_name)
             )
-        if self._viewing_run_id:
-            title += " · stored summary"
         self.query_one("#run-log-title", Static).update(title)
         self.query_one(LogView).render_log(self._stage_logs.get(step_name, []))
 
@@ -454,7 +464,9 @@ class RunPane(VerticalScroll):
                     error, "failed", run_id=self._run_id, step=self._running_stage
                 )
             )
-        self.query_one("#run-activity", Collapsible).collapsed = False
+        if not self.app.has_class("compact"):
+            # Keep the re-enabled primary actions on screen at 80x24 (see _begin_flow).
+            self.query_one("#run-activity", Collapsible).collapsed = False
 
     async def _collect(self, cleaning: bool, preparing: bool = False) -> None:
         mode = "Preparation" if preparing else "Cleaning" if cleaning else "Collection"
@@ -508,6 +520,7 @@ class RunPane(VerticalScroll):
                 except NoMatches:
                     pass
                 await self._update_stats()
+                await self._load_profile_summary()
 
     async def refresh_overview(self) -> None:
         """Re-read overview stats after external data changes."""

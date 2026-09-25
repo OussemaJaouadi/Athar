@@ -1176,14 +1176,14 @@ Static, Label {
 .compact TabPane { padding: 0 1; }
 .compact .heading { margin-bottom: 0; }
 .compact .rail { width: 25; margin-right: 1; }
-.compact #run-workspace { display: block; height: auto; }
+.compact #run-workspace { layout: vertical; height: auto; }
 .compact #run-operations,
-.compact #run-context { width: 1fr; height: auto; min-height: 18; margin-right: 0; margin-bottom: 1; }
+.compact #run-context { width: 1fr; min-width: 0; max-width: 100%; height: auto; min-height: 18; margin-right: 0; margin-bottom: 1; }
 .compact #run-context { min-height: 20; }
 .compact #run-metrics { display: none; }
 .compact #checkpoint-registry-output,
 .compact #checkpoint-prepare-output { height: auto; max-height: 100%; }
-.compact #checkpoint-grid { display: block; height: auto; }
+.compact #checkpoint-grid { layout: vertical; height: auto; }
 .compact #checkpoint-grid .probe-card { width: 1fr; height: auto; min-height: 22; margin-right: 0; margin-bottom: 1; }
 .compact #history-rail { width: 34; }
 .compact #masthead { height: 1; padding: 0 1; }

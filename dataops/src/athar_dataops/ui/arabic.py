@@ -12,6 +12,9 @@ _ARABIC_CHAR_PATTERN = re.compile(
     r"[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]"
 )
 _UNICODE_ESCAPE_PATTERN = re.compile(r"\\u([0-9a-fA-F]{4})")
+# C0 controls except tab/newline, plus DEL and C1 controls. These can never be
+# legitimate content and can rewrite the terminal if emitted raw.
+_CONTROL_PATTERN = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
 
 _reshaper = arabic_reshaper.ArabicReshaper(
     {
@@ -40,6 +43,15 @@ def decode_unicode_escapes(text: str) -> str:
     return _UNICODE_ESCAPE_PATTERN.sub(_replace, text)
 
 
+def sanitize_display(text: str) -> str:
+    """Remove terminal control characters from untrusted text.
+
+    This is the shared display boundary: call it on any externally sourced
+    string before handing it to Textual/Rich, after escape decoding.
+    """
+    return _CONTROL_PATTERN.sub("", text)
+
+
 def repair_mojibake(text: str) -> str:
     """Repair common UTF-8 byte sequences erroneously decoded as Latin-1/CP1252."""
     if "Ø" in text or "Ù" in text:
@@ -64,7 +76,7 @@ def format_arabic(text: str | None) -> str:
     if not text or not isinstance(text, str):
         return "" if text is None else str(text)
 
-    cleaned = decode_unicode_escapes(text)
+    cleaned = sanitize_display(decode_unicode_escapes(text))
     cleaned = repair_mojibake(cleaned)
 
     if not has_arabic(cleaned):

@@ -5,8 +5,9 @@ from unittest import IsolatedAsyncioTestCase
 from textual.app import App, ComposeResult
 from textual.widgets import Button, Input, RichLog
 
+from athar_dataops.schemas.logs import LogEntry
 from athar_dataops.themes import DARK, LIGHT
-from athar_dataops.ui.log_format import severity_color
+from athar_dataops.ui.log_format import render_entry, severity_color
 from athar_dataops.ui.panes.logs_pane import LogsPane
 
 
@@ -51,6 +52,28 @@ class LogsPaneTests(IsolatedAsyncioTestCase):
             self.assertIn("│", error_line)
             self.assertIn("Database disconnected", error_line)
             self.assertNotIn("[ERROR]", error_line)
+
+    async def test_log_line_keeps_fixed_metadata_columns(self):
+        entry = LogEntry.create(
+            "Provider answered",
+            "completed",
+            run_id="12345678-abcd",
+            step="Finding descriptions to prepare",
+        )
+        plain = render_entry(entry, dark=True).plain
+        self.assertIn("COMPLETED  12345678  Finding descr…", plain)
+        self.assertIn("│ Provider answered", plain)
+        wrapped = render_entry(
+            LogEntry.create(
+                "CPU 3.2%\nRSS 45.0 MiB",
+                "running",
+                run_id="12345678-abcd",
+                step="fetch",
+            ),
+            dark=True,
+        ).plain
+        self.assertNotIn("\n", wrapped)
+        self.assertIn("CPU 3.2% · RSS 45.0 MiB", wrapped)
 
     async def test_filter_and_search(self):
         app = LogsTestApp()

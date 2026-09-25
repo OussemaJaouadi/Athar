@@ -7,6 +7,7 @@ from rich.table import Table
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import Horizontal, VerticalScroll
+from textual.css.query import NoMatches
 from textual.widgets import DataTable, Label, Select, Static
 
 from athar_dataops.config import Settings
@@ -79,10 +80,29 @@ class SettingsPane(VerticalScroll):
     async def _load_usage(self) -> None:
         try:
             rows = await self._database.profile_overview()
+            # Configured-but-unregistered profiles are shown immediately so a
+            # working .env/.env.profiles.toml never looks broken on first launch.
+            registered = {entry["name"] for entry in rows}
+            for profile in self._config.groq_profiles:
+                if profile.name not in registered:
+                    rows.append(
+                        {
+                            "name": profile.name,
+                            "model": profile.model or self._config.groq_model,
+                            "registered": False,
+                            "disabled": False,
+                            "calls": 0,
+                            "requests_today": 0,
+                            "requests_minute": 0,
+                            "tokens_today": 0,
+                        }
+                    )
             self._profile_usage(rows)
             self._profile_limits(rows)
-        except Exception:  # noqa: BLE001 - usage is optional UI; never crash the settings tab
-            self._set_table_message(self.query_one("#settings-usage", DataTable), "Usage unavailable")
+        except Exception as exc:  # noqa: BLE001 - usage is optional UI; never crash the settings tab
+            self._set_table_message(
+                self.query_one("#settings-usage", DataTable), f"Usage unavailable: {exc}"
+            )
             self._set_table_message(self.query_one("#settings-limits", DataTable), "Limits unavailable")
 
     def _clear_table(self, table: DataTable) -> None:
@@ -101,7 +121,12 @@ class SettingsPane(VerticalScroll):
             self._set_table_message(table, "No Groq profiles registered")
             return
         for entry in rows[:PROFILE_CAP]:
-            state = "disabled" if entry.get("disabled") else "active"
+            if not entry.get("registered", True):
+                state = "configured"
+            elif entry.get("disabled"):
+                state = "disabled"
+            else:
+                state = "active"
             tokens_today = entry.get("tokens_today")
             table.add_row(
                 str(entry.get("name", "—")),
@@ -170,10 +195,10 @@ class SettingsPane(VerticalScroll):
         env_table.add_row(
             "Pipeline Timeout", f"{self._config.pipeline_timeout_seconds}s"
         )
-        with suppress(Exception):
+        with suppress(NoMatches):
             self.query_one("#settings-env-table", Static).update(env_table)
 
-        with suppress(Exception):
+        with suppress(NoMatches):
             self.query_one("#settings-tagline", Static).update(
                 f"[bold {pri}]An evidence-backed directory of Tunisian startups.[/]\n"
                 "Explore entities, track cohorts, review provenance, and verify records against original sources.\n"
@@ -196,5 +221,5 @@ class SettingsPane(VerticalScroll):
         about_table.add_row(
             "Workspace Mode", "Local-first desktop research environment"
         )
-        with suppress(Exception):
+        with suppress(NoMatches):
             self.query_one("#settings-arch-table", Static).update(about_table)

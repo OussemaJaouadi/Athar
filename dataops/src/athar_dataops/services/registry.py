@@ -7,6 +7,10 @@ from urllib.parse import urlsplit, urlunsplit
 
 from athar_dataops.schemas.registry import NormalizedRecord
 
+# Per-field guard: no legitimate description approaches this size. Rejected
+# values stay reviewable in the byte-preserved raw snapshot.
+_MAX_FIELD_CHARS = 65_536
+
 
 class RegistryService:
     def normalize(self, rows: list[Any]) -> list[NormalizedRecord]:
@@ -23,6 +27,11 @@ class RegistryService:
         def text(key: str, required: bool = False) -> str | None:
             value = raw.get(key)
             if isinstance(value, str) and value.strip():
+                if len(value) > _MAX_FIELD_CHARS:
+                    record.review_reasons.append(
+                        f"Field {key} exceeds {_MAX_FIELD_CHARS} characters; value rejected"
+                    )
+                    return None
                 return value.strip()
             if required or value not in (None, ""):
                 record.review_reasons.append(f"Missing or invalid {key}")

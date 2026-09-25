@@ -144,6 +144,31 @@ class PipelineTests(IsolatedAsyncioTestCase):
         self.assertEqual(records[1].normalized.entity_id, first_id)
         self.assertEqual(len((await self.db.table_page("entities")).rows), 2)
 
+    async def test_clean_after_source_reverts_uses_latest_collection(self):
+        alpha = json.dumps(
+            [registry_row(name="Alpha", desc="Alpha detail")], ensure_ascii=False
+        ).encode()
+        beta = json.dumps(
+            [registry_row(name="Beta", desc="Beta detail")], ensure_ascii=False
+        ).encode()
+        self.body = alpha
+        first = await self.pipeline.run_pipeline()
+        self.body = beta
+        second = await self.pipeline.run_pipeline()
+        self.body = alpha
+        third = await self.pipeline.run_pipeline()
+        self.assertEqual(third.snapshot_id, first.snapshot_id)
+        self.assertNotEqual(second.snapshot_id, third.snapshot_id)
+
+        clean = await self.pipeline.run_clean_pipeline()
+        self.assertEqual(clean.status, "completed")
+        self.assertEqual(clean.snapshot_id, third.snapshot_id)
+        snapshot_id, rows, _ = await self.db.get_latest_snapshot_rows()
+        self.assertEqual(snapshot_id, third.snapshot_id)
+        self.assertEqual([row["name"] for row in rows], ["Alpha"])
+        records = await self.db.list_records()
+        self.assertEqual([record.normalized.name for record in records], ["Alpha"])
+
     async def test_ambiguous_and_malformed_rows_are_inspectable(self):
         self.body = json.dumps(
             [
@@ -192,6 +217,31 @@ class PipelineTests(IsolatedAsyncioTestCase):
         self.assertEqual(
             (await self.db.get_snapshot(result.snapshot_id)).raw_content, self.body
         )
+
+    async def test_oversized_response_fails_before_any_persistence(self):
+        artifact = ArtifactService(
+            self.client, "https://registry.example", max_bytes=64
+        )
+        pipeline = PipelineOrchestrator(artifact, RegistryService(), self.db)
+        self.body = b"[" + b"x" * 100 + b"]"
+        result = await pipeline.run_pipeline()
+        self.assertEqual(result.status, "failed")
+        self.assertIn("byte limit", result.error)
+        self.assertEqual((await self.db.table_page("source_snapshots")).rows, [])
+        self.assertEqual((await self.db.table_page("source_rows")).rows, [])
+        self.assertEqual((await self.db.get_run(result.run_id)).status, "failed")
+
+    async def test_excessive_row_count_fails_and_keeps_prior_state(self):
+        from athar_dataops.services.artifacts import MAX_REGISTRY_ROWS
+
+        first = await self.pipeline.run_pipeline()
+        self.body = json.dumps([{}] * (MAX_REGISTRY_ROWS + 1)).encode()
+        result = await self.pipeline.run_pipeline()
+        self.assertEqual(result.status, "failed")
+        self.assertIn("rows", result.error)
+        (detail,) = await self.db.list_records()
+        self.assertEqual(detail.snapshot_id, first.snapshot_id)
+        self.assertEqual((await self.db.get_run(result.run_id)).status, "failed")
 
     async def test_http_failure_does_not_create_snapshot(self):
         self.status_code = 503
@@ -319,6 +369,17 @@ class PipelineTests(IsolatedAsyncioTestCase):
         ), self.assertRaisesRegex(RuntimeError, "database unavailable"):
             await self.db.get_overview_stats()
 
+    async def test_collection_card_ignores_non_collect_runs(self):
+        result = await self.pipeline.run_pipeline()
+        await self.db.start_run("later-prepare", "prepare")
+        await self.db._execute(
+            "UPDATE pipeline_runs SET status='failed', error='boom' WHERE id=?",
+            ("later-prepare",),
+        )
+        stats = await self.db.get_overview_stats()
+        self.assertEqual(stats["status"], "completed")
+        self.assertEqual(stats["records"], result.records_processed)
+
     async def test_reopen_preserves_data_and_migration_history(self):
         result = await self.pipeline.run_pipeline()
         await self.db.close()
@@ -404,6 +465,111 @@ class PipelineTests(IsolatedAsyncioTestCase):
             self.assertEqual(len(migrations.rows), 7)
         finally:
             await upgraded.close()
+
+    async def test_upgrade_from_002_schema_preserves_review_items(self):
+        path = Path(self.directory.name) / "upgrade002.db"
+        with closing(sqlite3.connect(path)) as conn:
+            for version, name in (
+                (1, "001_registry.sql"),
+                (2, "002_clean_schema.sql"),
+            ):
+                script = files("athar_dataops").joinpath("migrations").joinpath(name)
+                for statement in script.read_text().split(";"):
+                    if statement.strip():
+                        conn.execute(statement)
+                conn.execute(
+                    "INSERT INTO schema_migrations VALUES (?, ?, ?)",
+                    (
+                        version,
+                        hashlib.sha256(script.read_bytes()).hexdigest(),
+                        "2024-01-01T00:00:00Z",
+                    ),
+                )
+            conn.execute(
+                "INSERT INTO source_snapshots VALUES (?, ?, ?, ?, ?)",
+                (
+                    "s1",
+                    "https://registry.example",
+                    "hash",
+                    "2024-01-01T00:00:00Z",
+                    b"[]",
+                ),
+            )
+            conn.execute(
+                "INSERT INTO source_rows VALUES (?, ?, ?)",
+                ("s1", 1, json.dumps(registry_row(), ensure_ascii=False)),
+            )
+            conn.execute(
+                "INSERT INTO entities (id, name_key, domain) VALUES (?, ?, ?)",
+                ("e1", "example", "example.com"),
+            )
+            conn.execute(
+                "INSERT INTO entity_review_items "
+                "(id, entity_id, snapshot_id, row_number, reason, resolved, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    "r1",
+                    "e1",
+                    "s1",
+                    1,
+                    "Conflicting name/domain match; identity needs review",
+                    1,
+                    "2024-01-01T00:00:00Z",
+                ),
+            )
+            conn.commit()
+        upgraded = DatabaseService(path)
+        await upgraded.initialize()
+        try:
+            review = await upgraded.table_page("entity_review_items")
+            self.assertEqual(len(review.rows), 1)
+            item = dict(zip(review.columns, review.rows[0]))
+            self.assertEqual(
+                item["reason"],
+                "Conflicting name/domain match; identity needs review",
+            )
+            self.assertEqual(item["resolved"], 1)
+            self.assertEqual(item["entity_id"], "e1")
+            source_rows = await upgraded.table_page("source_rows")
+            source_id = dict(zip(source_rows.columns, source_rows.rows[0]))["id"]
+            self.assertEqual(item["source_row_id"], source_id)
+            self.assertEqual(item["category"], "human")
+            self.assertEqual(item["code"], "identity_conflict")
+        finally:
+            await upgraded.close()
+
+    async def test_superseded_003_checksum_is_rekeyed_not_refused(self):
+        from athar_dataops.services.database import LEGACY_MIGRATION_CHECKSUMS
+
+        legacy = next(iter(LEGACY_MIGRATION_CHECKSUMS[3]))
+        packaged = hashlib.sha256(
+            files("athar_dataops")
+            .joinpath("migrations")
+            .joinpath("003_source_row_uuid.sql")
+            .read_bytes()
+        ).hexdigest()
+        self.assertNotEqual(packaged, legacy)
+
+        path = Path(self.directory.name) / "legacy-checksum.db"
+        fresh = DatabaseService(path)
+        await fresh.initialize()
+        await fresh.close()
+        with closing(sqlite3.connect(path)) as conn:
+            conn.execute(
+                "UPDATE schema_migrations SET checksum=? WHERE version=3", (legacy,)
+            )
+            conn.commit()
+        reopened = DatabaseService(path)
+        await reopened.initialize()
+        try:
+            page = await reopened.table_page("schema_migrations")
+            rows = [dict(zip(page.columns, row)) for row in page.rows]
+            self.assertEqual(
+                next(row for row in rows if row["version"] == 3)["checksum"],
+                packaged,
+            )
+        finally:
+            await reopened.close()
 
     async def test_clean_pipeline_is_offline_and_writes_relational_rows(self):
         await self.pipeline.run_pipeline()
@@ -597,6 +763,16 @@ class NormalizationTests(TestCase):
         self.assertIsNone(record.website)
         self.assertGreaterEqual(len(record.review_reasons), 3)
         self.assertEqual(row["label"], "13/2024")
+
+    def test_overlong_field_value_is_rejected_and_flagged(self):
+        row = registry_row(desc="x" * 65_537)
+        record = RegistryService().normalize([row])[0]
+        self.assertIsNone(record.description)
+        self.assertIn(
+            "Field desc exceeds 65536 characters; value rejected",
+            record.review_reasons,
+        )
+        self.assertEqual(row["desc"], "x" * 65_537)
 
     def test_relative_database_path_is_rejected(self):
         with self.assertRaises(ValueError):

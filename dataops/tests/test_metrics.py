@@ -47,5 +47,5 @@ class MetricsTests(TestCase):
                 rendered = render_entry(entry, dark)
                 self.assertEqual(entry.level, severity)
                 self.assertIn("[red]literal[/]", rendered.plain)
-                self.assertIn("12345678 normalize", rendered.plain)
+                self.assertIn("12345678  normalize", rendered.plain)
                 self.assertIn(f"bold {color}", [span.style for span in rendered.spans])

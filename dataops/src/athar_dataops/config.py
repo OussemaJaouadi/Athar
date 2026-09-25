@@ -1,6 +1,8 @@
 """Read configuration once at startup, never as an import side effect."""
 
+import stat
 import tomllib
+from collections.abc import Iterable
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
@@ -54,6 +56,22 @@ def load_groq_profiles(path: Path) -> tuple[GroqProfile, ...]:
     return tuple(profiles)
 
 
+def credential_file_warnings(paths: Iterable[Path]) -> list[str]:
+    """Report credential files that accounts other than the owner can read."""
+    warnings = []
+    for path in paths:
+        try:
+            mode = stat.S_IMODE(path.stat().st_mode)
+        except OSError:
+            continue
+        if mode & 0o077:
+            warnings.append(
+                f"warning: {path} is accessible to other accounts "
+                f"(mode {mode:03o}); run: chmod 600 {path}"
+            )
+    return warnings
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         extra="ignore", env_file=_ENV_FILE, env_file_encoding="utf-8"
@@ -63,6 +81,7 @@ class Settings(BaseSettings):
     )
     registry_url: str = "https://startups.smartcapital.tn/?lang=en"
     registry_user_agent: str = "AtharBot/0.1 (+https://github.com/OussemaJaouadi/Athar)"
+    registry_max_bytes: int = Field(default=64 * 1024 * 1024, gt=0)
     pipeline_timeout_seconds: int = Field(default=300, gt=0)
     theme: Literal["dark", "light"] = "dark"
     groq_api_key: SecretStr = SecretStr("")

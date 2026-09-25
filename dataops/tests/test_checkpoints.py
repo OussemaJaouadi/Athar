@@ -174,6 +174,28 @@ class CheckpointTests(IsolatedAsyncioTestCase):
                 (await self.db._rows("SELECT COUNT(*) AS n FROM entities"))[0]["n"], 0
             )
 
+    async def test_probe_result_label_escapes_markup_and_controls(self):
+        self.registry_rows[1] = registry_row(
+            name="Beta[bold red]FAKE\x1b]0;pwn\x07"
+        )
+        app = self.app()
+        async with app.run_test(size=(120, 40)) as pilot:
+            await pilot.pause()
+            await self._go_checkpoints(pilot)
+            pane = app.query_one(CheckpointsPane)
+            pane.query_one("#checkpoint-row").value = "2"
+            await self._press(pilot, "#checkpoint-fetch")
+            await self.wait_until(
+                pilot,
+                lambda: "Fetched + normalized" in self._status(app),
+            )
+            label = render_text(
+                app.query_one("#checkpoint-registry-result-label", Static).render()
+            )
+            self.assertIn("[bold red]FAKE", label)
+            self.assertNotIn("\x1b", label)
+            self.assertNotIn("\x07", label)
+
     async def test_registry_checkpoint_out_of_range_row(self):
         app = self.app()
         async with app.run_test(size=(120, 40)) as pilot:

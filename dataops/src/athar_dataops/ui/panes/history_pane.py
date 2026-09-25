@@ -13,6 +13,7 @@ from textual.widgets import Button, Input, Label, ListItem, ListView, Static
 
 from athar_dataops.services.database import DatabaseService
 from athar_dataops.themes import DARK, LIGHT
+from athar_dataops.ui.arabic import sanitize_display
 
 
 class HistoryPane(Vertical):
@@ -123,17 +124,10 @@ class HistoryPane(Vertical):
 
     def _metrics(self, run: dict) -> str:
         return (
-            f"{_short_time(run.get('started_at'))}  ·  "
-            f"{run.get('records_processed', 0)} records  ·  "
-            f"{run.get('review_count', 0)} review"
+            f"{_short_time(run.get('started_at'))} · "
+            f"{run.get('records_processed', 0)} rec · "
+            f"{run.get('review_count', 0)} rev"
         )
-
-    async def _restore_selection(self, runs: list[dict]) -> None:
-        listing = self.query_one("#history-list", ListView)
-        for index, run in enumerate(runs):
-            if run["id"] == self._selected_run:
-                listing.index = index
-                return
 
     @on(Button.Pressed, "#history-refresh")
     def refresh_button(self) -> None:
@@ -204,7 +198,7 @@ class HistoryPane(Vertical):
         ]
         error = run.get("error")
         if error:
-            lines.append(f"[bold {pal.error}]Error: {escape(str(error))}[/]")
+            lines.append(f"[bold {pal.error}]Error: {escape(sanitize_display(str(error)))}[/]")
         lines.extend(["", "[dim]──── Steps ────[/dim]"])
         step_colors = {
             "completed": pal.success,

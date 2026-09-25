@@ -63,6 +63,8 @@ DROP TABLE normalized_records_interim;
 ALTER TABLE entities ADD COLUMN latest_row_id TEXT REFERENCES source_rows(id);
 
 -- Rebuild entity_review_items with source_row_id FK instead of (snapshot_id, row_number).
+-- Every stored review decision from the 002-era (snapshot_id, row_number) columns is
+-- carried over through the rebuilt source_rows table before the old table is dropped.
 CREATE TABLE entity_review_items_new (
     id TEXT PRIMARY KEY,
     entity_id TEXT REFERENCES entities(id) ON DELETE SET NULL,
@@ -71,6 +73,12 @@ CREATE TABLE entity_review_items_new (
     resolved INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
 );
+
+INSERT INTO entity_review_items_new (id, entity_id, source_row_id, reason, resolved, created_at)
+SELECT old_review.id, old_review.entity_id, sr.id, old_review.reason, old_review.resolved, old_review.created_at
+FROM entity_review_items AS old_review
+LEFT JOIN source_rows AS sr
+    ON sr.snapshot_id = old_review.snapshot_id AND sr.row_number = old_review.row_number;
 
 DROP TABLE entity_review_items;
 ALTER TABLE entity_review_items_new RENAME TO entity_review_items;

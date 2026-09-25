@@ -8,7 +8,11 @@ from unittest import IsolatedAsyncioTestCase
 import httpx
 from test_pipeline import registry_row
 
-from athar_dataops.config import Settings, load_groq_profiles
+from athar_dataops.config import (
+    Settings,
+    credential_file_warnings,
+    load_groq_profiles,
+)
 from athar_dataops.services.artifacts import ArtifactService
 from athar_dataops.services.database import DatabaseService
 from athar_dataops.services.groq import GROQ_DEFAULT_QUOTAS, GroqPreparationClient
@@ -184,6 +188,20 @@ class ProfileTomlTests(IsolatedAsyncioTestCase):
 
     def test_missing_file_yields_no_profiles(self):
         self.assertEqual(load_groq_profiles(Path("/nonexistent/profiles.toml")), ())
+
+    def test_credential_file_warnings_follow_file_mode(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / ".env"
+            path.write_text("GROQ_API_KEY=x\n")
+            path.chmod(0o644)
+            (warning,) = credential_file_warnings([path])
+            self.assertIn("chmod 600", warning)
+            self.assertIn(str(path), warning)
+            path.chmod(0o600)
+            self.assertEqual(credential_file_warnings([path]), [])
+            self.assertEqual(
+                credential_file_warnings([Path(directory) / "missing.env"]), []
+            )
 
     def test_malformed_file_yields_no_profiles(self):
         with tempfile.TemporaryDirectory() as directory:

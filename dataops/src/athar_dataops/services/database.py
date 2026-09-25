@@ -24,6 +24,12 @@ from athar_dataops.schemas.registry import (
 )
 from athar_dataops.services.groq import ProfileStatus
 
+# Superseded migration bytes whose recorded checksum must be re-keyed instead of
+# refused: the DDL is identical, only data preservation inside the migration changed.
+LEGACY_MIGRATION_CHECKSUMS: dict[int, set[str]] = {
+    3: {"c4e73296518f62ee66d42af311f970a30ec3d139d88ec21fbfe2694a206de6ff"},
+}
+
 
 def _day_window() -> tuple[str, str]:
     now = datetime.now(UTC)
@@ -108,9 +114,17 @@ class DatabaseService:
                     known[row["version"]].read_bytes()
                 ).hexdigest()
                 if row["checksum"] != checksum:
-                    raise RuntimeError(
-                        "Applied migration checksum does not match; no changes made"
-                    )
+                    if row["checksum"] in LEGACY_MIGRATION_CHECKSUMS.get(
+                        row["version"], set()
+                    ):
+                        await self._execute(
+                            "UPDATE schema_migrations SET checksum=? WHERE version=?",
+                            (checksum, row["version"]),
+                        )
+                    else:
+                        raise RuntimeError(
+                            "Applied migration checksum does not match; no changes made"
+                        )
             applied_versions = {row["version"] for row in applied}
             await self._execute("PRAGMA foreign_keys = ON")
             for version, path in known.items():
@@ -213,12 +227,23 @@ class DatabaseService:
 
     async def get_latest_snapshot_rows(self) -> tuple[str, list[Any], dict[int, str]]:
         async with self._lock:
-            snapshots = await self._rows(
-                "SELECT id FROM source_snapshots ORDER BY fetched_at DESC LIMIT 1"
+            # Clean follows the latest successful collection, never raw fetch time:
+            # a snapshot re-fetched by hash keeps its original fetched_at, and failed
+            # fetches must not become the cleaning input.
+            runs = await self._rows(
+                """SELECT snapshot_id FROM pipeline_runs
+                WHERE operation='collect' AND status='completed' AND snapshot_id IS NOT NULL
+                ORDER BY completed_at DESC, started_at DESC, rowid DESC LIMIT 1"""
             )
-            if not snapshots:
-                raise LookupError("No snapshots found to clean")
-            snapshot_id = snapshots[0]["id"]
+            if runs:
+                snapshot_id = runs[0]["snapshot_id"]
+            else:
+                snapshots = await self._rows(
+                    "SELECT id FROM source_snapshots ORDER BY fetched_at DESC LIMIT 1"
+                )
+                if not snapshots:
+                    raise LookupError("No snapshots found to clean")
+                snapshot_id = snapshots[0]["id"]
             rows = await self._rows(
                 "SELECT id, row_number, raw_json FROM source_rows WHERE snapshot_id = ? ORDER BY row_number",
                 (snapshot_id,),
@@ -567,7 +592,8 @@ class DatabaseService:
             )
             entities = await self._rows("SELECT COUNT(*) AS count FROM entities")
             last_run = await self._rows(
-                "SELECT status, records_processed, review_count FROM pipeline_runs ORDER BY started_at DESC LIMIT 1"
+                """SELECT status, records_processed, review_count FROM pipeline_runs
+                WHERE operation = 'collect' ORDER BY started_at DESC, rowid DESC LIMIT 1"""
             )
             return {
                 "snapshots": snapshots[0]["count"],
@@ -589,7 +615,9 @@ class DatabaseService:
         needle = search_text(query.strip())
         async with self._lock:
             snapshots = await self._rows(
-                "SELECT snapshot_id FROM pipeline_runs WHERE status='completed' ORDER BY completed_at DESC LIMIT 1"
+                """SELECT snapshot_id FROM pipeline_runs
+                WHERE status='completed' AND operation='collect' AND snapshot_id IS NOT NULL
+                ORDER BY completed_at DESC, started_at DESC, rowid DESC LIMIT 1"""
             )
             if not snapshots:
                 return RecordPage([], 0, 0)
@@ -619,14 +647,20 @@ class DatabaseService:
                 WHERE r.snapshot_id=? AND r.row_number IN ({placeholders}) ORDER BY r.row_number""",
                 (snapshot_id, *(record.row_number for record in selected)),
             )
+            # Only the visible page's preparations and review decisions are needed.
+            page_numbers = tuple(record.row_number for record in selected)
+            page_slots = ",".join("?" for _ in page_numbers)
             preparations = await self._rows(
-                """SELECT s.row_number,p.input_hash,p.profile,p.model,p.output_json
+                f"""SELECT s.row_number,p.input_hash,p.profile,p.model,p.output_json
                 FROM text_preparations p
-                JOIN source_rows s ON s.id=p.source_row_id WHERE s.snapshot_id=? ORDER BY p.created_at""", (snapshot_id,)
+                JOIN source_rows s ON s.id=p.source_row_id
+                WHERE s.snapshot_id=? AND s.row_number IN ({page_slots})
+                ORDER BY p.created_at""", (snapshot_id, *page_numbers)
             )
             resolved = await self._rows(
-                """SELECT s.row_number,i.reason FROM entity_review_items i JOIN source_rows s ON s.id=i.source_row_id
-                WHERE s.snapshot_id=? AND i.category='human' AND i.resolved=1""", (snapshot_id,)
+                f"""SELECT s.row_number,i.reason FROM entity_review_items i JOIN source_rows s ON s.id=i.source_row_id
+                WHERE s.snapshot_id=? AND i.category='human' AND i.resolved=1
+                AND s.row_number IN ({page_slots})""", (snapshot_id, *page_numbers)
             )
         prepared = {
             (row["row_number"], row["input_hash"]): {
@@ -906,8 +940,14 @@ class DatabaseService:
                         (str(uuid4()), profile_id, metric, limit, period, now, now),
                     )
 
-    async def preparation_quota_state(self, task: str = "prepare") -> list[dict[str, Any]]:
-        """Per-profile limits, disabled flag, and consumption since day/minute windows."""
+    async def preparation_quota_state(
+        self, task: str = "prepare", names: list[str] | None = None
+    ) -> list[dict[str, Any]]:
+        """Per-profile limits, disabled flag, and consumption since day/minute windows.
+
+        With ``names``, only those profiles are returned; stored rows for profiles
+        no longer configured keep their history but never enter rotation.
+        """
         day_start, _ = _day_window()
         minute_start, _ = _minute_window()
         async with self._lock:
@@ -921,7 +961,8 @@ class DatabaseService:
             day_usage = await self._rows(
                 """SELECT profile, COUNT(*) AS requests,
                 SUM(CASE WHEN input_tokens IS NOT NULL AND output_tokens IS NOT NULL
-                    THEN input_tokens + output_tokens END) AS tokens
+                    THEN input_tokens + output_tokens END) AS tokens,
+                SUM(CASE WHEN input_tokens IS NULL OR output_tokens IS NULL THEN 1 ELSE 0 END) AS unknown
                 FROM preparation_usage WHERE outcome <> 'started' AND started_at >= ? GROUP BY profile""",
                 (day_start,),
             )
@@ -932,6 +973,7 @@ class DatabaseService:
             )
         day_by = {row["profile"]: row for row in day_usage}
         minute_by = {row["profile"]: row for row in minute_usage}
+        allowed = set(names) if names is not None else None
         quotas_by_profile: dict[str, dict[str, dict[str, Any]]] = {}
         for row in quota_rows:
             quotas_by_profile.setdefault(row["profile_id"], {})[row["metric"]] = {
@@ -940,7 +982,20 @@ class DatabaseService:
             }
         state = []
         for profile in profiles:
-            usage = day_by.get(profile["name"], {"requests": 0, "tokens": None})
+            if allowed is not None and profile["name"] not in allowed:
+                continue
+            usage = day_by.get(
+                profile["name"], {"requests": 0, "tokens": None, "unknown": 0}
+            )
+            quotas = quotas_by_profile.get(profile["id"], {})
+            # Unknown attempts keep nullable counts but consume the same per-record
+            # estimate the live ledger applies, so a restart cannot underspend.
+            estimate = float(
+                quotas.get("estimate_tokens_per_record", {}).get("limit", 1000)
+            )
+            tokens_today = float(usage["tokens"] or 0) + (
+                usage["unknown"] or 0
+            ) * estimate
             state.append(
                 {
                     "name": profile["name"],
@@ -948,9 +1003,9 @@ class DatabaseService:
                     "model": profile["model"],
                     "fingerprint": profile["fingerprint"],
                     "disabled": bool(profile["disabled"]),
-                    "quotas": quotas_by_profile.get(profile["id"], {}),
+                    "quotas": quotas,
                     "requests_today": usage["requests"],
-                    "tokens_today": usage["tokens"],
+                    "tokens_today": tokens_today,
                     "requests_minute": minute_by.get(profile["name"], {"requests": 0})["requests"],
                 }
             )

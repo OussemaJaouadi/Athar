@@ -10,6 +10,7 @@ from textual import events, on
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
+from textual.css.query import NoMatches
 from textual.widgets import Button, Input, Label, RichLog, Static
 
 from athar_dataops.schemas.logs import LogEntry
@@ -123,12 +124,12 @@ class LogsPane(Vertical):
             index = 0 if delta > 0 else len(self.RAIL_BUTTONS) - 1
         else:
             index = (index + delta) % len(self.RAIL_BUTTONS)
-        with suppress(Exception):
+        with suppress(NoMatches):
             self.query_one(f"#{self.RAIL_BUTTONS[index]}", Button).focus()
 
     def on_key(self, event: events.Key) -> None:
         if event.key == "escape":
-            with suppress(Exception):
+            with suppress(NoMatches):
                 search_input = self.query_one("#logs-search", Input)
                 if search_input.has_focus:
                     event.prevent_default()
@@ -187,7 +188,7 @@ class LogsPane(Vertical):
         warnings = sum(1 for e in self._entries if e.level == "warning")
         errors = sum(1 for e in self._entries if e.level == "error")
 
-        with suppress(Exception):
+        with suppress(NoMatches):
             palette = DARK if self._is_dark() else LIGHT
             self.query_one("#filter-all", Button).label = self._rail_label(
                 "all", total, palette
@@ -226,7 +227,7 @@ class LogsPane(Vertical):
         return label
 
     def _rebuild_console(self) -> None:
-        with suppress(Exception):
+        with suppress(NoMatches):
             log_widget = self.query_one("#logs-console", RichLog)
             log_widget.clear()
             for entry in self._entries:
@@ -248,7 +249,7 @@ class LogsPane(Vertical):
         }
         self._current_filter = mapping.get(event.button.id, "all")
         for btn_id in mapping:
-            with suppress(Exception):
+            with suppress(NoMatches):
                 self.query_one(f"#{btn_id}", Button).set_class(
                     btn_id == event.button.id, "-active"
                 )
@@ -266,7 +267,7 @@ class LogsPane(Vertical):
 
     def _toggle_auto_scroll(self) -> None:
         self._auto_scroll = not self._auto_scroll
-        with suppress(Exception):
+        with suppress(NoMatches):
             btn = self.query_one("#toggle-scroll", Button)
             btn.label = f"Auto-scroll: {'ON' if self._auto_scroll else 'OFF'}"
             self.query_one("#logs-console", RichLog).auto_scroll = self._auto_scroll
@@ -274,6 +275,6 @@ class LogsPane(Vertical):
     @on(Button.Pressed, "#clear-logs")
     def clear_logs(self) -> None:
         self._entries.clear()
-        with suppress(Exception):
+        with suppress(NoMatches):
             self.query_one("#logs-console", RichLog).clear()
             self._update_stats_bar()

@@ -172,8 +172,10 @@ class PreparationService:
             for status in self.provider.profiles
         ]
         cached_ids: set[str] = set()
-        for status in self.provider.profiles:
-            for candidate in candidates:
+        for candidate in candidates:
+            # Check every candidate against every configured model; one cache hit
+            # counts the entity once, without skipping the remaining candidates.
+            for status in self.provider.profiles:
                 key, input_hash = preparation_key(candidate, status.model)
                 if await self._db.prepared_text(
                     key, candidate["entity_id"], input_hash, status.model
@@ -196,7 +198,10 @@ class PreparationService:
         processed = cached = failed = 0
         snapshot_id: str | None = None
         stage = "load"
-        ledger = _QuotaLedger(await self._db.preparation_quota_state())
+        configured = [status.name for status in self.provider.profiles]
+        ledger = _QuotaLedger(
+            await self._db.preparation_quota_state(names=configured)
+        )
         # Each profile gets at most one throttling round per run; a second strike means
         # the available rotation is spent, so the run stops visibly for a later resume.
         hinted: set[str] = set()

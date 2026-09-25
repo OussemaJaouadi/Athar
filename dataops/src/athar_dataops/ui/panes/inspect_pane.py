@@ -13,6 +13,7 @@ from textual import on
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.css.query import NoMatches
 from textual.widgets import (
     Button,
     Collapsible,
@@ -55,13 +56,13 @@ class InspectPane(Vertical):
         self._offset = 0
 
     def action_focus_search(self) -> None:
-        with suppress(Exception):
+        with suppress(NoMatches):
             self.query_one("#records-search", Input).focus()
 
     def action_toggle_source(self) -> None:
         if isinstance(self.app.focused, Input):
             return
-        with suppress(Exception):
+        with suppress(NoMatches):
             col = self.query_one("#source-disclosure", Collapsible)
             col.collapsed = not col.collapsed
             if not col.collapsed:

@@ -194,7 +194,7 @@ class DatabasePane(Vertical):
                 row["status"],
                 (row["applied_at"] or "—")[:16],
             )
-        with suppress(Exception):
+        with suppress(NoMatches):
             self.query_one("#db-migrations-table", Static).update(table)
 
     @on(Button.Pressed, "#db-wipe")
@@ -305,7 +305,7 @@ class DatabasePane(Vertical):
             parsed = None
             raw_json_str = None
             if isinstance(val, bytes):
-                with suppress(Exception):
+                with suppress(ValueError):
                     decoded = val.decode("utf-8")
                     parsed = json.loads(decoded)
                     raw_json_str = decoded
@@ -314,7 +314,7 @@ class DatabasePane(Vertical):
                 (val.startswith("{") and val.endswith("}"))
                 or (val.startswith("[") and val.endswith("]"))
             ):
-                with suppress(Exception):
+                with suppress(ValueError):
                     parsed = json.loads(val)
                     raw_json_str = val
                     is_json = True
@@ -353,7 +353,7 @@ class DatabasePane(Vertical):
                 rule_style = "dim #2B393E" if is_dark else LIGHT.variables["line"]
                 renderables.append(Rule(style=rule_style))
 
-        with suppress(Exception):
+        with suppress(NoMatches):
             self.query_one("#drawer-content", Static).update(Group(*renderables))
 
     async def _show_table(self) -> None:

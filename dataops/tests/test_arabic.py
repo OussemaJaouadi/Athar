@@ -8,6 +8,7 @@ from athar_dataops.ui.arabic import (
     format_arabic_obj,
     has_arabic,
     repair_mojibake,
+    sanitize_display,
 )
 
 
@@ -53,6 +54,17 @@ class ArabicDisplayTests(unittest.TestCase):
         self.assertEqual(res["count"], 10)
         self.assertNotEqual(res["name"], "شركة")
         self.assertNotEqual(res["tags"][0], "تقنية")
+
+    def test_format_arabic_strips_terminal_control_characters(self):
+        self.assertEqual(sanitize_display("keep\tme\nok\x00"), "keep\tme\nok")
+        raw = format_arabic("Safe\x1b[31mRED\x07 end")
+        self.assertEqual(raw, "Safe[31mRED end")
+        decoded = format_arabic("tab\\u001b[2Jclear\\u001b end")
+        self.assertNotIn("\x1b", decoded)
+        self.assertIn("[2Jclear", decoded)
+        arabic = format_arabic("مرحبا\x1b[2J")
+        self.assertNotIn("\x1b", arabic)
+        self.assertIn("2J", arabic)
 
 
 if __name__ == "__main__":

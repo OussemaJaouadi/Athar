@@ -440,6 +440,56 @@ class WorkspaceTests(IsolatedAsyncioTestCase):
             self.assertEqual(sampler.sample.call_count, before)
             self.assertTrue(pane.query_one("#run-activity").display)
 
+    async def test_compact_layout_stacks_run_and_probes_at_80x24(self):
+        self.block = True
+        app = self.app()
+        async with app.run_test(size=(80, 24)) as pilot:
+            await pilot.pause()
+            self.assertTrue(app.has_class("compact"))
+            operations = app.query_one("#run-operations").region
+            context = app.query_one("#run-context").region
+            self.assertEqual(operations.x, context.x)
+            self.assertGreaterEqual(operations.width, 70)
+            primary = app.query_one("#run-pipeline").region
+            impact = app.query_one("#prepare-pipeline").region
+            self.assertTrue(primary.y >= 0 and primary.y + primary.height <= 24)
+            self.assertTrue(impact.y >= 0 and impact.y + impact.height <= 24)
+            await pilot.click("#run-pipeline")
+            await asyncio.wait_for(self.fetch_started.wait(), 5)
+            await pilot.click("#cancel-pipeline")
+            await self.wait_for_collection(app, pilot)
+            self.assertFalse(app.query_one(RunPane).collecting)
+            await pilot.press("6")
+            await pilot.pause()
+            registry = app.query_one("#checkpoint-registry").region
+            prepare = app.query_one("#checkpoint-prepare-card").region
+            self.assertEqual(registry.x, prepare.x)
+            self.assertGreaterEqual(registry.width, 70)
+            fetch = app.query_one("#checkpoint-fetch").region
+            self.assertTrue(fetch.y >= 0 and fetch.y + fetch.height <= 24)
+            await pilot.press("1")
+            await pilot.pause()
+            self.assertEqual(
+                app.query_one("#workspace", TabbedContent).active, "run"
+            )
+
+    async def test_history_row_summary_fits_narrow_rail(self):
+        await self.orchestrator.run_pipeline()
+        app = self.app()
+        async with app.run_test(size=(80, 24)) as pilot:
+            await pilot.press("3")
+            await pilot.pause()
+            first_item = app.query_one("#history-list", ListView).children[0]
+            meta = render_text(first_item.children[1].render())
+            self.assertIn(" rec · ", meta)
+            self.assertIn(" rev", meta)
+            self.assertNotIn(" records", meta)
+            detail = render_text(
+                app.query_one("#history-detail-body", Static).render()
+            )
+            self.assertIn("Outcome: completed", detail)
+            self.assertIn("Records:", detail)
+
     async def test_history_tab_loads_persisted_run_and_steps(self):
         result = await self.orchestrator.run_pipeline()
         app = self.app()

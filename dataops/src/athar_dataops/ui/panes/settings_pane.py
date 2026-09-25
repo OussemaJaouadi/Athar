@@ -1,5 +1,7 @@
 """Session appearance, configuration, and application identity."""
 
+from contextlib import suppress
+
 from rich import box
 from rich.table import Table
 from rich.text import Text
@@ -168,18 +170,14 @@ class SettingsPane(VerticalScroll):
         env_table.add_row(
             "Pipeline Timeout", f"{self._config.pipeline_timeout_seconds}s"
         )
-        try:
+        with suppress(Exception):
             self.query_one("#settings-env-table", Static).update(env_table)
-        except Exception:
-            pass
 
-        try:
+        with suppress(Exception):
             self.query_one("#settings-tagline", Static).update(
                 f"[bold {pri}]An evidence-backed directory of Tunisian startups.[/]\n"
                 "Explore entities, track cohorts, review provenance, and verify records against original sources.\n"
             )
-        except Exception:
-            pass
 
         about_table = Table(
             box=box.ROUNDED,
@@ -198,7 +196,5 @@ class SettingsPane(VerticalScroll):
         about_table.add_row(
             "Workspace Mode", "Local-first desktop research environment"
         )
-        try:
+        with suppress(Exception):
             self.query_one("#settings-arch-table", Static).update(about_table)
-        except Exception:
-            pass

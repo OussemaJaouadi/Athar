@@ -1,5 +1,7 @@
 """About dialog with ASCII mark."""
 
+from typing import ClassVar
+
 from textual import on
 from textual.app import ComposeResult
 from textual.containers import VerticalScroll
@@ -12,7 +14,7 @@ from athar_dataops.ui.widgets.ascii_mark import AsciiMark
 class AboutScreen(ModalScreen):
     """About dialog with ASCII mark."""
 
-    BINDINGS = [
+    BINDINGS: ClassVar[list[tuple[str, str, str]]] = [
         ("escape", "dismiss", "Close"),
         ("q", "dismiss", "Close"),
         ("enter", "dismiss", "Close"),

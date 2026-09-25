@@ -459,6 +459,10 @@ class WorkspaceTests(IsolatedAsyncioTestCase):
             await pilot.pause()
             detail = render_text(app.query_one("#history-detail-body", Static).render())
             self.assertIn("Outcome: completed", detail)
+            self.assertIn("Started: ", detail)
+            self.assertNotIn("Started: Unknown time", detail)
+            self.assertIn("Completed: ", detail)
+            self.assertNotIn("Completed: Unknown time", detail)
             self.assertIn("Run " + result.run_id[:8], render_text(app.query_one("#history-detail-title", Label).render()))
             self.assertIn("Steps", detail)
 
@@ -488,6 +492,8 @@ class WorkspaceTests(IsolatedAsyncioTestCase):
             self.assertIn("Outcome: failed", detail)
             self.assertIn("Legacy error", detail)
             self.assertIn("No step details recorded", detail)
+            self.assertIn("Started: ", detail)
+            self.assertNotIn("Started: Unknown time", detail)
 
 
 class PackagedAssetsTests(TestCase):

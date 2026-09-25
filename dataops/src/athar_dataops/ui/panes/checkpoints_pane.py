@@ -1,8 +1,10 @@
 """Read-only stage probes: one stage, one element, zero database writes."""
 
+import asyncio
 import json
 from typing import Any
 
+import httpx
 from rich import box
 from rich.console import Group
 from rich.rule import Rule
@@ -11,6 +13,7 @@ from rich.text import Text
 from textual import on
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.css.query import NoMatches
 from textual.widgets import Button, Input, Label, Select, Static, TextArea
 from textual.worker import Worker, WorkerCancelled
 
@@ -79,7 +82,8 @@ class CheckpointsPane(VerticalScroll):
                 with Horizontal(id="checkpoint-registry-result-header"):
                     yield Label("Result", classes="section-label")
                     yield Static("No result", id="checkpoint-registry-result-label", classes="muted")
-                with VerticalScroll(id="checkpoint-registry-result"):
+                with VerticalScroll(id="checkpoint-registry-result") as registry_result:
+                    registry_result.display = False
                     yield Static("", id="checkpoint-registry-output", classes="probe-output", markup=False)
 
             with Vertical(classes="probe-card", id="checkpoint-prepare-card"):
@@ -109,13 +113,15 @@ class CheckpointsPane(VerticalScroll):
                 with Horizontal(id="checkpoint-prepare-result-header"):
                     yield Label("Result", classes="section-label")
                     yield Static("No result", id="checkpoint-prepare-result-label", classes="muted")
-                with VerticalScroll(id="checkpoint-prepare-result"):
+                with VerticalScroll(id="checkpoint-prepare-result") as prepare_result:
+                    prepare_result.display = False
                     yield Static("", id="checkpoint-prepare-output", classes="probe-output", markup=False)
 
     @on(Button.Pressed, "#checkpoint-registry-clear")
     def clear_registry(self) -> None:
         self._registry_result = None
         self.query_one("#checkpoint-registry-output", Static).update("")
+        self.query_one("#checkpoint-registry-result").display = False
         self.query_one("#checkpoint-registry-result-label", Static).update("No probe result yet")
         self.query_one("#checkpoint-registry-chip", Static).display = False
         self.query_one("#checkpoint-registry-clear", Button).disabled = True
@@ -125,6 +131,7 @@ class CheckpointsPane(VerticalScroll):
     def clear_prepare(self) -> None:
         self._prepare_reply = None
         self.query_one("#checkpoint-prepare-output", Static).update("")
+        self.query_one("#checkpoint-prepare-result").display = False
         self.query_one("#checkpoint-prepare-result-label", Static).update("No probe result yet")
         self.query_one("#checkpoint-prepare-chip", Static).display = False
         self.query_one("#checkpoint-prepare-clear", Button).disabled = True
@@ -180,7 +187,8 @@ class CheckpointsPane(VerticalScroll):
         cancel.disabled = not busy
         cancel.display = busy
         self.query_one("#checkpoint-row", Input).disabled = busy
-        self.query_one("#checkpoint-profile", Select).disabled = busy or not self._profile_names
+        if self._profile_names:
+            self.query_one("#checkpoint-profile", Select).disabled = busy
         self.query_one("#checkpoint-desc", TextArea).disabled = busy
         self.query_one("#checkpoint-registry-clear", Button).disabled = busy or self._registry_result is None
         self.query_one("#checkpoint-prepare-clear", Button).disabled = busy or self._prepare_reply is None
@@ -200,8 +208,9 @@ class CheckpointsPane(VerticalScroll):
     async def _run_fetch(self) -> None:
         try:
             await self._fetch()
-        except WorkerCancelled:
+        except (WorkerCancelled, asyncio.CancelledError):
             self._set_status("Checkpoint cancelled.", "warning")
+            raise
         finally:
             self._clear_busy()
 
@@ -210,7 +219,7 @@ class CheckpointsPane(VerticalScroll):
             snapshot = await self._artifact.fetch()
             rows = json.loads(snapshot.raw_content)
             if not isinstance(rows, list):
-                raise ValueError("Registry response must be a JSON array")
+                raise TypeError("Registry response must be a JSON array")
             raw_index = (self.query_one("#checkpoint-row", Input).value or "1").strip()
             try:
                 requested = int(raw_index)
@@ -219,7 +228,15 @@ class CheckpointsPane(VerticalScroll):
             if not 1 <= requested <= len(rows):
                 raise ValueError(f"Row {requested} out of range (1–{len(rows)})")
             record = self._registry.normalize_row(requested, rows[requested - 1])
-        except Exception as exc:
+        except (
+            httpx.HTTPError,
+            OSError,
+            ValueError,
+            TypeError,
+            KeyError,
+            IndexError,
+            NoMatches,
+        ) as exc:
             self._set_status(f"Registry checkpoint failed: {exc}", "error")
             self._card_chip("registry", "failed", "error")
             return
@@ -308,13 +325,15 @@ class CheckpointsPane(VerticalScroll):
         self.query_one("#checkpoint-registry-result-label", Static).update(
             f"Row {result['requested']} · {record.name or 'Unnamed'}"
         )
+        self.query_one("#checkpoint-registry-result").display = True
         self.query_one("#checkpoint-registry-clear", Button).disabled = False
 
     async def _run_prepare(self) -> None:
         try:
             await self._prepare()
-        except WorkerCancelled:
+        except (WorkerCancelled, asyncio.CancelledError):
             self._set_status("Checkpoint cancelled.", "warning")
+            raise
         finally:
             self._clear_busy()
 
@@ -332,7 +351,7 @@ class CheckpointsPane(VerticalScroll):
         self._set_status("Sending exactly one prompt…")
         try:
             reply = await self._groq.prepare(profile, description)
-        except Exception as exc:
+        except (httpx.HTTPError, RuntimeError, ValueError, TypeError, KeyError) as exc:
             self._set_status(f"Preparation checkpoint failed: {exc}", "error")
             self._card_chip("prepare", "failed", "error")
             return
@@ -387,6 +406,7 @@ class CheckpointsPane(VerticalScroll):
                 )
             )
             self.query_one("#checkpoint-prepare-result-label", Static).update("Provider rejected request")
+            self.query_one("#checkpoint-prepare-result").display = True
             self.query_one("#checkpoint-prepare-clear", Button).disabled = False
             return
 
@@ -424,12 +444,13 @@ class CheckpointsPane(VerticalScroll):
         self.query_one("#checkpoint-prepare-result-label", Static).update(
             f"{output.detected_language} · {reply.profile or 'provider'}"
         )
+        self.query_one("#checkpoint-prepare-result").display = True
         self.query_one("#checkpoint-prepare-clear", Button).disabled = False
 
     def _clear_busy(self) -> None:
         try:
             self._set_busy(False)
-        except Exception:
+        except NoMatches:
             self.busy = False
 
     def on_theme_changed(self) -> None:
@@ -441,7 +462,7 @@ class CheckpointsPane(VerticalScroll):
     def _is_dark(self) -> bool:
         try:
             return getattr(self.app, "theme", "athar-dark") != "athar-light"
-        except Exception:
+        except RuntimeError:
             return True
 
     def _set_status(self, text: str, state: str = "") -> None:

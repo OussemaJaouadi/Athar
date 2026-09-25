@@ -1,7 +1,10 @@
 """Actual schema, bounded table previews, and live right-drawer row inspection."""
 
 import json
+from contextlib import suppress
+from typing import ClassVar
 
+import turso
 from rich import box
 from rich.console import Group
 from rich.padding import Padding
@@ -12,11 +15,13 @@ from textual import on
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.css.query import NoMatches
 from textual.message import Message
 from textual.widgets import Button, Collapsible, DataTable, Input, Label, Static, Tree
 
 from athar_dataops.schemas.database import TablePage
 from athar_dataops.services.database import DatabaseService
+from athar_dataops.services.orchestrator import PipelineOrchestrator
 from athar_dataops.themes import DARK, LIGHT, themed_json
 from athar_dataops.ui.arabic import format_arabic, format_arabic_obj
 from athar_dataops.ui.dialogs.wipe import WipeConfirmScreen
@@ -30,7 +35,7 @@ class DatabasePane(Vertical):
             super().__init__()
             self.deleted = deleted
 
-    BINDINGS = [
+    BINDINGS: ClassVar[list[Binding]] = [
         Binding("p", "prev_page", "Prev Page", show=False, priority=False),
         Binding("n", "next_page", "Next Page", show=False, priority=False),
         Binding("ctrl+left", "prev_page", "Prev Page", show=False, priority=True),
@@ -41,9 +46,15 @@ class DatabasePane(Vertical):
         Binding("pagedown", "next_page", "Next Page", show=False, priority=False),
     ]
 
-    def __init__(self, database: DatabaseService, **kwargs):
+    def __init__(
+        self,
+        database: DatabaseService,
+        orchestrator: PipelineOrchestrator | None = None,
+        **kwargs,
+    ):
         super().__init__(**kwargs)
         self._db = database
+        self._orchestrator = orchestrator
         self._table: str | None = None
         self._offset = 0
         self._current_page: TablePage | None = None
@@ -133,7 +144,7 @@ class DatabasePane(Vertical):
                 self._table = next(iter(schema), None)
             if self._table:
                 await self._show_table()
-        except Exception as exc:
+        except (turso.Error, RuntimeError, ValueError, LookupError) as exc:
             self.query_one("#results-label", Label).update(
                 f"Could not load schema: {exc}"
             )
@@ -142,7 +153,7 @@ class DatabasePane(Vertical):
         summary = self.query_one("#db-migrations-summary", Static)
         try:
             rows = await self._db.migration_status()
-        except Exception as exc:
+        except (turso.Error, RuntimeError, ValueError, LookupError) as exc:
             summary.update(f"Migrations unknown: {exc}")
             summary.set_classes("muted error")
             return
@@ -183,23 +194,18 @@ class DatabasePane(Vertical):
                 row["status"],
                 (row["applied_at"] or "—")[:16],
             )
-        try:
+        with suppress(Exception):
             self.query_one("#db-migrations-table", Static).update(table)
-        except Exception:
-            pass
 
     @on(Button.Pressed, "#db-wipe")
     def confirm_wipe(self) -> None:
         if self._wiping:
             return
-        try:
-            if self.app.query_one("#run-pipeline", Button).disabled:
-                self.query_one("#results-label", Label).update(
-                    "Wait for the running pipeline before wiping."
-                )
-                return
-        except Exception:
-            pass
+        if self._orchestrator is not None and self._orchestrator.running:
+            self.query_one("#results-label", Label).update(
+                "Wait for the running pipeline before wiping."
+            )
+            return
         self.app.push_screen(WipeConfirmScreen(), self._wipe_confirmed)
 
     async def _wipe_confirmed(self, confirmed: bool | None) -> None:
@@ -212,7 +218,7 @@ class DatabasePane(Vertical):
         summary.set_classes("muted")
         try:
             deleted = await self._db.wipe_data()
-        except Exception as exc:
+        except (turso.Error, RuntimeError, ValueError, LookupError) as exc:
             summary.update(f"Wipe failed: {exc}")
             summary.set_classes("muted error")
             self.query_one("#db-wipe", Button).disabled = False
@@ -274,7 +280,7 @@ class DatabasePane(Vertical):
     def _is_dark(self) -> bool:
         try:
             return getattr(self.app, "theme", "athar-dark") != "athar-light"
-        except Exception:
+        except RuntimeError:
             return True
 
     def on_theme_changed(self) -> None:
@@ -284,9 +290,8 @@ class DatabasePane(Vertical):
             table.cursor_row is not None
             and self._current_page
             and self._current_page.rows
-        ):
-            if 0 <= table.cursor_row < len(self._current_page.rows):
-                self._update_drawer_for_row(self._current_page.rows[table.cursor_row])
+        ) and 0 <= table.cursor_row < len(self._current_page.rows):
+            self._update_drawer_for_row(self._current_page.rows[table.cursor_row])
 
     def _update_drawer_for_row(self, row_data) -> None:
         if not self._current_page:
@@ -300,23 +305,19 @@ class DatabasePane(Vertical):
             parsed = None
             raw_json_str = None
             if isinstance(val, bytes):
-                try:
+                with suppress(Exception):
                     decoded = val.decode("utf-8")
                     parsed = json.loads(decoded)
                     raw_json_str = decoded
                     is_json = True
-                except Exception:
-                    pass
             elif isinstance(val, str) and (
                 (val.startswith("{") and val.endswith("}"))
                 or (val.startswith("[") and val.endswith("]"))
             ):
-                try:
+                with suppress(Exception):
                     parsed = json.loads(val)
                     raw_json_str = val
                     is_json = True
-                except Exception:
-                    pass
 
             header = Text()
             header.append(f"■ {col} ", style=f"bold {col_color}")
@@ -352,10 +353,8 @@ class DatabasePane(Vertical):
                 rule_style = "dim #2B393E" if is_dark else LIGHT.variables["line"]
                 renderables.append(Rule(style=rule_style))
 
-        try:
+        with suppress(Exception):
             self.query_one("#drawer-content", Static).update(Group(*renderables))
-        except Exception:
-            pass
 
     async def _show_table(self) -> None:
         if self._table is None:
@@ -423,7 +422,7 @@ class DatabasePane(Vertical):
                 self.query_one("#drawer-content", Static).update(
                     "No rows in this table."
                 )
-        except Exception as exc:
+        except (turso.Error, RuntimeError, ValueError, LookupError, NoMatches) as exc:
             self.query_one("#results-label", Label).update(
                 f"Table preview failed: {exc}"
             )

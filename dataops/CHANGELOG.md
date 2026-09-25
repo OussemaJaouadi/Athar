@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Polish round from manual testing: a consolidated Run context header and status bar with a scrollable body, single-underline rail focus/hover states with the missing hover token, auto-width probe title cards, a taller Prepare profile picker, and probe results that only appear once produced.
+- History detail now renders markup with an outcome status chip and honest `Started`/`Completed` timestamps from a per-run row lookup instead of "Unknown time".
+- Wipe data refuses while a pipeline is running using the orchestrator's live state, probe cancellation propagates so workers actually stop, and the profile picker no longer crashes when no Groq profiles are configured.
+- NFC-normalized name keys keep entity identity stable across composed characters, and duplicate step titles can no longer overwrite each other.
+- The codebase passes `ruff check` with stock defaults (98 errors → 0): broad handlers narrowed to real failure sets or converted to `contextlib.suppress`, mutable class attributes annotated as `ClassVar`, and datetime/type-error nits fixed.
+
 - Reorganized the workspace around seven primary tabs: **Run**, **Records**, **History**, **Database**, **Logs**, **Probes**, and **Settings**.
 - Added a first-class History view with refresh, filtering, stable selection, run outcomes, and step summaries.
 - Reworked Probes into explicit result surfaces with clear actions, result labels, and light/dark theme states.

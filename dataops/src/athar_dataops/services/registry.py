@@ -1,7 +1,7 @@
 """Conservative normalization: uncertainty becomes a review reason, never a guess."""
 
 import re
-from datetime import date
+from datetime import UTC, date, datetime
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
@@ -41,7 +41,7 @@ class RegistryService:
                     raise ValueError
                 month, year = map(int, record.cohort_label.split("/"))
                 cohort = date(year, month, 1)
-                if cohort > date.today():
+                if cohort > datetime.now(UTC).date():
                     raise ValueError
                 record.cohort_date = cohort.isoformat()
             except ValueError:
@@ -50,7 +50,7 @@ class RegistryService:
         if year_text:
             if (
                 re.fullmatch(r"\d{4}", year_text)
-                and 1 <= int(year_text) <= date.today().year
+                and 1 <= int(year_text) <= datetime.now(UTC).year
             ):
                 record.creation_year = int(year_text)
             else:

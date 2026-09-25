@@ -12,6 +12,7 @@ from unittest import IsolatedAsyncioTestCase, TestCase
 from unittest.mock import patch
 
 import httpx
+import turso
 
 from athar_dataops.config import Settings
 from athar_dataops.services.artifacts import ArtifactService
@@ -21,18 +22,18 @@ from athar_dataops.services.registry import RegistryService
 
 
 def registry_row(**changes):
-    row = dict(
-        name="Example",
-        desc="Concrete product detail",
-        website="www.example.com/product?q=1",
-        label="01/2024",
-        creation_year="2020",
-        founders=[" Example Person "],
-        sector="Software",
-        industry="Software",
-        extra={"untouched": True},
-        phone="synthetic-private-value",
-    )
+    row = {
+        "name": "Example",
+        "desc": "Concrete product detail",
+        "website": "www.example.com/product?q=1",
+        "label": "01/2024",
+        "creation_year": "2020",
+        "founders": [" Example Person "],
+        "sector": "Software",
+        "industry": "Software",
+        "extra": {"untouched": True},
+        "phone": "synthetic-private-value",
+    }
     return row | changes
 
 
@@ -334,7 +335,7 @@ class PipelineTests(IsolatedAsyncioTestCase):
         )
 
     async def test_foreign_keys_reject_orphan_source_row(self):
-        with self.assertRaises(Exception):
+        with self.assertRaises(turso.Error):
             await self.db.preserve_rows("missing-snapshot", [{}])
         self.assertEqual((await self.db.table_page("source_rows")).rows, [])
 

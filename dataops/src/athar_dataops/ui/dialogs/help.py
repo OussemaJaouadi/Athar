@@ -1,5 +1,7 @@
 """Help dialog with structured shortcut reference."""
 
+from typing import ClassVar
+
 from rich import box
 from rich.table import Table
 from textual import on
@@ -14,7 +16,7 @@ from athar_dataops.themes import DARK, LIGHT
 class HelpScreen(ModalScreen):
     """Keyboard shortcuts and workspace usage guide."""
 
-    BINDINGS = [
+    BINDINGS: ClassVar[list[tuple[str, str, str]]] = [
         ("escape", "dismiss", "Close"),
         ("f1", "dismiss", "Close"),
         ("q", "dismiss", "Close"),

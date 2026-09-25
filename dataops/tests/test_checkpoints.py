@@ -255,6 +255,19 @@ class CheckpointTests(IsolatedAsyncioTestCase):
                 app.query_one("#checkpoint-prepare", Button).disabled
             )
             self.assertFalse(app.query_one("#checkpoint-fetch", Button).disabled)
+            from textual.css.query import NoMatches
+            from textual.widgets import Select
+
+            with self.assertRaises(NoMatches):
+                app.query_one("#checkpoint-profile", Select)
+            pane = app.query_one(CheckpointsPane)
+            self.assertFalse(pane.busy)
+            await self._press(pilot, "#checkpoint-fetch")
+            await self.wait_until(pilot, lambda: not pane.busy)
+            self.assertNotIn(
+                "Traceback",
+                render_text(app.query_one("#checkpoint-status", Static).render()),
+            )
 
     async def test_checkpoints_has_two_probes_and_no_tbd_card(self):
         from textual.css.query import NoMatches

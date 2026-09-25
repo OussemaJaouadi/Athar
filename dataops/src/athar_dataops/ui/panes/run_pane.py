@@ -1,8 +1,11 @@
 """Collect/clean controls, step inspection, session metrics, and stored summaries."""
 
 import asyncio
+from contextlib import suppress
 from time import monotonic
 
+import httpx
+import turso
 from textual import on
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.css.query import NoMatches
@@ -32,13 +35,23 @@ CLEAN_STEPS = [
     ("reconcile", "Reconcile corpus & commit"),
 ]
 PREPARE_STEPS = [("load", "Load descriptions"), ("prepare", "Prepare text")]
-_STEP_TITLES = dict(COLLECT_STEPS + CLEAN_STEPS + PREPARE_STEPS)
-_STEP_TITLES.update(
-    collect="Collect registry",
-    save="Save records",
-    commit="Commit run",
-    parse="Parse source",
-)
+
+
+def _build_step_titles() -> dict[str, str]:
+    """Unique fallback titles; operation-specific titles live on the active step list."""
+    titles: dict[str, str] = {}
+    for name, title in (*COLLECT_STEPS, *CLEAN_STEPS, *PREPARE_STEPS):
+        titles.setdefault(name, title)
+    titles.update(
+        collect="Collect registry",
+        save="Save records",
+        commit="Commit run",
+        parse="Parse source",
+    )
+    return titles
+
+
+_STEP_TITLES = _build_step_titles()
 
 
 class RunPane(VerticalScroll):
@@ -70,6 +83,7 @@ class RunPane(VerticalScroll):
         self._terminal_text: str | None = None
         self._prepare_preview: dict | None = None
         self._prepare_confirming = False
+        self._active_step_titles: dict[str, str] = dict(COLLECT_STEPS)
 
     def _timeline(self) -> RunTimeline:
         return self.query_one(RunTimeline)
@@ -87,38 +101,37 @@ class RunPane(VerticalScroll):
             with VerticalScroll(id="run-operations"):
                 yield Label("Operations", classes="heading")
                 yield Static("Choose an operation, then inspect its result in the activity panel.", classes="muted")
-                with Horizontal(classes="actions run-primary-actions"):
+                with Horizontal(classes="actions", id="run-primary-actions"):
                     yield Button("Collect registry", id="run-pipeline", variant="primary")
                     yield Button("Clean stored data", id="clean-pipeline")
-                with Horizontal(classes="actions run-impact-actions"):
+                with Horizontal(classes="actions", id="run-impact-actions"):
                     yield Button("Prepare all", id="prepare-pipeline", classes="impact", disabled=not self._orchestrator.preparation_available)
                     yield Button("Cancel", id="cancel-pipeline", disabled=True)
-                with Horizontal(classes="actions run-secondary-actions"):
-                    yield Button("Open Records", id="view-records")
-                    yield Button("Open History", id="view-history")
                 yield Label("Groq provider", classes="section-label")
                 yield Static("Loading profile information…", id="run-profiles-summary", classes="muted")
             with VerticalScroll(id="run-context"):
-                yield Label("Current run", classes="heading")
-                yield Static("Ready", id="run-status", markup=False)
+                with Horizontal(id="run-context-header"):
+                    yield Label("Current run", classes="heading")
+                    yield Button("Open Records", id="view-records")
+                    yield Button("Open History", id="view-history")
                 with Horizontal(classes="run-statusbar"):
+                    yield Static("Ready", id="run-status", markup=False)
                     yield Static("", id="run-elapsed", classes="muted", markup=False)
-                    yield Static("", id="run-counters", classes="muted", markup=False)
-                yield Static("", id="run-resources", classes="muted", markup=False)
+                with Horizontal(id="run-meta"):
+                    yield Static("", id="run-counters", markup=False)
+                    yield Static("", id="run-resources", classes="muted", markup=False)
                 with Vertical(id="prepare-preview"):
                     yield Static("Select Prepare all to review the work before any model call.", id="prepare-preview-body", classes="muted")
                     with Horizontal(classes="actions"):
                         yield Button("Confirm Prepare all", id="prepare-confirm", variant="primary", disabled=True)
                         yield Button("Cancel preview", id="prepare-cancel")
+                yield RunTimeline(id="run-timeline")
                 with Collapsible(title="Activity & step details", collapsed=True, id="run-activity"):
-                    yield RunTimeline(id="run-timeline")
                     yield Static("All steps", id="run-log-title", classes="muted", markup=False)
                     yield LogView(id="run-log")
 
     def on_mount(self) -> None:
         self.query_one("#cancel-pipeline").display = False
-        self.query_one("#view-records").display = False
-        self.query_one("#view-history").display = False
         self.query_one("#run-activity").display = False
         self.query_one("#prepare-preview").display = False
         self.query_one("#run-profiles-summary").display = True
@@ -131,7 +144,7 @@ class RunPane(VerticalScroll):
     async def _load_profile_summary(self) -> None:
         try:
             rows = await self._database.profile_overview() if self._database else []
-        except Exception:
+        except (turso.Error, RuntimeError, LookupError):
             rows = []
         configured = {
             entry["name"]: entry for entry in self._orchestrator.preparation_profiles
@@ -150,7 +163,6 @@ class RunPane(VerticalScroll):
                 summary += f" · {', '.join(names)}"
             else:
                 summary += f" · {names[0]}, {names[1]} …"
-            summary += "\nProvider usage and safeguards are in Settings"
         self.query_one("#run-profiles-summary", Static).update(summary)
 
     async def _update_stats(self) -> None:
@@ -167,12 +179,15 @@ class RunPane(VerticalScroll):
             self._set_collection_status(
                 "running" if self.collecting else stats["status"]
             )
-        except Exception as exc:
-            for key in ("entities", "snapshots"):
-                self.query_one(f"#stat-{key}", MetricCard).set_value("—", "Unavailable")
-            self.query_one("#stat-status", MetricCard).set_value(
-                "UNKNOWN", "Could not read last run"
-            )
+        except (turso.Error, RuntimeError, ValueError, LookupError, NoMatches) as exc:
+            with suppress(NoMatches):
+                for key in ("entities", "snapshots"):
+                    self.query_one(f"#stat-{key}", MetricCard).set_value(
+                        "—", "Unavailable"
+                    )
+                self.query_one("#stat-status", MetricCard).set_value(
+                    "UNKNOWN", "Could not read last run"
+                )
             self.app.log_workspace_event(
                 f"Could not load collection summary: {exc}", "error"
             )
@@ -199,7 +214,7 @@ class RunPane(VerticalScroll):
     async def _load_prepare_preview(self) -> None:
         try:
             preview_data = await self._orchestrator.preparation_preview()
-        except Exception as exc:
+        except (RuntimeError, ValueError, LookupError, turso.Error) as exc:
             self._set_status(f"Could not load preparation preview: {exc}", "error")
             return
         self._prepare_preview = preview_data
@@ -251,7 +266,6 @@ class RunPane(VerticalScroll):
         self._terminal_status = None
         self._terminal_text = None
         self._set_running(True)
-        self.query_one("#view-records").display = False
         self.query_one("#run-activity").display = True
         self.query_one("#run-activity", Collapsible).collapsed = False
         self._stage_logs = {"all": []}
@@ -260,7 +274,11 @@ class RunPane(VerticalScroll):
         self._running_stage = None
         self._viewing_run_id = self._run_id = None
         self._flow_start = monotonic()
-        self._timeline().set_steps(PREPARE_STEPS if preparing else CLEAN_STEPS if cleaning else COLLECT_STEPS)
+        steps = (
+            PREPARE_STEPS if preparing else CLEAN_STEPS if cleaning else COLLECT_STEPS
+        )
+        self._active_step_titles = dict(steps)
+        self._timeline().set_steps(steps)
         self._render_log("all")
         self.query_one("#run-counters", Static).update("")
         self.query_one("#run-resources", Static).update("App process · CPU — · RSS —")
@@ -345,11 +363,12 @@ class RunPane(VerticalScroll):
         status.set_classes(state)
 
     def _render_log(self, step_name: str) -> None:
-        title = (
-            "All steps"
-            if step_name == "all"
-            else _STEP_TITLES.get(step_name, step_name)
-        )
+        if step_name == "all":
+            title = "All steps"
+        else:
+            title = self._active_step_titles.get(
+                step_name, _STEP_TITLES.get(step_name, step_name)
+            )
         if self._viewing_run_id:
             title += " · stored summary"
         self.query_one("#run-log-title", Static).update(title)
@@ -457,7 +476,6 @@ class RunPane(VerticalScroll):
                     f"COMPLETED · {summary}", "success"
                 )
                 self.query_one("#run-counters", Static).update(summary)
-                self.query_one("#view-records").display = True
                 self.post_message(self.CollectionFinished())
             else:
                 self._failed(result.error or f"{mode} failed", mode)
@@ -470,7 +488,7 @@ class RunPane(VerticalScroll):
             except NoMatches:
                 pass
             raise
-        except Exception as exc:
+        except (httpx.HTTPError, OSError, RuntimeError, ValueError, TypeError, LookupError, NoMatches, turso.Error) as exc:
             self._failed(str(exc), mode)
         finally:
             self._timer.pause()
@@ -483,7 +501,7 @@ class RunPane(VerticalScroll):
                     if cancel_focused:
                         target = (
                             "#view-records"
-                            if self.query_one("#view-records").display
+                            if self._terminal_status == "completed"
                             else "#run-pipeline"
                         )
                         self.query_one(target, Button).focus()

@@ -1,7 +1,10 @@
 """Company details first; original evidence and identifiers expand on demand."""
 
 import asyncio
+from contextlib import suppress
+from typing import ClassVar
 
+import turso
 from rich import box
 from rich.markup import escape
 from rich.table import Table
@@ -28,7 +31,7 @@ from athar_dataops.ui.widgets.badges import review_badge, review_chip
 
 
 class InspectPane(Vertical):
-    BINDINGS = [
+    BINDINGS: ClassVar[list[Binding]] = [
         Binding("slash", "focus_search", "Search", show=False),
         Binding("s", "toggle_source", "Source", show=False),
         Binding("e", "toggle_source", "Evidence", show=False),
@@ -52,21 +55,17 @@ class InspectPane(Vertical):
         self._offset = 0
 
     def action_focus_search(self) -> None:
-        try:
+        with suppress(Exception):
             self.query_one("#records-search", Input).focus()
-        except Exception:
-            pass
 
     def action_toggle_source(self) -> None:
         if isinstance(self.app.focused, Input):
             return
-        try:
+        with suppress(Exception):
             col = self.query_one("#source-disclosure", Collapsible)
             col.collapsed = not col.collapsed
             if not col.collapsed:
                 col.scroll_visible()
-        except Exception:
-            pass
 
     def action_prev_page(self) -> None:
         if isinstance(self.app.focused, Input):
@@ -156,7 +155,7 @@ class InspectPane(Vertical):
         error = None
         try:
             page = await self._db.record_page(self._search_query, self._offset)
-        except Exception as exc:
+        except (turso.Error, RuntimeError, ValueError, LookupError) as exc:
             error = exc
         # An earlier search may finish later. Only the newest request may change the view.
         async with self._render_lock:

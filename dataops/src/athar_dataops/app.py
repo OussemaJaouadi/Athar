@@ -1,5 +1,8 @@
 """Athar's DataOps TUI application shell."""
 
+from contextlib import suppress
+from typing import ClassVar
+
 from textual import on
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -64,9 +67,9 @@ class DataOpsApp(App[None]):
     CSS_PATH = "app.tcss"
     ENABLE_COMMAND_PALETTE = False
 
-    PANES = ["run", "inspect", "history", "database", "logs", "probes", "settings"]
+    PANES: ClassVar[list[str]] = ["run", "inspect", "history", "database", "logs", "probes", "settings"]
 
-    BINDINGS = [
+    BINDINGS: ClassVar[list[Binding]] = [
         Binding("1", "navigate('run')", "Collect", priority=False),
         Binding("2", "navigate('inspect')", "Records", priority=False),
         Binding("3", "navigate('history')", "History", priority=False),
@@ -155,7 +158,7 @@ class DataOpsApp(App[None]):
             with TabPane("History", id="history"):
                 yield HistoryPane(self._database)
             with TabPane("Database", id="database"):
-                yield DatabasePane(self._database)
+                yield DatabasePane(self._database, orchestrator=self._orchestrator)
             with TabPane("Logs", id="logs"):
                 yield LogsPane()
             with TabPane("Probes", id="probes"):
@@ -208,19 +211,20 @@ class DataOpsApp(App[None]):
         status.update(text)
         status.set_classes(state)
 
+    def is_operation_running(self) -> bool:
+        return self._orchestrator.running
+
     def action_toggle_source(self) -> None:
         if isinstance(self.focused, Input):
             return
         ws = self.query_one("#workspace", TabbedContent)
         if ws.active != "inspect":
             self.action_navigate("inspect")
-        try:
+        with suppress(Exception):
             col = self.query_one("#source-disclosure", Collapsible)
             col.collapsed = not col.collapsed
             if not col.collapsed:
                 col.scroll_visible()
-        except Exception:
-            pass
 
     def action_prev_page(self) -> None:
         if isinstance(self.focused, Input):
@@ -228,15 +232,11 @@ class DataOpsApp(App[None]):
         tabbed = self.query_one("#workspace", TabbedContent)
         active = tabbed.active
         if active == "inspect":
-            try:
+            with suppress(Exception):
                 self.query_one(InspectPane).action_prev_page()
-            except Exception:
-                pass
         elif active == "database":
-            try:
+            with suppress(Exception):
                 self.query_one(DatabasePane).action_prev_page()
-            except Exception:
-                pass
 
     def action_next_page(self) -> None:
         if isinstance(self.focused, Input):
@@ -244,22 +244,16 @@ class DataOpsApp(App[None]):
         tabbed = self.query_one("#workspace", TabbedContent)
         active = tabbed.active
         if active == "inspect":
-            try:
+            with suppress(Exception):
                 self.query_one(InspectPane).action_next_page()
-            except Exception:
-                pass
         elif active == "database":
-            try:
+            with suppress(Exception):
                 self.query_one(DatabasePane).action_next_page()
-            except Exception:
-                pass
 
     def action_navigation(self) -> None:
         if len(self.screen_stack) == 1:
-            try:
+            with suppress(Exception):
                 self.query_one(Tabs).focus()
-            except Exception:
-                pass
 
     def action_help(self) -> None:
         if isinstance(self.screen, HelpScreen):
@@ -280,38 +274,24 @@ class DataOpsApp(App[None]):
 
     def set_appearance(self, theme: str) -> None:
         self.theme = theme
-        try:
+        with suppress(Exception):
             self.query_one("#theme-picker", Select).value = theme
-        except Exception:
-            pass
         self.log_workspace_event(f"Appearance theme switched to '{theme}'", "info")
-        try:
+        with suppress(Exception):
             self.query_one(LogsPane).on_theme_changed()
-        except Exception:
-            pass
-        try:
+        with suppress(Exception):
             self.query_one(InspectPane).on_theme_changed()
-        except Exception:
-            pass
         self.query_one(DatabasePane).on_theme_changed()
-        try:
+        with suppress(Exception):
             self.query_one(RunPane).on_theme_changed()
-        except Exception:
-            pass
-        try:
+        with suppress(Exception):
             self.query_one(CheckpointsPane).on_theme_changed()
-        except Exception:
-            pass
-        try:
+        with suppress(Exception):
             self.query_one(SettingsPane).on_theme_changed()
-        except Exception:
-            pass
 
     def log_workspace_event(self, message: str, level: str = "info") -> None:
-        try:
+        with suppress(Exception):
             self.query_one(LogsPane).log_entry(message, level)
-        except Exception:
-            pass
 
     def focus_pane(self) -> None:
         pane = self.query_one("#workspace", TabbedContent).active
@@ -337,10 +317,8 @@ class DataOpsApp(App[None]):
             "settings": "#theme-picker",
         }
         if pane in selectors:
-            try:
+            with suppress(Exception):
                 self.query_one(selectors[pane]).focus()
-            except Exception:
-                pass
 
     @on(RunPane.CollectionFinished)
     async def collection_finished(self) -> None:

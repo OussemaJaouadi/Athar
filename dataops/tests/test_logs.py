@@ -24,7 +24,7 @@ class LogsTestApp(App[None]):
 class LogsPaneTests(IsolatedAsyncioTestCase):
     async def test_log_entry_formatting(self):
         app = LogsTestApp()
-        async with app.run_test() as pilot:
+        async with app.run_test():
             pane = app.query_one(LogsPane)
             pane.clear_logs()
 
@@ -114,7 +114,7 @@ class LogsPaneTests(IsolatedAsyncioTestCase):
 
     async def test_light_mode_rebuild(self):
         app = LogsTestApp()
-        async with app.run_test() as pilot:
+        async with app.run_test():
             pane = app.query_one(LogsPane)
             pane.clear_logs()
             pane.log_entry("Sample info log", "info")

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from contextlib import suppress
+from typing import ClassVar
+
 from rich.text import Text
 from textual import events, on
 from textual.app import ComposeResult
@@ -27,7 +30,7 @@ class LogsPane(Vertical):
         "clear-logs",
     )
 
-    BINDINGS = [
+    BINDINGS: ClassVar[list[Binding]] = [
         Binding("slash", "focus_search", "Search Logs", show=False),
         Binding("ctrl+f", "focus_search", "Search Logs", show=False),
         Binding("ctrl+l", "clear_console", "Clear", show=False),
@@ -40,103 +43,8 @@ class LogsPane(Vertical):
         height: 1fr;
     }
 
-    #logs-split {
-        height: 1fr;
-    }
-
-    #logs-rail {
-        width: 28;
-        background: $surface;
-        border: round $control-line;
-        padding: 1;
-        margin-right: 1;
-        height: 1fr;
-    }
-
-    #logs-rail:focus-within {
-        border: round $link-ink;
-    }
-
-    #logs-rail-title {
-        text-style: bold;
-        color: $link-ink;
-        margin-bottom: 0;
-    }
-
-    #logs-rail-subtitle {
-        color: $muted;
-        margin-bottom: 1;
-    }
-
-    .rail-section {
-        color: $muted;
-        text-style: bold;
-        margin-top: 1;
-        margin-bottom: 0;
-        padding: 0 1;
-    }
-
-    #logs-rail Button {
-        width: 100%;
-        min-width: 100%;
-        height: 1;
-        margin-bottom: 0;
-        border: none;
-        background: transparent;
-        color: $muted;
-        text-align: left;
-        padding: 0 1;
-    }
-
-    #logs-rail Button:hover {
-        background: $block-hover-background;
-        color: $foreground;
-        text-style: none;
-    }
-
-    #logs-rail Button:focus {
-        background: $selection;
-        color: $link-ink;
-        text-style: bold;
-    }
-
-    #logs-rail Button.-active {
-        background: $selection;
-        color: $link-ink;
-        text-style: bold;
-        border-left: thick $link-ink;
-    }
-
     #clear-logs:hover {
         color: $error;
-    }
-
-    #logs-stream {
-        width: 1fr;
-        height: 1fr;
-    }
-
-    #logs-search {
-        height: 3;
-        border: round $control-line;
-        background: $panel;
-        padding: 0 1;
-        margin-bottom: 1;
-    }
-
-    #logs-search:focus {
-        border: round $link-ink;
-    }
-
-    #logs-console {
-        height: 1fr;
-        background: $surface;
-        border: round $control-line;
-        padding: 1;
-    }
-
-    #logs-console:focus {
-        border: round $link-ink;
     }
 
     .compact #logs-rail {
@@ -215,14 +123,12 @@ class LogsPane(Vertical):
             index = 0 if delta > 0 else len(self.RAIL_BUTTONS) - 1
         else:
             index = (index + delta) % len(self.RAIL_BUTTONS)
-        try:
+        with suppress(Exception):
             self.query_one(f"#{self.RAIL_BUTTONS[index]}", Button).focus()
-        except Exception:  # noqa: S110, BLE001 - rail buttons are static; never break the pane
-            pass
 
     def on_key(self, event: events.Key) -> None:
         if event.key == "escape":
-            try:
+            with suppress(Exception):
                 search_input = self.query_one("#logs-search", Input)
                 if search_input.has_focus:
                     event.prevent_default()
@@ -231,8 +137,6 @@ class LogsPane(Vertical):
                         search_input.value = ""
                     else:
                         self.query_one("#logs-console", RichLog).focus()
-            except Exception:
-                pass
 
     @on(Input.Submitted, "#logs-search")
     def on_search_submitted(self) -> None:
@@ -259,14 +163,12 @@ class LogsPane(Vertical):
         if self._current_filter != "all" and entry.level != self._current_filter:
             return False
         searchable = f"{entry.message} {entry.step or ''} {entry.run_id or ''} {entry.status or ''}"
-        if self._search_query and self._search_query not in searchable.lower():
-            return False
-        return True
+        return not (self._search_query and self._search_query not in searchable.lower())
 
     def _is_dark(self) -> bool:
         try:
             return getattr(self.app, "theme", "athar-dark") != "athar-light"
-        except Exception:
+        except RuntimeError:
             return True
 
     def on_theme_changed(self) -> None:
@@ -285,7 +187,7 @@ class LogsPane(Vertical):
         warnings = sum(1 for e in self._entries if e.level == "warning")
         errors = sum(1 for e in self._entries if e.level == "error")
 
-        try:
+        with suppress(Exception):
             palette = DARK if self._is_dark() else LIGHT
             self.query_one("#filter-all", Button).label = self._rail_label(
                 "all", total, palette
@@ -313,8 +215,6 @@ class LogsPane(Vertical):
             empty.update(
                 "No log entries yet." if not total else "No matching log entries. Clear the search or choose another filter."
             )
-        except Exception:
-            pass
 
     def _rail_label(self, level: str, count: int, palette) -> Text:
         """Keep the label unstyled so the active button owns its contrast pair."""
@@ -326,14 +226,12 @@ class LogsPane(Vertical):
         return label
 
     def _rebuild_console(self) -> None:
-        try:
+        with suppress(Exception):
             log_widget = self.query_one("#logs-console", RichLog)
             log_widget.clear()
             for entry in self._entries:
                 if self._matches_current_filter(entry):
                     self._write_entry(entry)
-        except Exception:
-            pass
 
     @on(Button.Pressed, "#filter-all")
     @on(Button.Pressed, "#filter-stage")
@@ -350,12 +248,10 @@ class LogsPane(Vertical):
         }
         self._current_filter = mapping.get(event.button.id, "all")
         for btn_id in mapping:
-            try:
+            with suppress(Exception):
                 self.query_one(f"#{btn_id}", Button).set_class(
                     btn_id == event.button.id, "-active"
                 )
-            except Exception:
-                pass
         self._rebuild_console()
 
     @on(Input.Changed, "#logs-search")
@@ -370,18 +266,14 @@ class LogsPane(Vertical):
 
     def _toggle_auto_scroll(self) -> None:
         self._auto_scroll = not self._auto_scroll
-        try:
+        with suppress(Exception):
             btn = self.query_one("#toggle-scroll", Button)
             btn.label = f"Auto-scroll: {'ON' if self._auto_scroll else 'OFF'}"
             self.query_one("#logs-console", RichLog).auto_scroll = self._auto_scroll
-        except Exception:
-            pass
 
     @on(Button.Pressed, "#clear-logs")
     def clear_logs(self) -> None:
         self._entries.clear()
-        try:
+        with suppress(Exception):
             self.query_one("#logs-console", RichLog).clear()
             self._update_stats_bar()
-        except Exception:
-            pass

@@ -170,6 +170,7 @@ class PreparationTests(IsolatedAsyncioTestCase):
     async def test_prepare_requires_confirmation_before_model_calls(self):
         from test_smoke import render_text
         from textual.widgets import Static
+
         from athar_dataops.app import DataOpsApp
 
         app = DataOpsApp(self.pipeline, self.db, self.config)

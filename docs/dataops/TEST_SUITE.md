@@ -1,5 +1,25 @@
 # DataOps test suite
 
+## Commands
+
+From `dataops/`:
+
+```sh
+uvx ruff check src tests --no-cache                # lint, one line per error
+uvx ruff check src tests --no-cache --statistics   # counts per rule
+uvx ruff check src tests --no-cache --fix          # auto-fix what is fixable
+uv run python -m unittest discover -s tests        # full suite (95 tests)
+uv run python -m unittest discover -s tests -p 'test_checkpoints.py'   # one file
+uv run python -m unittest discover -s tests -p 'test_checkpoints.py' -k wipe_ui   # one test
+```
+
+From the repo root:
+
+```sh
+uvx ruff check dataops/src dataops/tests --no-cache
+uv run --project dataops python -m unittest discover -s dataops/tests
+```
+
 - Uses standard-library `unittest`; asynchronous cases use isolated event loops.
 - Pipeline/workspace tests use temporary Turso databases and mocked HTTP responses.
 - No live registry or model calls; fixtures close clients/connections and remove temporary files.
@@ -35,6 +55,7 @@
 
 - Normal Probes tab reflects read-only record and prepare probes, validates results, and confirms no database writes.
 - Probe inputs are disabled during requests; result labels and clear actions are available; completion requires profiles.
+- Record probe runs with no Groq profiles configured (default install) without crashing; prepare stays disabled.
 
 ### `test_preparation.py`
 

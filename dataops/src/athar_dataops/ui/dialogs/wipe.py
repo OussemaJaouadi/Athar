@@ -1,5 +1,7 @@
 """Confirmation for wiping workspace data; schema and migrations are kept."""
 
+from typing import ClassVar
+
 from textual import on
 from textual.app import ComposeResult
 from textual.containers import Horizontal, VerticalScroll
@@ -10,7 +12,7 @@ from textual.widgets import Button, Label, Static
 class WipeConfirmScreen(ModalScreen[bool]):
     """Explicit confirmation before a destructive, irreversible wipe."""
 
-    BINDINGS = [
+    BINDINGS: ClassVar[list[tuple[str, str, str]]] = [
         ("escape", "dismiss", "Close"),
         ("q", "dismiss", "Close"),
         ("enter", "dismiss", "Close"),

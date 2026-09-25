@@ -35,6 +35,10 @@ class PipelineOrchestrator:
         self._preparation = preparation
 
     @property
+    def running(self) -> bool:
+        return self._running
+
+    @property
     def preparation_available(self) -> bool:
         return self._preparation is not None and self._preparation.available
 
@@ -119,7 +123,7 @@ class PipelineOrchestrator:
                 stored = await self._db.get_snapshot(snapshot_id)
                 rows = json.loads(stored.raw_content)
                 if not isinstance(rows, list):
-                    raise ValueError(
+                    raise TypeError(
                         "Registry response must be a JSON array; source bytes retained"
                     )
                 row_ids = await self._db.preserve_rows(snapshot_id, rows)

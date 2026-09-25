@@ -4,12 +4,15 @@ from __future__ import annotations
 
 from datetime import datetime
 
+import turso
+from rich.markup import escape
 from textual import on
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.widgets import Button, Input, Label, ListItem, ListView, Static
 
 from athar_dataops.services.database import DatabaseService
+from athar_dataops.themes import DARK, LIGHT
 
 
 class HistoryPane(Vertical):
@@ -39,7 +42,12 @@ class HistoryPane(Vertical):
                 yield Label("RUNS", classes="section-label")
                 yield ListView(id="history-list")
             with VerticalScroll(id="history-detail"):
-                yield Label("No run selected", id="history-detail-title", classes="heading")
+                with Horizontal(id="history-detail-head"):
+                    yield Label("No run selected", id="history-detail-title", classes="heading")
+                    status = Static("", id="history-run-status", markup=False)
+                    status.set_classes("chip")
+                    status.display = False
+                    yield status
                 yield Static(
                     "Select a run to inspect its outcome and step details.",
                     id="history-detail-body",
@@ -56,7 +64,7 @@ class HistoryPane(Vertical):
         self._set_status("Loading…", "warning")
         try:
             runs = await self._database.list_recent_runs(limit=50)
-        except Exception as exc:
+        except (turso.Error, RuntimeError) as exc:
             self._set_status("Unavailable", "error")
             self.query_one("#history-detail-body", Static).update(
                 f"Could not load run history: {exc}\n\nPress Refresh to try again."
@@ -154,44 +162,84 @@ class HistoryPane(Vertical):
     async def _show_run(self, run_id: str) -> None:
         self._set_status("Loading run…", "warning")
         try:
-            run = await self._database.get_run(run_id)
+            run = await self._database.get_run_row(run_id)
             steps = await self._database.get_run_steps(run_id)
-        except Exception as exc:
+        except (turso.Error, RuntimeError) as exc:
             self._set_status("Unavailable", "error")
             self.query_one("#history-detail-body", Static).update(
-                f"Could not load run {run_id[:8]}: {exc}"
+                f"Could not load run {escape(run_id[:8])}: {escape(str(exc))}"
+            )
+            return
+        if run is None:
+            self._set_status("Unavailable", "error")
+            self.query_one("#history-detail-body", Static).update(
+                f"Run {escape(run_id[:8])} was not found."
             )
             return
         self._set_status("Loaded", "success")
+        operation = str(run.get("operation") or "unknown").replace("_", " ").title()
         self.query_one("#history-detail-title", Label).update(
-            f"Run {run_id[:8]} · {run.operation.replace('_', ' ').title()}"
+            escape(f"Run {run_id[:8]} · {operation}")
         )
+        pal = DARK if self._is_dark() else LIGHT
+        status = str(run.get("status") or "unknown")
+        outcome_color = {
+            "completed": pal.success,
+            "failed": pal.error,
+            "running": pal.warning,
+        }.get(status, pal.warning)
+        chip = self.query_one("#history-run-status", Static)
+        chip.update(escape(status))
+        chip.set_classes(f"chip {_CHIP_CLASSES.get(status, '')}".strip())
+        chip.display = True
         lines = [
-            f"Outcome: {run.status}",
-            f"Started: Unknown time",
-            f"Records: {run.records_processed}",
-            f"Review items: {run.review_count}",
-            f"Snapshot: {run.snapshot_id or 'None'}",
-            f"Error: {run.error or 'None'}",
-            "",
-            "Steps",
+            f"Outcome: [bold {outcome_color}]{escape(status)}[/]",
+            f"Started: {_short_time(run.get('started_at'))}",
+            f"Completed: {_short_time(run.get('completed_at'))}",
+            (
+                f"[dim]Records: {run.get('records_processed', 0)} · "
+                f"Review items: {run.get('review_count', 0)}[/]"
+            ),
+            f"[dim]Snapshot: {escape(str(run.get('snapshot_id') or 'None'))}[/]",
         ]
+        error = run.get("error")
+        if error:
+            lines.append(f"[bold {pal.error}]Error: {escape(str(error))}[/]")
+        lines.extend(["", "[dim]──── Steps ────[/dim]"])
+        step_colors = {
+            "completed": pal.success,
+            "failed": pal.error,
+            "running": pal.warning,
+        }
+        step_glyphs = {"completed": "✓", "failed": "✗", "running": "●"}
         for index, step in enumerate(steps, 1):
             duration = _duration(step.get("started_at"), step.get("completed_at"))
+            step_status = str(step.get("status") or "unknown")
+            color = step_colors.get(step_status, pal.variables["muted"])
+            glyph = step_glyphs.get(step_status, "○")
             lines.append(
-                f"{index}. {step['step_name']} · {step['status']} · "
-                f"{step['items_processed']} items · {duration}"
+                f"[{color}]{glyph}[/] {index}. {escape(str(step['step_name']))} · "
+                f"[{color}]{escape(step_status)}[/] · {step['items_processed']} items · {duration}"
             )
             if step.get("message"):
-                lines.append(f"   {step['message']}")
+                lines.append(f"   [dim]{escape(str(step['message']))}[/]")
         if not steps:
-            lines.append("No step details recorded.")
+            lines.append("[dim]No step details recorded.[/dim]")
         self.query_one("#history-detail-body", Static).update("\n".join(lines))
+
+    def _is_dark(self) -> bool:
+        try:
+            return getattr(self.app, "theme", "athar-dark") != "athar-light"
+        except RuntimeError:
+            return True
 
     def _set_status(self, text: str, state: str = "") -> None:
         status = self.query_one("#history-status", Static)
         status.update(text)
         status.set_classes(f"chip {state}" if state else "chip")
+
+
+_CHIP_CLASSES = {"completed": "success", "failed": "error", "running": "warning"}
 
 
 def _timestamp(value: str | None) -> datetime | None:
@@ -204,7 +252,6 @@ def _timestamp(value: str | None) -> datetime | None:
 def _short_time(value: str | None) -> str:
     parsed = _timestamp(value)
     return parsed.strftime("%Y-%m-%d %H:%M") if parsed else "Unknown time"
-
 
 
 def _duration(started: str | None, completed: str | None) -> str:

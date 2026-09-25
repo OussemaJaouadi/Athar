@@ -357,7 +357,7 @@ class DatabaseService:
 
     @staticmethod
     def _name_key(name: str | None) -> str:
-        return " ".join((name or "").casefold().split())
+        return " ".join(unicodedata.normalize("NFC", name or "").casefold().split())
 
     async def reconcile_corpus(
         self,
@@ -550,6 +550,14 @@ class DatabaseService:
                 (run_id,),
             )
         return PipelineRunResult(**rows[0])
+
+    async def get_run_row(self, run_id: str) -> dict[str, Any] | None:
+        async with self._lock:
+            rows = await self._rows(
+                "SELECT id, status, operation, started_at, completed_at, records_processed, review_count, snapshot_id, error FROM pipeline_runs WHERE id=?",
+                (run_id,),
+            )
+        return rows[0] if rows else None
 
     async def get_overview_stats(self) -> dict[str, Any]:
         """Report stored counts and the last collection, never infer system health."""

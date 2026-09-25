@@ -35,6 +35,7 @@ DARK = Theme(
         "block-cursor-background": "#16333B",
         "block-cursor-foreground": "#EEF5F6",
         "block-cursor-text-style": "bold",
+        "block-hover-background": "#16333B",
     },
 )
 LIGHT = Theme(

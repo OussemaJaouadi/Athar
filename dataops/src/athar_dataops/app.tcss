@@ -79,7 +79,7 @@ TabPane {
     margin-bottom: 0;
     margin-right: 1;
     padding: 1 2;
-    overflow: hidden;
+    overflow-y: auto;
 }
 
 #run-workspace {
@@ -111,6 +111,22 @@ TabPane {
 #run-operations:focus-within,
 #run-context:focus-within {
     border: round $link-ink;
+}
+
+#run-context-header {
+    height: 3;
+    align-vertical: middle;
+    margin-bottom: 1;
+}
+
+#run-context-header .heading {
+    width: 1fr;
+    margin: 0;
+}
+
+#run-context-header Button {
+    min-width: 14;
+    margin-left: 1;
 }
 
 #run-primary-actions,
@@ -147,21 +163,6 @@ Screen:light #run-impact-actions Button.impact:disabled {
     text-style: none;
 }
 
-#run-secondary-actions {
-    height: 3;
-    margin-top: 0;
-    margin-bottom: 1;
-}
-
-#run-secondary-actions Button {
-    min-width: 16;
-}
-
-#run-secondary-actions Static {
-    width: 1fr;
-    text-align: right;
-}
-
 #run-profiles-summary {
     padding: 0 1;
     border: round $control-line;
@@ -170,45 +171,11 @@ Screen:light #run-impact-actions Button.impact:disabled {
 }
 
 #run-status {
-    background: $panel;
-    border: round $line;
-    padding: 0 1;
-}
-
-#run-resources {
-    margin-top: 1;
-}
-
-#run-metrics {
-    height: 5;
-    margin-bottom: 1;
-}
-
-#run-body {
-    height: 1fr;
-}
-
-#run-controls-panel {
-    width: 44;
-    background: $surface;
-    border: round $control-line;
-    padding: 1 2;
-    margin-right: 1;
-}
-
-#run-controls-panel:focus-within {
-    border: round $link-ink;
-}
-
-#run-activity-panel {
     width: 1fr;
-    height: 1fr;
-}
-
-#run-status {
-    margin-top: 1;
-    padding: 0 1;
-    height: 1;
+    height: auto;
+    padding: 0;
+    border: none;
+    background: transparent;
     text-style: bold;
 }
 
@@ -216,15 +183,30 @@ Screen:light #run-impact-actions Button.impact:disabled {
 #run-status.error { color: $error; }
 #run-status.warning { color: $warning; }
 
-.run-statusbar {
-    height: 1;
-    margin-top: 1;
+#run-metrics {
+    height: 5;
+    margin-bottom: 1;
 }
 
-.run-statusbar #run-status { margin-top: 0; }
-.run-statusbar #run-elapsed,
-.run-statusbar #run-counters {
-    margin-left: 2;
+.run-statusbar {
+    height: 3;
+    margin-top: 1;
+    align-vertical: middle;
+}
+
+.run-statusbar #run-elapsed {
+    width: auto;
+    text-align: right;
+}
+
+#run-meta {
+    height: 1;
+}
+
+#run-meta #run-counters {
+    width: auto;
+    margin-right: 2;
+    text-style: bold;
 }
 
 #run-log-title {
@@ -306,7 +288,7 @@ Screen:light #run-impact-actions Button.impact:disabled {
 }
 
 #records-list > ListItem.-hovered {
-    background: $boost;
+    background: $block-hover-background;
 }
 
 #records-list > ListItem.-highlight {
@@ -424,24 +406,31 @@ CollapsibleTitle:focus {
     background: $selection;
 }
 
-/* Button & Action Bar Controls */
+/* Button & Action Bar Controls: border matches background (seamless); accent only on focus. */
 Button {
     min-width: 14;
     height: 3;
-    border: round $control-line;
+    border: round $panel;
     background: $panel;
     color: $foreground;
+}
+
+Button:hover {
+    background: $block-hover-background;
+    border: round $block-hover-background;
+    text-style: bold;
 }
 
 Button.-primary {
     background: $action-bg;
     color: $action-fg;
     text-style: bold;
-    border: round $control-line;
+    border: round $action-bg;
 }
 
 Button.-primary:hover {
     background: $action-hover;
+    border: round $action-hover;
 }
 
 Button:focus {
@@ -454,15 +443,16 @@ Button:focus {
 Button.-primary:focus {
     background: $action-bg;
     color: $action-fg;
-    border: double $action-fg;
+    border: round $action-fg;
 }
-Button.-primary:hover:focus { background: $action-hover; }
+Button.-primary:hover:focus { background: $action-hover; border: round $action-fg; }
 
 Button:disabled {
     opacity: 0.5;
     background: $panel;
     color: $muted;
-    border: round $line;
+    border: round $panel;
+    text-style: none;
 }
 
 .actions {
@@ -652,6 +642,7 @@ Button:disabled {
     border: round $line;
     color: $muted;
     padding: 0 2;
+    width: auto;
 }
 
 .chip.success { color: $success; border: round $success; }
@@ -675,7 +666,8 @@ Button:disabled {
 }
 
 #checkpoint-profile-pick {
-    margin-top: 1;
+    margin-top: 0;
+    height: auto;
 }
 
 #checkpoint-profile-pick Input {
@@ -687,7 +679,7 @@ Button:disabled {
 }
 
 #checkpoint-desc {
-    height: 6;
+    height: 4;
     background: $panel;
     border: round $control-line;
     color: $foreground;
@@ -700,7 +692,7 @@ Button:disabled {
 
 #checkpoint-registry-result-header,
 #checkpoint-prepare-result-header {
-    height: 3;
+    height: 2;
     margin-top: 1;
     align-vertical: middle;
 }
@@ -725,9 +717,9 @@ Button:disabled {
 
 #checkpoint-registry-result,
 #checkpoint-prepare-result {
-    height: 1fr;
-    min-height: 0;
-    max-height: 100%;
+    height: auto;
+    min-height: 8;
+    max-height: 20;
     background: $panel;
     border: round $line;
     padding: 0 1;
@@ -735,18 +727,23 @@ Button:disabled {
     overflow-y: auto;
 }
 
-#run-profiles,
 #prepare-preview {
+    height: auto;
     margin-top: 1;
     margin-bottom: 0;
+    padding: 1;
+    border: round $warning;
+    background: $panel;
 }
 
-#run-profiles {
+#prepare-preview #prepare-preview-body {
     height: auto;
+    margin: 0;
 }
 
-#prepare-preview {
-    height: auto;
+#prepare-preview .actions {
+    margin: 1 0 0 0;
+    align-horizontal: right;
 }
 
 #logs-split {
@@ -785,11 +782,10 @@ Button:disabled {
     padding: 0 1;
 }
 
-    #logs-rail Button {
-        width: 100%;
-        min-width: 100%;
-        height: 2;
-
+#logs-rail Button {
+    width: 100%;
+    min-width: 100%;
+    height: 2;
     margin-bottom: 0;
     border: none;
     background: transparent;
@@ -798,9 +794,8 @@ Button:disabled {
     padding: 0 1;
 }
 
-    #logs-rail Button:hover {
-        background: $block-hover-background;
-
+#logs-rail Button:hover {
+    background: $block-hover-background;
     color: $link-ink;
     text-style: bold;
 }
@@ -856,8 +851,8 @@ Button:disabled {
 
 /* History */
 #history-header {
-    height: 6;
-    min-height: 6;
+    height: auto;
+    min-height: 4;
     margin-bottom: 1;
     padding: 1 2;
     background: $surface;
@@ -866,8 +861,8 @@ Button:disabled {
 }
 
 #history-header #history-refresh {
-    min-width: 10;
-    width: 10;
+    min-width: 12;
+    width: 12;
 }
 
 #history-toolbar {
@@ -914,8 +909,8 @@ Button:disabled {
 
 #history-list > ListItem {
     height: auto;
-    min-height: 4;
-    padding: 1 2;
+    min-height: 3;
+    padding: 0 1;
     border-bottom: solid $line;
     color: $foreground;
 }
@@ -951,7 +946,7 @@ Button:disabled {
 }
 
 #history-list > ListItem.-hovered {
-    background: $boost;
+    background: $block-hover-background;
 }
 
 #history-list > ListItem.-highlight {
@@ -976,10 +971,22 @@ Button:disabled {
     padding: 1 2;
 }
 
+#history-detail-head {
+    width: 100%;
+    height: auto;
+    margin-bottom: 1;
+    align-vertical: middle;
+}
+
+#history-detail-title {
+    width: 1fr;
+    margin: 0;
+}
+
 #history-detail-body {
-    padding: 1 2;
-    background: $panel;
-    border: round $line;
+    background: transparent;
+    color: $foreground;
+    padding: 0;
 }
 
 /* Records Search */
@@ -1178,8 +1185,6 @@ Static, Label {
 .compact #checkpoint-prepare-output { height: auto; max-height: 100%; }
 .compact #checkpoint-grid { display: block; height: auto; }
 .compact #checkpoint-grid .probe-card { width: 1fr; height: auto; min-height: 22; margin-right: 0; margin-bottom: 1; }
-.compact #checkpoint-registry-result,
-.compact #checkpoint-prepare-result { height: 12; max-height: 12; }
 .compact #history-rail { width: 34; }
 .compact #masthead { height: 1; padding: 0 1; }
 .compact #settings-config-card { width: 1fr; margin-right: 0; }
@@ -1221,15 +1226,18 @@ Screen:light SelectOverlay, Screen:light DataTable, Screen:light Tree,
 Screen:light Collapsible, Screen:light OptionList, Screen:light TextArea {
     background-tint: transparent; tint: transparent;
 }
-Screen:light Button { background: $surface; color: $foreground; }
-Screen:light Button:hover { background: $block-hover-background; color: $link-ink; border: round $link-ink; }
-Screen:light Button:focus { border: double $link-ink; }
-Screen:light Button.-primary { background: $action-bg; color: $action-fg; }
+Screen:light Button { background: $surface; border: round $surface; color: $foreground; }
+Screen:light Button:hover {
+    background: $block-hover-background; border: round $block-hover-background;
+    color: $link-ink; text-style: bold;
+}
+Screen:light Button:focus { border: round $link-ink; }
+Screen:light Button.-primary { background: $action-bg; border: round $action-bg; color: $action-fg; }
 Screen:light Button.-primary:hover,
-Screen:light Button.-primary.-active { background: $action-hover; color: $action-fg; }
-Screen:light Button.-primary:focus { border: double $action-fg; }
+Screen:light Button.-primary.-active { background: $action-hover; border: round $action-hover; color: $action-fg; }
+Screen:light Button.-primary:focus { border: round $action-fg; }
 Screen:light Button:disabled {
-    background: $panel; color: $muted; border: round $line;
+    background: $panel; color: $muted; border: round $panel;
     opacity: 1; text-opacity: 1; text-style: italic;
 }
 
@@ -1245,14 +1253,10 @@ Screen:light #records-search, Screen:light #logs-search, Screen:light #history-s
 }
 Screen:light #records-search:focus, Screen:light #logs-search:focus,
 Screen:light #history-search:focus { border: double $link-ink; }
-Screen:light #run-status { background: $panel; color: $foreground; }
-Screen:light #run-primary-actions Button { background: $surface; color: $foreground; }
-Screen:light #run-primary-actions Button.-primary { background: $action-bg; color: $action-fg; }
-Screen:light #run-secondary-actions Button { background: $surface; color: $foreground; }
 Screen:light #history-header, Screen:light #history-rail, Screen:light #history-detail {
     background: $surface; color: $foreground;
 }
-Screen:light #history-detail-body { background: $panel; color: $foreground; }
+Screen:light #history-detail-body { background: transparent; color: $foreground; }
 Screen:light #history-list > ListItem { background: $surface; color: $foreground; }
 Screen:light #history-list > ListItem.-hovered { background: $block-hover-background; }
 Screen:light #history-list > ListItem.-highlight { background: $selection; color: $link-ink; }
@@ -1262,15 +1266,13 @@ Screen:light #history-status.warning { color: $warning; }
 Screen:light #history-status.error { color: $error; }
 Screen:light #checkpoint-desc { background: $surface; color: $foreground; }
 Screen:light #checkpoint-desc:focus { border: double $link-ink; }
-Screen:light #checkpoint-header, Screen:light .probe-card, Screen:light #checkpoint-registry-output,
-Screen:light #checkpoint-prepare-output {
+Screen:light #checkpoint-header, Screen:light .probe-card {
     background: $surface; color: $foreground; border: round $control-line;
 }
 Screen:light #checkpoint-registry-output, Screen:light #checkpoint-prepare-output {
     background: $panel;
 }
 Screen:light .chip { background: $panel; color: $muted; border: round $control-line; }
-Screen:light #db-toolbar Button { background: $surface; }
 
 /* Database: explicit zebra, hover, cursor and schema-tree colors. */
 Screen:light #results-table > .datatable--odd-row { background: $surface; color: $foreground; }
@@ -1293,11 +1295,11 @@ Screen:light #logs-console { background: $surface; color: $foreground; }
 Screen:light #logs-console:focus { border: double $link-ink; }
 Screen:light #logs-empty { background: $panel; color: $muted; }
 Screen:light #logs-rail Button { background: $surface; color: $foreground; border: none; text-style: none; }
-Screen:light #logs-rail Button:hover { background: $panel; color: $foreground; text-style: none; }
+Screen:light #logs-rail Button:hover { background: $selection; color: $link-ink; text-style: bold; border: none; }
 Screen:light #logs-rail Button.-active { background: $action-bg; color: $action-fg; border-left: thick $link-ink; text-style: bold; }
 Screen:light #logs-rail Button.-active:hover { background: $action-hover; color: $action-fg; text-style: bold; }
-Screen:light #logs-rail Button:focus { text-style: none; }
-Screen:light #logs-rail Button.-active:focus { background: $action-bg; color: $action-fg; text-style: bold underline; }
+Screen:light #logs-rail Button:focus { background: $selection; color: $link-ink; text-style: bold; border: none; border-left: thick $link-ink; }
+Screen:light #logs-rail Button.-active:focus { background: $action-bg; color: $action-fg; text-style: bold; }
 
 Screen:light #run-impact-actions Button.impact { background: $warning; color: $background; border: round $warning; }
 Screen:light #run-impact-actions Button.impact:hover { background: $warning; color: $background; }

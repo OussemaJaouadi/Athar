@@ -34,7 +34,7 @@ def decode_unicode_escapes(text: str) -> str:
     def _replace(match: re.Match) -> str:
         try:
             return chr(int(match.group(1), 16))
-        except Exception:
+        except (ValueError, OverflowError):
             return match.group(0)
 
     return _UNICODE_ESCAPE_PATTERN.sub(_replace, text)
@@ -77,7 +77,7 @@ def format_arabic(text: str | None) -> str:
             try:
                 reshaped = _reshaper.reshape(line)
                 formatted_lines.append(get_display(reshaped))
-            except Exception:
+            except (KeyError, IndexError, TypeError, ValueError):
                 formatted_lines.append(line)
         else:
             formatted_lines.append(line)

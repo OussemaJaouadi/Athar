@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Records gains an "In review" toggle: one click filters the list to rows with open human review items (same indexed ledger the stats' review count uses), combines with search, and shows `· in review` in the count; the no-match state explains itself honestly.
 - Record search and browse stay bounded in memory: the corpus scan walks matching row numbers in 1000-row keyset batches and record JSON is fetched only for the visible 100 rows, so a large corpus never sits in RAM as one list. Table browsing reuses a cached schema instead of re-running PRAGMAs for every page.
 - The wipe confirmation button is now amber (`$warning`) instead of red; the dialog still reads as destructive via its red border and warning text.
 - Preparation preview and quota state are now typed records (`PreparePreview`, `ProfileQuotaState`, `ProfileOverview` in `schemas/preparation.py`) with one owner per field instead of plain dicts passed through services and panes.

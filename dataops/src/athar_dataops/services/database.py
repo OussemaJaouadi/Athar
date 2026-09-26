@@ -615,11 +615,15 @@ class DatabaseService:
     async def list_records(self, offset: int = 0) -> list[RecordDetail]:
         return (await self.record_page(offset=offset)).records
 
-    async def record_page(self, query: str = "", offset: int = 0) -> RecordPage:
+    async def record_page(
+        self, query: str = "", offset: int = 0, review_only: bool = False
+    ) -> RecordPage:
         """Search the latest completed snapshot, then load at most 100 original rows.
 
         The corpus scan only holds one candidate batch plus matching row numbers
         in memory; record JSON is fetched and validated for the visible page alone.
+        ``review_only`` restricts candidates to rows with open human review items,
+        using the same predicate as the stats' review count.
         """
 
         def search_text(value: str) -> str:
@@ -639,6 +643,17 @@ class DatabaseService:
             if not snapshots:
                 return RecordPage([], 0, 0)
             snapshot_id = snapshots[0]["snapshot_id"]
+            review_sql = (
+                """ AND EXISTS (
+                    SELECT 1 FROM source_rows s
+                    JOIN entity_review_items i ON i.source_row_id = s.id
+                    WHERE s.snapshot_id = normalized_records.snapshot_id
+                        AND s.row_number = normalized_records.row_number
+                        AND s.is_duplicate = 0
+                        AND i.category = 'human' AND i.resolved = 0)"""
+                if review_only
+                else ""
+            )
             unfiltered = (
                 await self._rows(
                     """SELECT COUNT(*) AS n FROM normalized_records
@@ -647,12 +662,24 @@ class DatabaseService:
                 )
             )[0]["n"]
             if not needle:
-                total = unfiltered
+                if review_sql:
+                    total = (
+                        await self._rows(
+                            """SELECT COUNT(*) AS n FROM normalized_records
+                            WHERE snapshot_id=? AND is_duplicate=0"""
+                            + review_sql,
+                            (snapshot_id,),
+                        )
+                    )[0]["n"]
+                else:
+                    total = unfiltered
                 page_numbers = tuple(
                     row["row_number"]
                     for row in await self._rows(
                         """SELECT row_number FROM normalized_records
-                        WHERE snapshot_id=? AND is_duplicate=0
+                        WHERE snapshot_id=? AND is_duplicate=0"""
+                        + review_sql
+                        + """
                         ORDER BY row_number LIMIT 100 OFFSET ?""",
                         (snapshot_id, offset),
                     )
@@ -662,7 +689,7 @@ class DatabaseService:
                 # consistently; SQLite lower() is ASCII-only. Keyset batches walk
                 # the primary key so the scan never holds more than one batch.
                 base = """SELECT row_number, record_json FROM normalized_records
-                    WHERE snapshot_id=? AND is_duplicate=0"""
+                    WHERE snapshot_id=? AND is_duplicate=0""" + review_sql
                 matches: list[int] = []
                 after = None
                 while True:

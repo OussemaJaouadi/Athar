@@ -188,6 +188,35 @@ class PipelineTests(IsolatedAsyncioTestCase):
         self.assertEqual(records[3].original, 42)
         self.assertEqual(len((await self.db.table_page("source_rows")).rows), 4)
 
+    async def test_record_page_review_filter_matches_open_human_items(self):
+        self.body = json.dumps(
+            [
+                registry_row(website="one.example"),
+                registry_row(website="two.example"),
+                registry_row(name="Broken", website="bad host", label="unknown"),
+                42,
+            ]
+        ).encode()
+        result = await self.pipeline.run_pipeline()
+        self.assertEqual(result.status, "completed")
+        self.assertEqual(result.review_count, 2)
+
+        everything = await self.db.record_page()
+        review = await self.db.record_page(review_only=True)
+        self.assertEqual(everything.total, 4)
+        self.assertEqual(review.total, 2)
+        self.assertEqual(review.unfiltered_total, 4)
+        # The filtered total is the same ledger the stats' review count uses.
+        self.assertEqual(review.total, await self.db._review_count(result.snapshot_id))
+        # The filter combines with search: both conflicted rows carry "Example".
+        combined = await self.db.record_page("example", review_only=True)
+        self.assertEqual(combined.total, 2)
+        self.assertEqual(len(combined.records), 2)
+        # Pagination stays inside the filtered set.
+        past = await self.db.record_page("", offset=100, review_only=True)
+        self.assertEqual(past.records, [])
+        self.assertEqual(past.total, 2)
+
     async def test_conflict_with_previous_identity_is_not_merged(self):
         await self.pipeline.run_pipeline()
         self.body = json.dumps([registry_row(website="different.example")]).encode()

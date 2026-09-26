@@ -52,6 +52,7 @@ class InspectPane(Vertical):
         self._records: list[RecordDetail] = []
         self._search_query = ""
         self._search_generation = 0
+        self._review_only = False
         self._render_lock = asyncio.Lock()
         self._offset = 0
 
@@ -99,6 +100,7 @@ class InspectPane(Vertical):
         with Horizontal(classes="split", id="records-content"):
             with Vertical(classes="rail", id="records-rail"):
                 yield Input(placeholder="Search all records…", id="records-search")
+                yield Button("In review", id="records-review-filter")
                 yield Static("", id="records-count", classes="muted")
                 yield ListView(id="records-list")
                 with Horizontal(classes="pager", id="records-pager"):
@@ -155,7 +157,9 @@ class InspectPane(Vertical):
         page = None
         error = None
         try:
-            page = await self._db.record_page(self._search_query, self._offset)
+            page = await self._db.record_page(
+                self._search_query, self._offset, review_only=self._review_only
+            )
         except (turso.Error, RuntimeError, ValueError, LookupError) as exc:
             error = exc
         # An earlier search may finish later. Only the newest request may change the view.
@@ -171,9 +175,23 @@ class InspectPane(Vertical):
             self.query_one("#records-empty").display = not has_corpus
             self.query_one("#records-content").display = has_corpus
             self.query_one("#records-detail").display = bool(self._records)
-            self.query_one("#records-no-match").display = (
-                has_corpus and not self._records
-            )
+            no_match = has_corpus and not self._records
+            self.query_one("#records-no-match").display = no_match
+            if no_match:
+                if self._review_only and not self._search_query.strip():
+                    heading = "No records need review"
+                    hint = "Toggle the filter off to browse every row."
+                elif self._review_only:
+                    heading = "No matches in review"
+                    hint = "Try a different name, sector, or description."
+                else:
+                    heading = "No matches"
+                    hint = "Try a different name, sector, or description."
+                self.query_one("#records-no-match Label", Label).update(heading)
+                self.query_one("#records-no-match Static", Static).update(hint)
+                self.query_one("#clear-record-search").display = bool(
+                    self._search_query.strip()
+                )
             if error is not None:
                 self.query_one("#records-empty Label", Label).update(
                     "Could not load records"
@@ -202,10 +220,11 @@ class InspectPane(Vertical):
                     "#detail-original",
                 ):
                     self.query_one(selector).update("")
+            scope = " · in review" if self._review_only else ""
             count = (
-                f"{self._offset + 1}–{self._offset + len(self._records)} of {page.total}"
+                f"{self._offset + 1}–{self._offset + len(self._records)} of {page.total}{scope}"
                 if self._records
-                else "0 matches"
+                else f"0 matches{scope}"
             )
             self.query_one("#records-count", Static).update(count)
             has_more = self._offset + len(self._records) < page.total
@@ -255,6 +274,12 @@ class InspectPane(Vertical):
         )
         await self.refresh_records(reset=False)
         self.query_one("#records-list", ListView).focus()
+
+    @on(Button.Pressed, "#records-review-filter")
+    async def toggle_review_filter(self, event: Button.Pressed) -> None:
+        self._review_only = not self._review_only
+        event.button.set_class(self._review_only, "in-review")
+        await self.refresh_records()
 
     @on(ListView.Highlighted, "#records-list")
     def highlight_record(self, event: ListView.Highlighted) -> None:

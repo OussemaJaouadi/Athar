@@ -257,11 +257,47 @@ class CheckpointTests(IsolatedAsyncioTestCase):
                 lambda: "authentication" in self._status(app),
             )
             self.assertEqual(
-                (await self.db._rows("SELECT COUNT(*) AS n FROM text_preparations"))[
+                (await self.db._rows("SELECT COUNT(*) AS n FROM source_snapshots"))[
                     0
                 ]["n"],
                 0,
             )
+
+    async def test_records_review_filter_toggles_scope(self):
+        self.registry_rows = [
+            registry_row(website="one.example"),
+            registry_row(website="two.example"),
+            registry_row(name="Beta", website="beta.example"),
+        ]
+        result = await self.pipeline.run_pipeline()
+        self.assertEqual(result.status, "completed")
+        self.assertEqual(result.review_count, 2)
+
+        app = self.app()
+        async with app.run_test(size=(120, 40)) as pilot:
+            await pilot.pause()
+            await pilot.press("2")
+            count = lambda: render_text(
+                app.query_one("#records-count", Static).render()
+            )
+            await self.wait_until(pilot, lambda: "of 3" in count())
+            self.assertEqual(len(app.query_one("#records-list").children), 3)
+
+            await self._press(pilot, "#records-review-filter")
+            await self.wait_until(pilot, lambda: "of 2 · in review" in count())
+            self.assertTrue(
+                app.query_one("#records-review-filter").has_class("in-review")
+            )
+            self.assertEqual(len(app.query_one("#records-list").children), 2)
+
+            await self._press(pilot, "#records-review-filter")
+            await self.wait_until(
+                pilot, lambda: "of 3" in count() and "· in review" not in count()
+            )
+            self.assertFalse(
+                app.query_one("#records-review-filter").has_class("in-review")
+            )
+            self.assertEqual(len(app.query_one("#records-list").children), 3)
 
     async def test_prepare_checkpoint_disabled_without_profiles(self):
         bare = Settings(

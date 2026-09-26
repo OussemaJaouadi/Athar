@@ -269,6 +269,21 @@ Screen:light #run-impact-actions Button.impact:disabled {
     text-align: center;
 }
 
+#records-review-filter {
+    width: 100%;
+    margin-bottom: 1;
+}
+
+#records-review-filter.in-review {
+    background: $warning;
+    color: $background;
+    border: round $warning;
+}
+
+#records-review-filter.in-review:focus {
+    border: round $action-fg;
+}
+
 #records-rail {
     width: 32;
 }

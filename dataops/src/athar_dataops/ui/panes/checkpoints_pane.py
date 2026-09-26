@@ -261,7 +261,7 @@ class CheckpointsPane(VerticalScroll):
         summary = Table(box=box.ROUNDED, expand=True, show_header=False)
         summary.add_column("Property", style=f"bold {pri}", width=18)
         summary.add_column("Value", overflow="fold")
-        summary.add_row("Source", result["url"])
+        summary.add_row("Source", Text(format_arabic(result["url"])))
         summary.add_row("Content hash", result["content_hash"])
         summary.add_row("Total rows", str(result["total_rows"]))
         summary.add_row("Requested row", str(result["requested"]))
@@ -274,19 +274,19 @@ class CheckpointsPane(VerticalScroll):
         )
         fields.add_column("Field", style=f"bold {pri}", width=18)
         fields.add_column("Value", overflow="fold")
-        fields.add_row("Name", format_arabic(record.name or "Unnamed"))
-        fields.add_row("Website", record.website or "Not listed")
-        fields.add_row("Domain", record.domain or "Not listed")
+        fields.add_row("Name", Text(format_arabic(record.name or "Unnamed")))
+        fields.add_row("Website", Text(format_arabic(record.website or "Not listed")))
+        fields.add_row("Domain", Text(format_arabic(record.domain or "Not listed")))
         fields.add_row(
             "Founded",
             str(record.creation_year) if record.creation_year else "Not listed",
         )
-        fields.add_row("Cohort", record.cohort_label or "Not listed")
+        fields.add_row("Cohort", Text(format_arabic(record.cohort_label or "Not listed")))
         fields.add_row(
-            "Founders", format_arabic(", ".join(record.founders) or "Not listed")
+            "Founders", Text(format_arabic(", ".join(record.founders) or "Not listed"))
         )
         fields.add_row(
-            "Description", format_arabic(record.description or "Not provided")
+            "Description", Text(format_arabic(record.description or "Not provided"))
         )
 
         findings = Table(
@@ -300,7 +300,7 @@ class CheckpointsPane(VerticalScroll):
         findings.add_column("Message", overflow="fold")
         if record.review_reasons:
             for issue in record.issues:
-                findings.add_row(issue.category, issue.code, issue.message)
+                findings.add_row(issue.category, issue.code, Text(format_arabic(issue.message)))
         else:
             findings.add_row("clean", "—", "No findings")
 
@@ -416,15 +416,15 @@ class CheckpointsPane(VerticalScroll):
         )
         result.add_column("Field", style=f"bold {pri}", width=18)
         result.add_column("Value", overflow="fold")
-        result.add_row("Detected language", output.detected_language)
-        result.add_row("Cleaned text", format_arabic(output.cleaned_text))
+        result.add_row("Detected language", Text(format_arabic(output.detected_language)))
+        result.add_row("Cleaned text", Text(format_arabic(output.cleaned_text)))
         result.add_row(
             "English translation",
-            format_arabic(output.english_translation or "Already English"),
+            Text(format_arabic(output.english_translation or "Already English")),
         )
         result.add_row(
             "Flagged fluff",
-            format_arabic("\n".join(output.fluff_excerpts) or "None"),
+            Text(format_arabic("\n".join(output.fluff_excerpts) or "None")),
         )
         self.query_one("#checkpoint-prepare-output", Static).update(
             Group(

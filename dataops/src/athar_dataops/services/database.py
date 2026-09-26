@@ -29,8 +29,8 @@ from athar_dataops.schemas.registry import (
 )
 from athar_dataops.services.groq import ProfileStatus
 
-# Superseded migration bytes whose recorded checksum must be re-keyed instead of
-# refused: the DDL is identical, only data preservation inside the migration changed.
+# An already-applied 003 may have run before its review-item copy was added.
+# Accept that exact historical checksum without rewriting what actually ran.
 LEGACY_MIGRATION_CHECKSUMS: dict[int, set[str]] = {
     3: {"c4e73296518f62ee66d42af311f970a30ec3d139d88ec21fbfe2694a206de6ff"},
 }
@@ -122,18 +122,12 @@ class DatabaseService:
                 checksum = hashlib.sha256(
                     known[row["version"]].read_bytes()
                 ).hexdigest()
-                if row["checksum"] != checksum:
-                    if row["checksum"] in LEGACY_MIGRATION_CHECKSUMS.get(
-                        row["version"], set()
-                    ):
-                        await self._execute(
-                            "UPDATE schema_migrations SET checksum=? WHERE version=?",
-                            (checksum, row["version"]),
-                        )
-                    else:
-                        raise RuntimeError(
-                            "Applied migration checksum does not match; no changes made"
-                        )
+                if row["checksum"] != checksum and row["checksum"] not in (
+                    LEGACY_MIGRATION_CHECKSUMS.get(row["version"], set())
+                ):
+                    raise RuntimeError(
+                        "Applied migration checksum does not match; no changes made"
+                    )
             applied_versions = {row["version"] for row in applied}
             await self._execute("PRAGMA foreign_keys = ON")
             for version, path in known.items():
@@ -247,12 +241,7 @@ class DatabaseService:
             if runs:
                 snapshot_id = runs[0]["snapshot_id"]
             else:
-                snapshots = await self._rows(
-                    "SELECT id FROM source_snapshots ORDER BY fetched_at DESC LIMIT 1"
-                )
-                if not snapshots:
-                    raise LookupError("No snapshots found to clean")
-                snapshot_id = snapshots[0]["id"]
+                raise LookupError("No completed collection found to clean")
             rows = await self._rows(
                 "SELECT id, row_number, raw_json FROM source_rows WHERE snapshot_id = ? ORDER BY row_number",
                 (snapshot_id,),
@@ -827,6 +816,8 @@ class DatabaseService:
                 state = "missing"
             elif recorded["checksum"] == checksum:
                 state = "ok"
+            elif recorded["checksum"] in LEGACY_MIGRATION_CHECKSUMS.get(version, set()):
+                state = "legacy"
             else:
                 state = "mismatch"
             status.append(

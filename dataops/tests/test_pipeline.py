@@ -567,7 +567,7 @@ class PipelineTests(IsolatedAsyncioTestCase):
         finally:
             await upgraded.close()
 
-    async def test_superseded_003_checksum_is_rekeyed_not_refused(self):
+    async def test_superseded_003_checksum_stays_visible_as_legacy(self):
         from athar_dataops.services.database import LEGACY_MIGRATION_CHECKSUMS
 
         legacy = next(iter(LEGACY_MIGRATION_CHECKSUMS[3]))
@@ -595,7 +595,12 @@ class PipelineTests(IsolatedAsyncioTestCase):
             rows = [dict(zip(page.columns, row)) for row in page.rows]
             self.assertEqual(
                 next(row for row in rows if row["version"] == 3)["checksum"],
-                packaged,
+                legacy,
+            )
+            status = await reopened.migration_status()
+            self.assertEqual(
+                next(row for row in status if row["version"] == 3)["status"],
+                "legacy",
             )
         finally:
             await reopened.close()
@@ -656,7 +661,17 @@ class PipelineTests(IsolatedAsyncioTestCase):
     async def test_clean_pipeline_reports_missing_snapshot(self):
         result = await self.pipeline.run_clean_pipeline()
         self.assertEqual(result.status, "failed")
-        self.assertIn("No snapshots found", result.error)
+        self.assertIn("No completed collection", result.error)
+
+    async def test_clean_refuses_snapshot_from_failed_first_collection(self):
+        self.body = b"{invalid JSON"
+        collect = await self.pipeline.run_pipeline()
+        self.assertEqual(collect.status, "failed")
+        snapshots = await self.db.table_page("source_snapshots")
+        self.assertEqual(len(snapshots.rows), 1)
+        clean = await self.pipeline.run_clean_pipeline()
+        self.assertEqual(clean.status, "failed")
+        self.assertIn("No completed collection", clean.error)
 
     async def _legacy_corpus(self):
         """Collect a two-company duplicate plus an unrelated row, then erase the

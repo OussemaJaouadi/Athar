@@ -14,6 +14,7 @@ uv run --project dataops athar-dataops
 - Choose **Run** to collect or clean registry data, **History** to inspect persisted runs, **Records** to search and inspect preserved evidence, **Logs** to inspect runtime events, or **Probes** to test one stage without database writes.
 - Database: `~/.local/share/athar/athar.db`. Override with an absolute `DB_PATH`.
 - One DataOps process per database. `.env` and `.env.profiles.toml` next to `pyproject.toml` are loaded automatically; keep them `chmod 600` so only your account can read them (the app warns at startup otherwise).
+- Database **Migrations** shows `legacy` for databases that still record the older migration 003 checksum. That migration may have discarded review items; only a pre-upgrade backup can restore already lost decisions. A prior app version may already have replaced that checksum, so `ok` alone cannot prove the old review items survived. Keep the database file before attempting manual recovery.
 
 ## Status
 

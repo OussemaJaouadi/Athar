@@ -216,7 +216,7 @@ class HistoryPane(Vertical):
                 f"[{color}]{escape(step_status)}[/] · {step['items_processed']} items · {duration}"
             )
             if step.get("message"):
-                lines.append(f"   [dim]{escape(str(step['message']))}[/]")
+                lines.append(f"   [dim]{escape(sanitize_display(str(step['message'])))}[/]")
         if not steps:
             lines.append("[dim]No step details recorded.[/dim]")
         self.query_one("#history-detail-body", Static).update("\n".join(lines))

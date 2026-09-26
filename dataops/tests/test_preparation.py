@@ -185,6 +185,41 @@ class PreparationTests(IsolatedAsyncioTestCase):
         self.assertEqual(preview["cached"], 3)
         self.assertEqual(preview["uncached"], 1)
 
+    async def test_preview_and_run_reuse_cache_before_selecting_another_model(self):
+        await self.pipeline.run_preparation()
+        self.assertEqual(self.calls, 1)
+        profiles = Path(self.directory.name) / "two-models.toml"
+        profiles.write_text(
+            '[[profile]]\nname = "account-a"\napi_key = "fake-secret"\n'
+            '[[profile]]\nname = "account-b"\napi_key = "second-secret"\nmodel = "model-b"\n'
+        )
+        config = self.config.model_copy(
+            update={"groq_profiles_path": profiles, "groq_api_key": SecretStr("")}
+        )
+        self.pipeline._preparation = PreparationService(
+            GroqPreparationClient(self.http, config), self.db
+        )
+        await self.db.mark_profile_disabled("account-a", True)
+
+        preview = await self.pipeline.preparation_preview()
+        self.assertEqual((preview["cached"], preview["uncached"]), (1, 0))
+        result = await self.pipeline.run_preparation()
+        self.assertEqual(result.status, "completed")
+        self.assertEqual(self.calls, 1)
+
+        profiles.write_text(
+            '[[profile]]\nname = "account-a"\napi_key = "fake-secret"\nmodel = "model-a-new"\n'
+            '[[profile]]\nname = "account-b"\napi_key = "second-secret"\nmodel = "model-b"\n'
+        )
+        self.pipeline._preparation = PreparationService(
+            GroqPreparationClient(self.http, config), self.db
+        )
+        preview = await self.pipeline.preparation_preview()
+        self.assertEqual((preview["cached"], preview["uncached"]), (0, 1))
+        result = await self.pipeline.run_preparation()
+        self.assertEqual(result.status, "completed")
+        self.assertEqual(self.calls, 2)
+
     async def test_unknown_token_usage_consumes_budget_after_restart(self):
         from athar_dataops.schemas.registry import utc_now
         from athar_dataops.services.groq import GROQ_DEFAULT_QUOTAS, ProfileStatus

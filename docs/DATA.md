@@ -289,4 +289,4 @@ erDiagram
 ## 5. Migration Discipline
 
 * **Shared Migration Files:** Idempotent, numbered `.sql` files in `migrations/`.
-* **Checksum Verification:** Both Python and Go compute SHA-256 hashes of applied migrations; mismatch halts startup immediately.
+* **Checksum Verification:** Applied SHA-256 checksums should record the SQL that actually ran and must not be rewritten. DataOps accepts and visibly labels the known old checksum for migration 003 as `legacy`; other mismatches halt startup. The old 003 could discard review items, which cannot be restored without a pre-upgrade backup. A prior DataOps version already re-keyed some old checksums, so their provenance cannot be inferred from the checksum alone. The planned Go reader must recognize this legacy status without changing it.

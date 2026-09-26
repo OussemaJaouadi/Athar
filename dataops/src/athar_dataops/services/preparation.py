@@ -6,6 +6,7 @@ import json
 from collections import deque
 from collections.abc import Callable
 from time import monotonic
+from typing import Any
 from uuid import uuid4
 
 from athar_dataops.schemas.pipeline import PipelineRunResult, StageProgress
@@ -19,7 +20,11 @@ from athar_dataops.schemas.preparation import (
 )
 from athar_dataops.schemas.registry import utc_now
 from athar_dataops.services.database import DatabaseService
-from athar_dataops.services.groq import GROQ_DEFAULT_QUOTAS, GroqPreparationClient
+from athar_dataops.services.groq import (
+    GROQ_DEFAULT_QUOTAS,
+    GroqPreparationClient,
+    ProfileStatus,
+)
 
 _QUOTA_EXHAUSTED = "Groq daily allowance reached across all profiles; resume after reset"
 _RATE_LIMITED = "Groq rate limits still throttling; resume later with your configured profiles"
@@ -155,6 +160,19 @@ class PreparationService:
             for status in self.provider.profiles
         ]
 
+    async def _cached_candidate(
+        self, candidate: dict[str, Any]
+    ) -> tuple[ProfileStatus, str, str, dict[str, Any]] | None:
+        """Find reusable output under any currently configured model, without spending quota."""
+        for status in self.provider.profiles:
+            key, input_hash = preparation_key(candidate, status.model)
+            output = await self._db.prepared_text(
+                key, candidate["entity_id"], input_hash, status.model
+            )
+            if output is not None:
+                return status, key, input_hash, output
+        return None
+
     async def preview(self) -> PreparePreview:
         if not self.available:
             return {
@@ -174,23 +192,16 @@ class PreparationService:
             }
             for status in self.provider.profiles
         ]
-        cached_ids: set[str] = set()
+        cached = 0
         for candidate in candidates:
-            # Check every candidate against every configured model; one cache hit
-            # counts the entity once, without skipping the remaining candidates.
-            for status in self.provider.profiles:
-                key, input_hash = preparation_key(candidate, status.model)
-                if await self._db.prepared_text(
-                    key, candidate["entity_id"], input_hash, status.model
-                ):
-                    cached_ids.add(candidate["entity_id"])
-                    break
+            if await self._cached_candidate(candidate) is not None:
+                cached += 1
         return {
             "available": True,
             "profiles": profiles,
             "eligible": len(candidates),
-            "uncached": len(candidates) - len(cached_ids),
-            "cached": len(cached_ids),
+            "uncached": len(candidates) - cached,
+            "cached": cached,
         }
 
     async def run(self, progress: Callable[[StageProgress], None] | None = None) -> PipelineRunResult:
@@ -226,6 +237,21 @@ class PreparationService:
             stage = "prepare"
             await report("running", f"Groq {self.marker}")
             for candidate in candidates:
+                existing = await self._cached_candidate(candidate)
+                if existing is not None:
+                    status, cache_key, input_hash, cached_output = existing
+                    await self._db.save_preparation(
+                        candidate, cache_key, input_hash, status.model,
+                        status.name, cached_output,
+                    )
+                    profile = status.name
+                    cached += 1
+                    processed += 1
+                    if progress:
+                        progress(StageProgress(stage, "running",
+                                               f"{profile} · {processed}/{len(candidates)} prepared · {cached} cached · {failed} failed",
+                                               processed, run_id))
+                    continue
                 while True:
                     profile = await self._reserve(ledger, hinted)
                     cache_key, input_hash = preparation_key(candidate, ledger.model_for(profile))

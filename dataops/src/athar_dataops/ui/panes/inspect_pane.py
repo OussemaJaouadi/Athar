@@ -336,14 +336,14 @@ class InspectPane(Vertical):
         )
         norm_table.add_column("Registry Property", style=f"bold {pri}", width=18)
         norm_table.add_column("Value")
-        norm_table.add_row("Website", record.website or "Not listed")
+        norm_table.add_row("Website", Text(format_arabic(record.website or "Not listed")))
         norm_table.add_row(
             "Founded",
             str(record.creation_year) if record.creation_year else "Not listed",
         )
-        norm_table.add_row("Cohort", record.cohort_label or "Not listed")
+        norm_table.add_row("Cohort", Text(format_arabic(record.cohort_label or "Not listed")))
         norm_table.add_row(
-            "Founders", format_arabic(", ".join(record.founders) or "Not listed")
+            "Founders", Text(format_arabic(", ".join(record.founders) or "Not listed"))
         )
         self.query_one("#detail-normalized", Static).update(norm_table)
 
@@ -373,7 +373,7 @@ class InspectPane(Vertical):
             "Provenance Field", style=f"bold {palette.variables['muted']}", max_width=16
         )
         fields_table.add_column("Value", style=palette.foreground, overflow="fold")
-        fields_table.add_row("Source URL", detail.source_url)
+        fields_table.add_row("Source URL", Text(format_arabic(detail.source_url)))
         fields_table.add_row("Row Number", str(record.row_number))
         fields_table.add_row("Snapshot ID", detail.snapshot_id)
         fields_table.add_row("SHA-256", detail.content_hash)
@@ -398,7 +398,7 @@ class InspectPane(Vertical):
 
         text = Text()
         text.append("LANGUAGE  ", style=f"bold {muted}")
-        text.append(lang.upper(), style=f"bold {pri}")
+        text.append(format_arabic(lang.upper()), style=f"bold {pri}")
         producers = " · ".join(str(value) for value in (profile, model) if value)
         if producers:
             text.append("   PRODUCED BY  ", style=f"bold {muted}")

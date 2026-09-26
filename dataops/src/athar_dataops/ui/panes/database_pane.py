@@ -159,7 +159,8 @@ class DatabasePane(Vertical):
             return
         self._migration_rows = rows
         ok = [row for row in rows if row["status"] == "ok"]
-        issues = [row for row in rows if row["status"] != "ok"]
+        legacy = [row for row in rows if row["status"] == "legacy"]
+        issues = [row for row in rows if row["status"] not in ("ok", "legacy")]
         if not rows:
             summary.update("No migrations recorded")
             summary.set_classes("muted")
@@ -169,6 +170,13 @@ class DatabasePane(Vertical):
             )
             summary.update(f"{len(ok)}/{len(rows)} ok · {details}")
             summary.set_classes("muted error")
+        elif legacy:
+            versions = ", ".join(str(row["version"]) for row in legacy)
+            summary.update(
+                f"{len(ok)}/{len(rows)} current · migration {versions} legacy: "
+                "older review items may be lost"
+            )
+            summary.set_classes("muted warning")
         else:
             summary.update(f"{len(rows)} applied · checksums verified")
             summary.set_classes("muted success")

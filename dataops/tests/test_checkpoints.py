@@ -196,6 +196,32 @@ class CheckpointTests(IsolatedAsyncioTestCase):
             self.assertNotIn("\x1b", label)
             self.assertNotIn("\x07", label)
 
+    async def test_registry_probe_table_cells_are_literal_and_control_free(self):
+        website = "https://example.com/path[red]OK[/]\x1b[2J"
+        self.registry_rows[1] = registry_row(
+            name="Beta[blue]Name[/]",
+            website=website,
+            label="invalid[green]date[/]\x1b]0;title\x07",
+        )
+        app = self.app()
+        async with app.run_test(size=(120, 40)) as pilot:
+            await pilot.pause()
+            await self._go_checkpoints(pilot)
+            pane = app.query_one(CheckpointsPane)
+            pane.query_one("#checkpoint-row").value = "2"
+            await self._press(pilot, "#checkpoint-fetch")
+            await self.wait_until(
+                pilot, lambda: "Fetched + normalized" in self._status(app)
+            )
+            self.assertEqual(pane._registry_result["record"].website, website)
+            rendered = render_text(
+                app.query_one("#checkpoint-registry-output", Static).render()._renderable
+            )
+            self.assertIn("[red]OK[/]", rendered)
+            self.assertIn("[blue]Name[/]", rendered)
+            self.assertNotIn("\x1b[2J", rendered)
+            self.assertNotIn("\x1b]0;title", rendered)
+
     async def test_registry_checkpoint_out_of_range_row(self):
         app = self.app()
         async with app.run_test(size=(120, 40)) as pilot:

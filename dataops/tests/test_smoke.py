@@ -176,6 +176,31 @@ class WorkspaceTests(IsolatedAsyncioTestCase):
                 render_text(app.query_one("#detail-original", Static).render()),
             )
 
+    async def test_registry_table_cells_keep_literal_text_without_terminal_controls(self):
+        website = "https://example.com/path[red]OK[/]\x1b[2J"
+        self.fixture_rows = [
+            registry_row(
+                website=website,
+                label="invalid[blue]date[/]\x1b]0;title\x07",
+            )
+        ]
+        result = await self.orchestrator.run_pipeline()
+        self.assertEqual(result.status, "completed")
+        detail = (await self.db.list_records())[0]
+        self.assertEqual(detail.original["website"], website)
+        self.assertEqual(detail.normalized.website, website)
+        app = self.app()
+        async with app.run_test(size=(120, 40)) as pilot:
+            await pilot.press("2")
+            await pilot.pause()
+            rendered = render_text(
+                app.query_one("#detail-normalized", Static).render()._renderable
+            )
+            self.assertIn("[red]OK[/]", rendered)
+            self.assertIn("[blue]date[/]", rendered)
+            self.assertNotIn("\x1b[2J", rendered)
+            self.assertNotIn("\x1b]0;title", rendered)
+
     async def test_empty_records_offer_collection_and_activity_starts_hidden(self):
         app = self.app()
         async with app.run_test(size=(80, 24)) as pilot:

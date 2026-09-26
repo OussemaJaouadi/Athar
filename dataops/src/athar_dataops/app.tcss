@@ -259,10 +259,15 @@ Screen:light #run-impact-actions Button.impact:disabled {
 }
 
 /* Record Listing & Item Highlights */
+#records-count-row {
+    height: 1;
+    margin-bottom: 1;
+}
+
 #records-count {
     padding: 0 1;
     height: 1;
-    margin-bottom: 1;
+    width: 1fr;
     background: $panel;
     color: $link-ink;
     text-style: bold;
@@ -270,18 +275,31 @@ Screen:light #run-impact-actions Button.impact:disabled {
 }
 
 #records-review-filter {
-    width: 100%;
-    margin-bottom: 1;
+    width: auto;
+    min-width: 0;
+    height: 1;
+    padding: 0 1;
+    margin-right: 1;
+    border: none;
+    background: $panel;
+    color: $foreground;
+    text-style: bold;
+}
+
+#records-review-filter:focus {
+    background: $selection;
 }
 
 #records-review-filter.in-review {
     background: $warning;
     color: $background;
-    border: round $warning;
+    text-style: bold;
 }
 
 #records-review-filter.in-review:focus {
-    border: round $action-fg;
+    background: $warning;
+    color: $background;
+    text-style: bold underline;
 }
 
 #records-rail {
@@ -370,6 +388,7 @@ Screen:light #run-impact-actions Button.impact:disabled {
 }
 
 #review-section {
+    height: auto;
     border: round $warning;
     background: $surface;
     padding: 1 2;

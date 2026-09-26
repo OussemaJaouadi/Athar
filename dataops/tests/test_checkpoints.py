@@ -284,16 +284,14 @@ class CheckpointTests(IsolatedAsyncioTestCase):
             self.assertEqual(len(app.query_one("#records-list").children), 3)
 
             await self._press(pilot, "#records-review-filter")
-            await self.wait_until(pilot, lambda: "of 2 · in review" in count())
+            await self.wait_until(pilot, lambda: "1–2 of 2" in count())
             self.assertTrue(
                 app.query_one("#records-review-filter").has_class("in-review")
             )
             self.assertEqual(len(app.query_one("#records-list").children), 2)
 
             await self._press(pilot, "#records-review-filter")
-            await self.wait_until(
-                pilot, lambda: "of 3" in count() and "· in review" not in count()
-            )
+            await self.wait_until(pilot, lambda: "1–3 of 3" in count())
             self.assertFalse(
                 app.query_one("#records-review-filter").has_class("in-review")
             )

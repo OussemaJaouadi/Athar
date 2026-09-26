@@ -100,8 +100,9 @@ class InspectPane(Vertical):
         with Horizontal(classes="split", id="records-content"):
             with Vertical(classes="rail", id="records-rail"):
                 yield Input(placeholder="Search all records…", id="records-search")
-                yield Button("In review", id="records-review-filter")
-                yield Static("", id="records-count", classes="muted")
+                with Horizontal(classes="count-row", id="records-count-row"):
+                    yield Button("In review", id="records-review-filter")
+                    yield Static("", id="records-count", classes="muted")
                 yield ListView(id="records-list")
                 with Horizontal(classes="pager", id="records-pager"):
                     yield Button("Previous (p)", id="records-prev", disabled=True)
@@ -220,11 +221,10 @@ class InspectPane(Vertical):
                     "#detail-original",
                 ):
                     self.query_one(selector).update("")
-            scope = " · in review" if self._review_only else ""
             count = (
-                f"{self._offset + 1}–{self._offset + len(self._records)} of {page.total}{scope}"
+                f"{self._offset + 1}–{self._offset + len(self._records)} of {page.total}"
                 if self._records
-                else f"0 matches{scope}"
+                else "0 matches"
             )
             self.query_one("#records-count", Static).update(count)
             has_more = self._offset + len(self._records) < page.total

@@ -85,6 +85,8 @@ class HistoryPane(Vertical):
             await listing.append(item)
         self._set_status(f"{len(filtered)} / {len(runs)} runs")
         if not filtered:
+            self._selected_run = None
+            self.query_one("#history-run-status", Static).display = False
             self.query_one("#history-detail-title", Label).update("No matching runs")
             self.query_one("#history-detail-body", Static).update(
                 "No persisted runs match this filter."
@@ -192,7 +194,7 @@ class HistoryPane(Vertical):
             f"Completed: {_short_time(run.get('completed_at'))}",
             (
                 f"[dim]Records: {run.get('records_processed', 0)} · "
-                f"Review items: {run.get('review_count', 0)}[/]"
+                f"Records in review: {run.get('review_count', 0)}[/]"
             ),
             f"[dim]Snapshot: {escape(str(run.get('snapshot_id') or 'None'))}[/]",
         ]

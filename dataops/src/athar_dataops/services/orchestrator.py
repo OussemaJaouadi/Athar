@@ -50,6 +50,15 @@ class PipelineOrchestrator:
     def preparation_profiles(self) -> list[PreviewProfile]:
         return self._preparation.profile_summaries if self._preparation else []
 
+    async def reset_registry_data(self) -> int:
+        if self._running:
+            raise RuntimeError("A pipeline operation is already running")
+        self._running = True
+        try:
+            return await self._db.reset_registry_data()
+        finally:
+            self._running = False
+
     async def preparation_preview(self) -> PreparePreview:
         if not self._preparation:
             return {
@@ -138,7 +147,7 @@ class PipelineOrchestrator:
                     run_id, snapshot_id, records, row_ids
                 )
             await finish(
-                "resolve", f"{result.review_count} rows need review", len(records)
+                "resolve", f"{result.review_count} records in review", len(records)
             )
             return result
         except (Exception, asyncio.CancelledError) as exc:
@@ -230,7 +239,7 @@ class PipelineOrchestrator:
                     run_id, snapshot_id, records, row_ids
                 )
             await finish(
-                "reconcile", f"{result.review_count} items need review", len(records)
+                "reconcile", f"{result.review_count} records in review", len(records)
             )
             return result
         except (Exception, asyncio.CancelledError) as exc:

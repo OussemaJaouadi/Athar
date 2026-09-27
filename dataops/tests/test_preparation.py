@@ -455,7 +455,7 @@ class PreparationTests(IsolatedAsyncioTestCase):
         upgraded = DatabaseService(path)
         await upgraded.initialize()
         try:
-            self.assertEqual((await upgraded.get_run("r")).review_count, 1)
+            self.assertEqual((await upgraded.get_run("r")).review_count, 2)
             self.assertEqual((await upgraded.get_snapshot("s")).raw_content, b'original bytes')
             table = await upgraded.table_page("entity_review_items")
             issues = {row["code"]: row for row in (dict(zip(table.columns, values)) for values in table.rows)}
@@ -465,14 +465,15 @@ class PreparationTests(IsolatedAsyncioTestCase):
         finally:
             await upgraded.close()
 
-    async def test_missing_fields_and_duplicates_are_not_human_reviews(self):
+    async def test_missing_fields_enter_nonblocking_review_and_duplicates_do_not(self):
         self.rows = [registry_row(desc=""), registry_row(desc=""), registry_row(name="No site", website="bad host")]
         result = await self.pipeline.run_pipeline()
-        self.assertEqual(result.review_count, 0)
+        self.assertEqual(result.review_count, 2)
         result = await self.pipeline.run_clean_pipeline()
-        self.assertEqual(result.review_count, 0)
+        self.assertEqual(result.review_count, 2)
         records = await self.db.list_records()
-        self.assertTrue(all(not r.normalized.needs_review for r in records))
+        self.assertEqual(sum(record.needs_review for record in records), 2)
+        self.assertTrue(all(not record.needs_decision for record in records))
         table = await self.db.table_page("entity_review_items")
         issues = [dict(zip(table.columns, row)) for row in table.rows]
         duplicates = [i for i in issues if i["code"] == "exact_duplicate"]

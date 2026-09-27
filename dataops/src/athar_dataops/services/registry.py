@@ -13,6 +13,8 @@ _MAX_FIELD_CHARS = 65_536
 
 
 class RegistryService:
+    _URL_TOKEN = re.compile(r"(?i)(?<![\w.@])(?:https?://|www\.)[^\s|()]+")
+
     def normalize(self, rows: list[Any]) -> list[NormalizedRecord]:
         return [
             self.normalize_row(number, row) for number, row in enumerate(rows, start=1)
@@ -82,7 +84,18 @@ class RegistryService:
             try:
                 record.website, record.domain = self.normalize_website(website)
             except ValueError:
-                record.review_reasons.append("Invalid website; original retained")
+                candidates = self._URL_TOKEN.findall(website)
+                if len(candidates) == 1:
+                    try:
+                        record.website, record.domain = self.normalize_website(
+                            candidates[0]
+                        )
+                    except ValueError:
+                        pass
+                if record.website:
+                    record.review_reasons.append("Website extracted from mixed source field")
+                else:
+                    record.review_reasons.append("Invalid website; original retained")
         return record
 
     @staticmethod

@@ -3,10 +3,12 @@
 import asyncio
 import json
 import tempfile
+from datetime import UTC, datetime
 from importlib.resources import files
 from io import StringIO
 from pathlib import Path
 from unittest import IsolatedAsyncioTestCase
+from unittest.mock import patch
 
 import httpx
 from rich.console import Console
@@ -18,7 +20,7 @@ from athar_dataops.app import DataOpsApp
 from athar_dataops.config import Settings
 from athar_dataops.services.artifacts import ArtifactService
 from athar_dataops.services.database import DatabaseService
-from athar_dataops.services.groq import GroqPreparationClient
+from athar_dataops.services.groq import GroqPreparationClient, ProfileStatus
 from athar_dataops.services.orchestrator import PipelineOrchestrator
 from athar_dataops.services.registry import RegistryService
 from athar_dataops.ui.dialogs import WipeConfirmScreen
@@ -436,6 +438,110 @@ class CheckpointTests(IsolatedAsyncioTestCase):
         await again.initialize()
         await again.close()
 
+    async def test_registry_reset_clears_graph_but_keeps_groq_accounting(self):
+        self.registry_rows = [
+            registry_row(name="Atome Edtech", website="edtech.example",
+                         founders=["Ali", "Bola", "Chika"]),
+            registry_row(name="Atome Academy", website="academy.example",
+                         founders=["Ali", "Bola", "Chika"]),
+        ]
+        collected = await self.pipeline.run_pipeline()
+        source = (await self.db._rows(
+            "SELECT id FROM source_rows ORDER BY row_number LIMIT 1"
+        ))[0]["id"]
+        entity = (await self.db.list_records())[0].normalized.entity_id
+        await self.db._execute(
+            """INSERT INTO text_preparations
+            (cache_key,source_row_id,entity_id,input_hash,provider,model,profile,
+             prompt_version,schema_version,target_language,output_json,created_at)
+            VALUES ('cached',?,?, 'hash','groq','model','check','v1','1','en','{}','2026-01-01')""",
+            (source, entity),
+        )
+        await self.db._execute(
+            "INSERT INTO text_preparation_sources VALUES ('cached',?,'main','hash')",
+            (source,),
+        )
+        await self.db._execute(
+            "INSERT INTO entity_embeddings VALUES (?,'model',?, '2026-01-01')",
+            (entity, b"vector"),
+        )
+        await self.db.sync_profiles(
+            [ProfileStatus(name="check", model="model", fingerprint="fp")],
+            [("records_per_day", 7.0, "day"),
+             ("tokens_per_day", 1000.0, "day")],
+        )
+        await self.db.mark_profile_disabled("check", True)
+        await self.db._execute(
+            """INSERT INTO preparation_usage
+            (id,run_id,source_row_id,provider,model,profile,key_fingerprint,
+             started_at,input_tokens,output_tokens,outcome)
+            VALUES ('usage',?,?,'groq','model','check','fp',?,10,20,'completed')""",
+            (collected.run_id, source, datetime.now(UTC).isoformat()),
+        )
+        before = (await self.db.preparation_quota_state(names=["check"]))[0]
+        self.assertEqual(len((await self.db.table_page("entity_relations")).rows), 1)
+
+        self.assertGreater(await self.pipeline.reset_registry_data(), 0)
+        for table in (
+            "source_snapshots", "source_rows", "normalized_records", "entities",
+            "entity_founders", "entity_relations", "entity_review_items",
+            "entity_embeddings", "text_preparations", "text_preparation_sources",
+            "pipeline_runs", "run_steps",
+        ):
+            self.assertEqual(
+                (await self.db._rows(f"SELECT COUNT(*) AS n FROM {table}"))[0]["n"],
+                0, table,
+            )
+        self.assertEqual(await self.pipeline.reset_registry_data(), 0)
+        self.assertEqual((await self.db._rows(
+            "SELECT run_id,source_row_id FROM preparation_usage"
+        ))[0], {"run_id": None, "source_row_id": None})
+        after = (await self.db.preparation_quota_state(names=["check"]))[0]
+        for key in ("requests_today", "tokens_today", "disabled", "quotas"):
+            self.assertEqual(after[key], before[key], key)
+        self.assertEqual(after["quotas"]["records_per_day"]["limit"], 7.0)
+        self.assertTrue(after["disabled"])
+        self.assertEqual(await self.db._rows("PRAGMA foreign_key_check"), [])
+
+        # Recollecting the same bytes creates fresh evidence and Clean can reconcile it.
+        rerun = await self.pipeline.run_pipeline()
+        self.assertEqual(rerun.status, "completed")
+        self.assertEqual((await self.pipeline.run_clean_pipeline()).status, "completed")
+        self.assertEqual(len((await self.db.table_page("entity_relations")).rows), 1)
+        self.assertEqual(len(await self.db.list_records()), 2)
+        self.assertEqual(len((await self.db.table_page("text_preparations")).rows), 0)
+
+    async def test_registry_reset_rolls_back_usage_detach_on_failure(self):
+        collected = await self.pipeline.run_pipeline()
+        source = (await self.db._rows("SELECT id FROM source_rows LIMIT 1"))[0]["id"]
+        await self.db._execute(
+            """INSERT INTO preparation_usage
+            (id,run_id,source_row_id,provider,model,profile,key_fingerprint,
+             started_at,outcome)
+            VALUES ('usage',?,?,'groq','model','check','fp','2026-01-01','completed')""",
+            (collected.run_id, source),
+        )
+        original = self.db._execute
+
+        async def fail_mid_reset(sql, parameters=()):
+            if sql == "DELETE FROM normalized_records":
+                raise RuntimeError("Delete blocked")
+            await original(sql, parameters)
+
+        with (
+            patch.object(self.db, "_execute", side_effect=fail_mid_reset),
+            self.assertRaisesRegex(RuntimeError, "Delete blocked"),
+        ):
+            await self.pipeline.reset_registry_data()
+        self.assertEqual(len((await self.db.table_page("source_rows")).rows), 2)
+        self.assertEqual(len((await self.db.table_page("entities")).rows), 2)
+        usage = (await self.db._rows(
+            "SELECT run_id,source_row_id FROM preparation_usage"
+        ))[0]
+        self.assertEqual((usage["run_id"], usage["source_row_id"]),
+                         (collected.run_id, source))
+        self.assertFalse(self.pipeline.running)
+
     async def test_wipe_ui_flow_confirms_and_refreshes(self):
         result = await self.pipeline.run_pipeline()
         self.assertEqual(result.status, "completed")
@@ -476,3 +582,41 @@ class CheckpointTests(IsolatedAsyncioTestCase):
                 ]["n"],
                 0,
             )
+
+    async def test_run_reset_confirms_refreshes_and_keeps_collect_ready(self):
+        await self.pipeline.run_pipeline()
+        app = self.app()
+        async with app.run_test(size=(80, 24)) as pilot:
+            await pilot.pause()
+            self.pipeline._running = True
+            await self._press(pilot, "#run-reset")
+            await pilot.pause()
+            self.assertEqual(len(app.screen_stack), 1)
+            self.pipeline._running = False
+
+            await self._press(pilot, "#run-reset")
+            await pilot.pause()
+            self.assertIsInstance(app.screen, WipeConfirmScreen)
+            self.assertTrue(app.screen.registry_only)
+            await pilot.press("escape")
+            await pilot.pause()
+            self.assertEqual(len((await self.db.table_page("source_rows")).rows), 2)
+
+            await self._press(pilot, "#run-reset")
+            await pilot.pause()
+            self.assertIn("Groq profiles, quota limits, and usage counts stay",
+                          render_text(app.screen.query_one("#wipe-warning", Static).render()))
+            await self._press(pilot, "#wipe-confirm", root=app.screen)
+            await self.wait_until(
+                pilot,
+                lambda: "Registry reset" in render_text(
+                    app.query_one("#run-status", Static).render()
+                ),
+            )
+            await self.wait_until(
+                pilot,
+                lambda: len(app.query_one("#records-list").children) == 0
+                and len(app.query_one("#history-list").children) == 0,
+            )
+            self.assertFalse(app.query_one("#run-pipeline", Button).disabled)
+            self.assertEqual(len((await self.db.table_page("source_rows")).rows), 0)

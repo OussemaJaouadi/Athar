@@ -126,7 +126,7 @@ class InspectPane(Vertical):
                 yield Static("", id="detail-related", classes="note", markup=False)
                 yield Static("", id="detail-normalized", markup=False)
                 with Vertical(id="review-section"):
-                    yield Label("Data notes", classes="section-label")
+                    yield Label("Review findings", classes="section-label")
                     yield Static("", id="detail-review", markup=False)
                 with Collapsible(title="Prepared retrieval text", collapsed=True, id="prepared-disclosure"):
                     yield Static("", id="detail-prepared", markup=False)
@@ -240,8 +240,8 @@ class InspectPane(Vertical):
 
     def _record_item(self, detail: RecordDetail) -> ListItem:
         label = escape(format_arabic(detail.normalized.name or "Unnamed row"))
-        if detail.normalized.needs_review:
-            label += f"  {review_chip(dark=self._is_dark())}"
+        if detail.needs_review:
+            label += f"  {review_chip(dark=self._is_dark(), decision=detail.needs_decision)}"
         return ListItem(Label(label, markup=True))
 
     @on(Input.Submitted, "#records-search")
@@ -300,8 +300,8 @@ class InspectPane(Vertical):
         listing = self.query_one("#records-list", ListView)
         for item, detail in zip(listing.children, self._records):
             text = escape(format_arabic(detail.normalized.name or "Unnamed row"))
-            if detail.normalized.needs_review:
-                text += f"  {review_chip(dark=self._is_dark())}"
+            if detail.needs_review:
+                text += f"  {review_chip(dark=self._is_dark(), decision=detail.needs_decision)}"
             item.query_one(Label).update(text)
         index = listing.index
         if index is not None and index < len(self._records):
@@ -324,8 +324,8 @@ class InspectPane(Vertical):
             format_arabic(record.name or "Unnamed source row")
         )
         badge = self.query_one("#detail-badge", Static)
-        if record.needs_review:
-            badge.update(review_badge(dark=is_dark))
+        if detail.needs_review:
+            badge.update(review_badge(dark=is_dark, decision=detail.needs_decision))
             badge.display = True
         else:
             badge.update("")
@@ -375,11 +375,11 @@ class InspectPane(Vertical):
         norm_table.add_row("Founders", Text(format_arabic(founders or "Not listed")))
         self.query_one("#detail-normalized", Static).update(norm_table)
 
-        self.query_one("#review-section").display = bool(record.review_reasons)
+        self.query_one("#review-section").display = detail.needs_review
         self.query_one("#detail-review", Static).update(
             format_arabic("\n".join(
-                f"• { {'human': 'Needs review', 'incomplete': 'Incomplete', 'automatic': 'Handled'}[issue.category]}: {issue.message}"
-                for issue in record.issues
+                f"• { 'Decision needed' if issue.category == 'human' else 'Source gap (nonblocking)'}: {issue.message}"
+                for issue in detail.open_issues
             ))
         )
         output = detail.prepared

@@ -19,6 +19,7 @@ from athar_dataops.schemas.preparation import PreparePreview
 from athar_dataops.services.database import DatabaseService
 from athar_dataops.services.metrics import ProcessSampler, StepMetrics
 from athar_dataops.services.orchestrator import PipelineOrchestrator
+from athar_dataops.ui.dialogs.wipe import WipeConfirmScreen
 from athar_dataops.ui.panes.logs_pane import LogsPane
 from athar_dataops.ui.widgets.log_view import LogView
 from athar_dataops.ui.widgets.metric_card import MetricCard
@@ -59,6 +60,13 @@ class RunPane(VerticalScroll):
     class CollectionFinished(Message):
         """Refresh inspection after committed collection or cleaning."""
 
+    class RegistryReset(Message):
+        """Registry evidence and derived data were cleared."""
+
+        def __init__(self, deleted: int) -> None:
+            super().__init__()
+            self.deleted = deleted
+
     def __init__(
         self,
         orchestrator: PipelineOrchestrator,
@@ -72,6 +80,7 @@ class RunPane(VerticalScroll):
         self._sampler = sampler
         self._collection_worker: Worker | None = None
         self.collecting = False
+        self._resetting = False
         self._stage_logs: dict[str, list[LogEntry]] = {"all": []}
         self._stage_starts: dict[str, float] = {}
         self._metrics: dict[str, StepMetrics] = {}
@@ -105,6 +114,9 @@ class RunPane(VerticalScroll):
                 with Horizontal(classes="actions", id="run-impact-actions"):
                     yield Button("Prepare all", id="prepare-pipeline", classes="impact", disabled=not self._orchestrator.preparation_available)
                     yield Button("Cancel", id="cancel-pipeline", disabled=True)
+                yield Label("Data management", classes="section-label")
+                with Horizontal(classes="actions", id="run-reset-actions"):
+                    yield Button("Reset registry data", id="run-reset")
                 yield Label("Groq provider", classes="section-label")
                 yield Static("Loading profile information…", id="run-profiles-summary", classes="muted")
             with VerticalScroll(id="run-context"):
@@ -208,9 +220,65 @@ class RunPane(VerticalScroll):
     def start_cleaning(self) -> None:
         self._begin_flow(True)
 
+    @on(Button.Pressed, "#run-reset")
+    def confirm_registry_reset(self) -> None:
+        if self.collecting or self._resetting or self._orchestrator.running:
+            self._set_status("Wait for the current operation before resetting.", "warning")
+            return
+        self.app.push_screen(
+            WipeConfirmScreen(registry_only=True), self._reset_registry_confirmed
+        )
+
+    async def _reset_registry_confirmed(self, confirmed: bool | None) -> None:
+        if not confirmed:
+            return
+        if self.collecting or self._resetting or self._orchestrator.running:
+            self._set_status("Wait for the current operation before resetting.", "warning")
+            return
+        self._resetting = True
+        self._set_running(False)
+        self._set_status("Resetting registry data…", "warning")
+        error: str | None = None
+        deleted = 0
+        try:
+            deleted = await self._orchestrator.reset_registry_data()
+        except (RuntimeError, ValueError, LookupError, turso.Error) as exc:
+            error = str(exc)
+        finally:
+            self._resetting = False
+            self._set_running(False)
+            await self._update_stats()
+        if error is not None:
+            self._set_status(f"Registry reset failed: {error}", "error")
+            self.app.set_workspace_status("FAILED · registry reset", "error")
+            return
+        self._terminal_status = None
+        self._terminal_text = None
+        self._prepare_preview = None
+        self.query_one("#prepare-preview").display = False
+        self.query_one("#prepare-confirm", Button).disabled = True
+        self.query_one("#prepare-cancel", Button).display = False
+        self._stage_logs = {"all": []}
+        self._stage_starts.clear()
+        self._metrics.clear()
+        self._running_stage = None
+        self._run_id = None
+        self._timeline().set_steps([])
+        self._render_log("all")
+        self.query_one("#run-activity").display = False
+        for selector in ("#run-elapsed", "#run-counters", "#run-resources"):
+            self.query_one(selector, Static).update("")
+        self._set_status(
+            f"Registry reset · {deleted} rows deleted. Collect registry to start again.",
+            "success",
+        )
+        self.app.set_workspace_status("Registry cleared · ready to collect", "success")
+        self.post_message(self.RegistryReset(deleted))
+        self.query_one("#run-pipeline", Button).focus()
+
     @on(Button.Pressed, "#prepare-pipeline")
     async def start_preparation(self) -> None:
-        if self.collecting:
+        if self.collecting or self._resetting:
             return
         preview = self.query_one("#prepare-preview")
         preview.display = True
@@ -270,7 +338,7 @@ class RunPane(VerticalScroll):
         self.query_one("#prepare-pipeline", Button).focus()
 
     def _begin_flow(self, cleaning: bool, preparing: bool = False) -> None:
-        if self.collecting:
+        if self.collecting or self._resetting:
             return
         self._terminal_status = None
         self._terminal_text = None
@@ -346,11 +414,13 @@ class RunPane(VerticalScroll):
         else:
             workspace_status = ("Ready · no active operation", "")
         self.app.set_workspace_status(*workspace_status)
-        self.query_one("#run-pipeline", Button).disabled = running
-        self.query_one("#clean-pipeline", Button).disabled = running
+        busy = running or self._resetting
+        self.query_one("#run-pipeline", Button).disabled = busy
+        self.query_one("#clean-pipeline", Button).disabled = busy
         self.query_one("#prepare-pipeline", Button).disabled = (
-            running or not self._orchestrator.preparation_available
+            busy or not self._orchestrator.preparation_available
         )
+        self.query_one("#run-reset", Button).disabled = busy
         cancel = self.query_one("#cancel-pipeline", Button)
         cancel.disabled = not running
         cancel.display = running
@@ -481,7 +551,7 @@ class RunPane(VerticalScroll):
             self._set_collection_status(result.status)
             if result.status == "completed":
                 summary = (
-                    f"{result.records_processed} records · {result.review_count} review"
+                    f"{result.records_processed} records · {result.review_count} in review"
                 )
                 self._set_status(summary, "success")
                 self._terminal_text = f"COMPLETED · {summary}"

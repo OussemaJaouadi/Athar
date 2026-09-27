@@ -74,7 +74,7 @@ flowchart TD
 
 ## 2. Product Schema & Relationships (ERD)
 
-All searchable attributes are indexed first-class columns. Content-equivalent rows are flagged `is_duplicate` on the derived layer and suppressed from default views, never deleted; `source_rows` serves as citation evidence. An entity is keyed by normalized name and site identity, including hosted page paths for Facebook and Google Sites. Distinct descriptions from one entity remain linked and visible. Prepare fills `retrieval_text`/`detected_language` from one call per entity: a single-description result or a combined English summary of multiple labeled descriptions. The ordered description set is hashed so changed input invalidates prepared output. Review findings carry `code`/`category` (automatic, incomplete, or human); only unresolved human items count as "records needing review".
+All searchable attributes are indexed first-class columns. Content-equivalent rows are flagged `is_duplicate` on the derived layer and suppressed from default views, never deleted; `source_rows` serves as citation evidence. An entity is keyed by normalized name and site identity, including hosted page paths for Facebook and Google Sites. Distinct descriptions from one entity remain linked and visible. Prepare fills `retrieval_text`/`detected_language` from one call per entity: a single-description result or a combined English summary of multiple labeled descriptions. The ordered description set is hashed so changed input invalidates prepared output. Review findings carry `code`/`category` (automatic, incomplete, or human); unresolved incomplete and human findings put nonduplicate rows in review. Incomplete findings are nonblocking source gaps; human findings need a decision.
 
 ```mermaid
 erDiagram
@@ -217,8 +217,8 @@ erDiagram
 
     PREPARATION_USAGE {
         string id PK
-        string run_id FK
-        string source_row_id FK
+        string run_id FK "nullable after registry reset"
+        string source_row_id FK "nullable after registry reset"
         string provider
         string model
         string profile

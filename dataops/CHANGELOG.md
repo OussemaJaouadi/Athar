@@ -10,7 +10,8 @@
 - Added registry collection with preserved source evidence, normalized records, and a history of each run.
 - Added offline Clean to reprocess stored evidence without another network request. It reconciles duplicates, backfills missing founders and descriptions, and keeps review items traceable.
 - Clean now uses the latest completed collection and refuses to run if none has completed; failed or stale snapshots cannot become its input.
-- Improved entity matching for differently composed Unicode names. Review counts now focus on unresolved conflicts that need a person, while automatic and incomplete-data findings remain visible.
+- Improved entity matching for differently composed Unicode names. Review findings distinguish automatic handling, nonblocking source gaps, and decisions that need a person.
+- Resolve a missing row description when another row of the same confirmed entity supplies it. Extract a single valid URL from a mixed website field; ambiguous sites stay open without a name-only merge.
 - Database upgrades preserve existing review decisions. Older databases affected by a previous upgrade remain identifiable; decisions already lost require restoration from a backup.
 
 ### Text preparation and profiles
@@ -24,9 +25,11 @@
 
 ### Workspace and review
 
+- Run now offers a confirmed registry reset for a fresh Collect/Clean evaluation. It clears source and derived records plus old run history, while retaining Groq profiles, quotas, and usage counts.
 - Records shows the main and additional descriptions, related registry entries, and founder evidence labels.
 - Organized the terminal app into Run, Records, History, Database, Logs, Probes, and Settings, with keyboard navigation and dark and light themes.
 - Records now offers search, an In review filter, source evidence, review notes, and a structured view of cleaned and translated text. Fixed review notes that were clipped in the detail view.
+- In review now includes every open source gap and decision, with matching counts and badges. Source gaps remain visible without stopping Collect, Clean, or Prepare.
 - Replaced the simple progress bar with a run console showing step progress, timings, counts, scoped logs, and live process metrics. Run status clearly distinguishes completion, cancellation, and failure.
 - History shows past runs, outcomes, timestamps, and step summaries. Logs have filters, counts, and clear empty states.
 - Added read-only record and preparation probes for checking a single input without database writes. Probe results remain separate, and cancellation stops active work.

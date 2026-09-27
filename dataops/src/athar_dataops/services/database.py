@@ -15,7 +15,7 @@ from uuid import uuid4
 import turso.aio
 
 from athar_dataops.schemas.database import RecordPage, TablePage
-from athar_dataops.schemas.issues import classify_issue
+from athar_dataops.schemas.issues import RecordIssue, classify_issue
 from athar_dataops.schemas.pipeline import PipelineRunResult
 from athar_dataops.schemas.preparation import (
     ProfileOverview,
@@ -29,6 +29,7 @@ from athar_dataops.schemas.registry import (
     utc_now,
 )
 from athar_dataops.services.groq import ProfileStatus
+from athar_dataops.services.registry import RegistryService
 
 # An already-applied 003 may have run before its review-item copy was added.
 # Accept that exact historical checksum without rewriting what actually ran.
@@ -173,7 +174,7 @@ class DatabaseService:
                 if version in applied_versions:
                     continue
                 sql = path.read_text()
-                if version == 8:
+                if version in (8, 9):
                     await self._execute("PRAGMA foreign_keys = OFF")
                 try:
                     async with self._transaction():
@@ -193,11 +194,45 @@ class DatabaseService:
                             for run in await self._rows("SELECT id, snapshot_id FROM pipeline_runs"):
                                 await self._execute("UPDATE pipeline_runs SET review_count=? WHERE id=?", (await self._review_count(run["snapshot_id"]), run["id"]))
                             await self._repair_duplicate_pointers()
-                        if version == 8:
-                            await self._backfill_identity_keys()
+                        if version in (8, 9):
+                            if version == 8:
+                                await self._backfill_identity_keys()
                             violations = await self._rows("PRAGMA foreign_key_check")
                             if violations:
-                                raise RuntimeError("Migration 008 left invalid references")
+                                raise RuntimeError(f"Migration {version:03d} left invalid references")
+                        if version == 10:
+                            latest = await self._rows(
+                                """SELECT snapshot_id FROM pipeline_runs
+                                WHERE operation='collect' AND status='completed'
+                                    AND snapshot_id IS NOT NULL
+                                ORDER BY completed_at DESC, started_at DESC, rowid DESC
+                                LIMIT 1"""
+                            )
+                            if latest:
+                                snapshot_id = latest[0]["snapshot_id"]
+                                source_rows = await self._rows(
+                                    """SELECT id,row_number,raw_json FROM source_rows
+                                    WHERE snapshot_id=? ORDER BY row_number""",
+                                    (snapshot_id,),
+                                )
+                                normalized_count = (await self._rows(
+                                    "SELECT COUNT(*) AS n FROM normalized_records WHERE snapshot_id=?",
+                                    (snapshot_id,),
+                                ))[0]["n"]
+                                if source_rows and len(source_rows) == normalized_count:
+                                    records = RegistryService().normalize([
+                                        json.loads(row["raw_json"]) for row in source_rows
+                                    ])
+                                    row_ids = {row["row_number"]: row["id"] for row in source_rows}
+                                    await self._resolve_records(snapshot_id, records, row_ids)
+                            await self._resolve_covered_descriptions()
+                            for run in await self._rows(
+                                "SELECT id, snapshot_id FROM pipeline_runs WHERE snapshot_id IS NOT NULL"
+                            ):
+                                await self._execute(
+                                    "UPDATE pipeline_runs SET review_count=? WHERE id=?",
+                                    (await self._review_count(run["snapshot_id"]), run["id"]),
+                                )
                         await self._execute(
                             "INSERT INTO schema_migrations VALUES (?, ?, ?)",
                             (
@@ -207,7 +242,7 @@ class DatabaseService:
                             ),
                         )
                 finally:
-                    if version == 8:
+                    if version in (8, 9):
                         await self._execute("PRAGMA foreign_keys = ON")
         except BaseException:
             await self.close()
@@ -317,7 +352,11 @@ class DatabaseService:
                 "UPDATE pipeline_runs SET completed_at=?, status='completed', records_processed=?, review_count=?, snapshot_id=? WHERE id=?",
                 (utc_now(), len(records), review_count, snapshot_id, run_id),
             )
-            await self._complete_step(run_id, "resolve", len(records), f"{review_count} rows need review")
+            await self._execute(
+                "UPDATE pipeline_runs SET review_count=? WHERE snapshot_id=?",
+                (review_count, snapshot_id),
+            )
+            await self._complete_step(run_id, "resolve", len(records), f"{review_count} records in review")
         return PipelineRunResult(run_id, "completed", snapshot_id, len(records), review_count)
 
     @staticmethod
@@ -417,6 +456,48 @@ class DatabaseService:
                  record.model_dump_json(),int(is_duplicate)),
             )
         await self._refresh_entities(snapshot_id, records, row_ids, duplicates)
+        await self._resolve_covered_descriptions(snapshot_id)
+
+    async def _resolve_covered_descriptions(self, snapshot_id: str | None = None) -> None:
+        """Close row-level gaps when another row of the same entity supplies the text."""
+        where_snapshot = "AND s.snapshot_id=?" if snapshot_id else ""
+        candidates = await self._rows(
+            """SELECT i.id,n.name AS name,
+                json_extract(n.record_json,'$.domain') AS domain,
+                json_extract(n.record_json,'$.website') AS website,
+                e.row_number AS evidence_row,e.name AS evidence_name,
+                json_extract(e.record_json,'$.domain') AS evidence_domain,
+                json_extract(e.record_json,'$.website') AS evidence_website
+            FROM entity_review_items i
+            JOIN source_rows s ON s.id=i.source_row_id
+            JOIN normalized_records n ON n.snapshot_id=s.snapshot_id
+                AND n.row_number=s.row_number
+            JOIN normalized_records e ON e.snapshot_id=n.snapshot_id
+                AND e.entity_id=n.entity_id AND e.row_number<>n.row_number
+                AND e.is_duplicate=0
+            WHERE i.code='incomplete_desc' AND i.resolved=0
+                AND n.entity_id IS NOT NULL AND n.is_duplicate=0
+                AND json_extract(e.record_json,'$.description') IS NOT NULL
+                AND json_extract(e.record_json,'$.description')<>'' """
+            + where_snapshot + " ORDER BY i.id,e.row_number",
+            (snapshot_id,) if snapshot_id else (),
+        )
+        resolved: set[str] = set()
+        for item in candidates:
+            if item["id"] in resolved or not item["domain"] or not item["evidence_domain"]:
+                continue
+            if self._name_key(item["name"]) != self._name_key(item["evidence_name"]):
+                continue
+            if _site_identity(item["domain"], item["website"]) != _site_identity(
+                item["evidence_domain"], item["evidence_website"]
+            ):
+                continue
+            await self._execute(
+                "UPDATE entity_review_items SET resolved=1,resolution_note=? WHERE id=?",
+                (f"Description supplied by same entity, source row {item['evidence_row']}",
+                 item["id"]),
+            )
+            resolved.add(item["id"])
 
     async def _refresh_entities(
         self, snapshot_id: str, records: list[NormalizedRecord],
@@ -524,7 +605,11 @@ class DatabaseService:
                 "UPDATE pipeline_runs SET completed_at=?, status='completed', records_processed=?, review_count=?, snapshot_id=? WHERE id=?",
                 (utc_now(), len(records), review_count, snapshot_id, run_id),
             )
-            await self._complete_step(run_id, "reconcile", len(records), f"{review_count} records need review")
+            await self._execute(
+                "UPDATE pipeline_runs SET review_count=? WHERE snapshot_id=?",
+                (review_count, snapshot_id),
+            )
+            await self._complete_step(run_id, "reconcile", len(records), f"{review_count} records in review")
         return PipelineRunResult(run_id, "completed", snapshot_id, len(records), review_count)
 
     async def _complete_step(self, run_id: str, name: str, items: int, message: str) -> None:
@@ -636,7 +721,7 @@ class DatabaseService:
 
         The corpus scan only holds one candidate batch plus matching row numbers
         in memory; record JSON is fetched and validated for the visible page alone.
-        ``review_only`` restricts candidates to rows with open human review items,
+        ``review_only`` restricts candidates to rows with open review findings,
         using the same predicate as the stats' review count.
         """
 
@@ -664,7 +749,7 @@ class DatabaseService:
                     WHERE s.snapshot_id = normalized_records.snapshot_id
                         AND s.row_number = normalized_records.row_number
                         AND s.is_duplicate = 0
-                        AND i.category = 'human' AND i.resolved = 0)"""
+                        AND i.category IN ('human','incomplete') AND i.resolved = 0)"""
                 if review_only
                 else ""
             )
@@ -787,10 +872,13 @@ class DatabaseService:
                     OR r.entity_b_id IN ({entity_slots})""",
                     (*entity_ids,*entity_ids),
                 )
-            resolved = await self._rows(
-                f"""SELECT s.row_number,i.reason FROM entity_review_items i JOIN source_rows s ON s.id=i.source_row_id
-                WHERE s.snapshot_id=? AND i.category='human' AND i.resolved=1
-                AND s.row_number IN ({page_slots})""", (snapshot_id, *page_numbers)
+            findings = await self._rows(
+                f"""SELECT s.row_number,i.code,i.category,i.reason
+                FROM entity_review_items i JOIN source_rows s ON s.id=i.source_row_id
+                WHERE s.snapshot_id=? AND i.category IN ('human','incomplete')
+                AND i.resolved=0 AND s.row_number IN ({page_slots})
+                ORDER BY CASE i.category WHEN 'human' THEN 0 ELSE 1 END,
+                    i.created_at,i.id""", (snapshot_id, *page_numbers)
             )
         prepared = {
             row["row_number"]: {
@@ -822,11 +910,14 @@ class DatabaseService:
             related_by_entity.setdefault(row["entity_b_id"], []).append(
                 (row["name_a"], row["shared_founders"])
             )
-        resolved_reasons = {(row["row_number"], row["reason"]) for row in resolved}
+        issues_by_row: dict[int, list[RecordIssue]] = {}
+        for finding in findings:
+            issues_by_row.setdefault(finding["row_number"], []).append(
+                RecordIssue(finding["code"], finding["category"], finding["reason"])
+            )
         originals = {row["row_number"]: row for row in rows}
         details = []
         for record in records:
-            record.review_reasons = [reason for reason in record.review_reasons if (record.row_number, reason) not in resolved_reasons]
             source = originals[record.row_number]
             details.append(
                 RecordDetail(
@@ -839,6 +930,7 @@ class DatabaseService:
                     tuple(descriptions_by_entity.get(record.entity_id, ())),
                     tuple(founders_by_entity.get(record.entity_id, ())),
                     tuple(related_by_entity.get(record.entity_id, ())),
+                    tuple(issues_by_row.get(record.row_number, ())),
                 )
             )
         return RecordPage(details, total, unfiltered)
@@ -956,12 +1048,45 @@ class DatabaseService:
                     deleted += rows
         return deleted
 
+    async def reset_registry_data(self) -> int:
+        """Clear the registry graph and runs, retaining Groq configuration and usage."""
+        tables = (
+            "text_preparation_sources",
+            "text_preparations",
+            "entity_review_items",
+            "entity_relations",
+            "entity_founders",
+            "entity_embeddings",
+            "normalized_records",
+            "run_steps",
+            "entities",
+            "source_rows",
+            "pipeline_runs",
+            "source_snapshots",
+        )
+        deleted = 0
+        async with self._transaction():
+            # Usage is an operational ledger. Its source links become unavailable
+            # after reset, while profile, timestamp and token counts remain intact.
+            await self._execute(
+                "UPDATE preparation_usage SET run_id=NULL, source_row_id=NULL "
+                "WHERE run_id IS NOT NULL OR source_row_id IS NOT NULL"
+            )
+            for table in tables:
+                rows = await self._rows(f"SELECT COUNT(*) AS n FROM {table}")
+                if rows[0]["n"]:
+                    await self._execute(f"DELETE FROM {table}")
+                    deleted += rows[0]["n"]
+            if await self._rows("PRAGMA foreign_key_check"):
+                raise RuntimeError("Registry reset left invalid references")
+        return deleted
+
     async def _review_count(self, snapshot_id: str | None) -> int:
         """Called while holding the connection lock; count records, not reasons."""
         rows = await self._rows(
             """SELECT COUNT(DISTINCT i.source_row_id) AS count
             FROM entity_review_items i JOIN source_rows s ON s.id=i.source_row_id
-            WHERE i.category='human' AND i.resolved=0 AND s.is_duplicate=0
+            WHERE i.category IN ('human','incomplete') AND i.resolved=0 AND s.is_duplicate=0
             AND s.snapshot_id=?""", (snapshot_id,),
         )
         return rows[0]["count"]

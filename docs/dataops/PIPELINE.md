@@ -41,6 +41,10 @@ flowchart TD
 * **Reconcile pass:** reapplies current identity and duplicate rules to the latest preserved snapshot, rebuilds founder evidence and related-entry links, resolves stale review reasons with an audit note, and reports the open review count.
 * **Zero Network:** 100% offline; it never invokes Groq or replaces preserved source rows.
 
+### Reset before a fresh collection
+
+Run offers a separate, confirmed **Reset registry data** action. It atomically clears source snapshots and rows, normalized records, entities, founders, relations, reviews, embeddings, prepared text, and run history. Groq profiles, quota limits, and usage counts remain; old usage rows lose their deleted source/run links. Collect must then be started manually. The Database tab's broader **Wipe data** action still clears all data except schema migrations.
+
 ---
 
 ## 2. Field Cleaning Rules
@@ -51,7 +55,7 @@ flowchart TD
 | `phone`, `email` | **Drop** | None | PII policy; never stored in product entities |
 | `industry` | **Collapse** | `entities.sector` | Identical to `sector`; merged into one column |
 | `name` | **Normalize** | `entities.name`<br/>`entities.name_key` | Trim whitespace; NFC Unicode; casefold for lookup |
-| `website` | **Normalize** | `entities.website`<br/>`entities.domain` | Strip scheme/`www`; lowercase; validate valid host |
+| `website` | **Normalize** | `entities.website`<br/>`entities.domain` | Validate the host; accept one unambiguous URL token from a mixed field, but leave competing or malformed URLs in review |
 | `desc` | **Normalize** | `entities.description` | Trim whitespace; preserve concrete product details |
 | `label` | **Normalize** | `entities.cohort_label`<br/>`entities.cohort_date` | `MM/YYYY` parsed to ISO date (`YYYY-MM-01`) |
 | `creation_year` | **Normalize** | `entities.creation_year` | String converted to integer (e.g. `2021`) |
@@ -97,10 +101,10 @@ A separate "Prepare all" run (independent of Collect/Clean, shown on the same ti
 
 ## 6. Deduplication & Review Classification
 
-Review findings carry a shared `code`/`category` (`automatic`, `incomplete`, or `human`), so storage and UI agree on meaning:
+Review findings carry a shared `code`/`category` (`automatic`, `incomplete`, or `human`). The Records **In review** filter, badges, and review count all use unresolved findings on nonduplicate rows. One row counts once even when it has several findings:
 
-* **Automatic** (e.g. `exact_duplicate`): handled deterministically, resolved automatically, with the audit reason retained.
-* **Incomplete** (e.g. `invalid_website`): shows what is missing without demanding a human decision.
-* **Human** (genuine conflicts, e.g. `identity_conflict`, `date_conflict`): the only category that counts toward "records needing review" — and only if unresolved. The LLM never approves identity merges.
+* **Automatic** (e.g. `exact_duplicate`, `website_extracted`): handled deterministically, resolved automatically, with the audit reason retained.
+* **Incomplete** (e.g. `invalid_website`): an open, nonblocking source gap. The pipeline continues without acknowledgement or approval.
+* **Human** (genuine conflicts, e.g. `identity_conflict`, `date_conflict`): an open decision; the LLM never approves identity merges.
 
-Repeated cleaning does not reopen handled issues. Reasons no longer produced by current rules are marked resolved with a note, while source evidence stays intact. Existing flags were reclassified in-place by migration 005 without losing source evidence.
+If another nonduplicate row of the same confirmed entity supplies a description, its missing-description finding is resolved with that row number as provenance; the original row stays unchanged. Name-only matches do not fill websites or merge entities. Repeated cleaning does not reopen handled findings. Reasons no longer produced by current rules are marked resolved with a note, while source evidence stays intact. Migration 010 reprocesses the latest complete snapshot offline when its stored rows are intact, then backfills description coverage and review counts; no new collection is needed.

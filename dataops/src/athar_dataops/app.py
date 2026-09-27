@@ -330,6 +330,16 @@ class DataOpsApp(App[None]):
         await self.query_one(DatabasePane).refresh_schema()
         await self.query_one(HistoryPane).refresh_runs()
 
+    @on(RunPane.RegistryReset)
+    async def registry_reset(self, event: RunPane.RegistryReset) -> None:
+        self.log_workspace_event(
+            f"Registry reset · {event.deleted} rows deleted · Groq usage retained",
+            "stage",
+        )
+        await self.query_one(InspectPane).refresh_records()
+        await self.query_one(DatabasePane).refresh_schema()
+        await self.query_one(HistoryPane).refresh_runs()
+
     @on(DatabasePane.DatabaseWiped)
     async def database_wiped(self, event: DatabasePane.DatabaseWiped) -> None:
         self.log_workspace_event(

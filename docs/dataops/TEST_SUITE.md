@@ -33,8 +33,11 @@ uv run --project dataops python -m unittest discover -s dataops/tests
 - Invalid JSON, unexpected payloads, HTTP failures, timeout, and cancellation.
 - Transaction rollback, foreign keys, migrations, reopening, retained legacy migration 003 checksums, and refusal of unknown schemas.
 - Upgrading a 001-era database with existing evidence through migrations 002, 003, and 004.
+- Upgrading an 008-era usage ledger to retain accounting after a registry reset.
 - Offline "Clean data" over stored evidence: entity, founder, and review-item writes, idempotent re-runs, and refusal when only failed collection snapshots exist.
 - Corpus reconcile: content-equivalent duplicate suppression, distinct descriptions under one entity, founder evidence status, related but separate startups, legacy backfill, idempotence, and `run_steps` timing.
+- Unified review counts/filter, nonblocking source gaps, same-entity description coverage, unambiguous website extraction, and migration 010 offline reprocessing/backfill.
+- Scoped registry reset: graph deletion, Groq profile/quota/usage retention, rollback, idempotence, and fresh Collect/Clean.
 - Bounded queries, Unicode search across pages, overview failures, and absolute-path validation.
 - Committed terminal steps survive reporting failure; failed startup does not create orphan steps.
 
@@ -42,6 +45,7 @@ uv run --project dataops python -m unittest discover -s dataops/tests
 
 - Headless Textual interactions: collection, records, evidence, database previews, and tab shortcuts; literal rendering of hostile registry text in Records.
 - Empty states, search beyond the first page, and stale-detail clearing.
+- Source gaps appear in the In review filter with a nonblocking badge.
 - Responsive cancellation, failure recovery, and cancellation before shutdown.
 - Narrow-terminal row inspection, keyboard open/close, and resizing.
 - Primary-button contrast in both themes and honest status when database reads fail.
@@ -53,6 +57,7 @@ uv run --project dataops python -m unittest discover -s dataops/tests
 
 ### `test_checkpoints.py`
 
+- Run reset confirmation and 80×24 layout; registry graph clearing with Groq state retained; existing full wipe remains separate.
 - Normal Probes tab reflects read-only record and prepare probes, validates results, confirms no database writes, and renders hostile registry text literally.
 - Probe inputs are disabled during requests; result labels and clear actions are available; completion requires profiles.
 - Record probe runs with no Groq profiles configured (default install) without crashing; prepare stays disabled.

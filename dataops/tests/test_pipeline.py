@@ -180,7 +180,7 @@ class PipelineTests(IsolatedAsyncioTestCase):
         ).encode()
         result = await self.pipeline.run_pipeline()
         self.assertEqual(result.status, "completed")
-        self.assertEqual(result.review_count, 0)
+        self.assertEqual(result.review_count, 2)
         records = await self.db.list_records()
         self.assertEqual(len(records), 4)
         self.assertTrue(all(record.normalized.entity_id for record in records[:2]))
@@ -190,7 +190,7 @@ class PipelineTests(IsolatedAsyncioTestCase):
         self.assertEqual(records[3].original, 42)
         self.assertEqual(len((await self.db.table_page("source_rows")).rows), 4)
 
-    async def test_record_page_review_filter_matches_open_human_items(self):
+    async def test_record_page_review_filter_matches_all_open_findings(self):
         self.body = json.dumps(
             [
                 registry_row(website="one.example"),
@@ -201,7 +201,7 @@ class PipelineTests(IsolatedAsyncioTestCase):
         ).encode()
         result = await self.pipeline.run_pipeline()
         self.assertEqual(result.status, "completed")
-        self.assertEqual(result.review_count, 0)
+        self.assertEqual(result.review_count, 2)
 
         # A genuinely unresolved item must still drive the review filter.
         source = await self.db._rows(
@@ -219,7 +219,7 @@ class PipelineTests(IsolatedAsyncioTestCase):
         everything = await self.db.record_page()
         review = await self.db.record_page(review_only=True)
         self.assertEqual(everything.total, 4)
-        self.assertEqual(review.total, 1)
+        self.assertEqual(review.total, 3)
         self.assertEqual(review.unfiltered_total, 4)
         # The filtered total is the same ledger the stats' review count uses.
         self.assertEqual(review.total, await self.db._review_count(result.snapshot_id))
@@ -230,7 +230,28 @@ class PipelineTests(IsolatedAsyncioTestCase):
         # Pagination stays inside the filtered set.
         past = await self.db.record_page("", offset=100, review_only=True)
         self.assertEqual(past.records, [])
-        self.assertEqual(past.total, 1)
+        self.assertEqual(past.total, 3)
+
+    async def test_one_source_url_is_recovered_but_competing_urls_stay_open(self):
+        self.body = json.dumps([
+            registry_row(name="Recovered", website="https://recovered.example/path  extra text"),
+            registry_row(name="Competing", website="https://one.example | https://two.example"),
+            registry_row(name="Email only", website="contact@www.example.org"),
+        ]).encode()
+        result = await self.pipeline.run_pipeline()
+        self.assertEqual(result.review_count, 2)
+        records = await self.db.list_records()
+        self.assertEqual(records[0].normalized.website, "https://recovered.example/path")
+        self.assertIsNotNone(records[0].normalized.entity_id)
+        self.assertFalse(records[0].needs_review)
+        self.assertEqual(records[1].normalized.website, None)
+        self.assertTrue(records[1].needs_review)
+        self.assertIsNone(records[2].normalized.website)
+        self.assertEqual((await self.db.record_page(review_only=True)).total, 2)
+        findings = await self.db._rows(
+            "SELECT code,resolved FROM entity_review_items ORDER BY code"
+        )
+        self.assertIn({"code": "website_extracted", "resolved": 1}, findings)
 
     async def test_different_website_creates_separate_identity(self):
         await self.pipeline.run_pipeline()
@@ -270,6 +291,31 @@ class PipelineTests(IsolatedAsyncioTestCase):
                          {"Ali": "confirmed", "Bola": "to_confirm", "Chika": "to_confirm"})
         self.assertEqual(len(await self.db.preparation_candidates()), 1)
         self.assertEqual(len((await self.db.table_page("source_rows")).rows), 2)
+
+    async def test_same_entity_description_covers_only_its_own_missing_row(self):
+        self.body = json.dumps([
+            registry_row(name="Linked", website="linked.example", desc=""),
+            registry_row(name="Linked", website="linked.example", desc="Evidence text"),
+            registry_row(name="Unrelated", website="other.example", desc=""),
+        ]).encode()
+        result = await self.pipeline.run_pipeline()
+        self.assertEqual(result.review_count, 1)
+        records = await self.db.list_records()
+        self.assertIsNone(records[0].normalized.description)
+        self.assertEqual(records[0].descriptions, ((2, "Evidence text"),))
+        self.assertFalse(records[0].needs_review)
+        self.assertTrue(records[2].needs_review)
+        covered = await self.db._rows(
+            """SELECT i.resolved,i.resolution_note FROM entity_review_items i
+            JOIN source_rows s ON s.id=i.source_row_id
+            WHERE s.snapshot_id=? AND s.row_number=1 AND i.code='incomplete_desc'""",
+            (result.snapshot_id,),
+        )
+        self.assertEqual(covered[0]["resolved"], 1)
+        self.assertIn("source row 2", covered[0]["resolution_note"])
+        clean = await self.pipeline.run_clean_pipeline()
+        self.assertEqual(clean.review_count, 1)
+        self.assertEqual((await self.db.record_page(review_only=True)).total, 1)
 
     async def test_related_startups_remain_separate(self):
         self.body = json.dumps([
@@ -563,9 +609,122 @@ class PipelineTests(IsolatedAsyncioTestCase):
             records = await upgraded.table_page("normalized_records")
             self.assertEqual(len(records.rows), 2)
             migrations = await upgraded.table_page("schema_migrations")
-            self.assertEqual(len(migrations.rows), 8)
+            self.assertEqual(len(migrations.rows), 10)
         finally:
             await upgraded.close()
+
+    async def test_upgrade_from_008_keeps_usage_before_registry_reset(self):
+        path = Path(self.directory.name) / "upgrade008.db"
+        with closing(sqlite3.connect(path)) as conn:
+            conn.execute("PRAGMA foreign_keys=OFF")
+            for script in sorted(files("athar_dataops").joinpath("migrations").iterdir(),
+                                 key=lambda item: item.name):
+                version = int(script.name.split("_")[0])
+                if version >= 9:
+                    break
+                for statement in script.read_text().split(";"):
+                    if statement.strip():
+                        conn.execute(statement)
+                conn.execute(
+                    "INSERT INTO schema_migrations VALUES (?,?,?)",
+                    (version, hashlib.sha256(script.read_bytes()).hexdigest(),
+                     "2026-01-01"),
+                )
+            conn.execute(
+                "INSERT INTO source_snapshots VALUES ('snap','https://example.org','hash','2026-01-01',?)",
+                (b"[]",),
+            )
+            conn.execute(
+                "INSERT INTO source_rows (id,snapshot_id,row_number,raw_json) "
+                "VALUES ('source','snap',1,'{}')"
+            )
+            conn.execute(
+                "INSERT INTO pipeline_runs (id,started_at,status,snapshot_id) "
+                "VALUES ('run','2026-01-01','completed','snap')"
+            )
+            conn.execute(
+                """INSERT INTO preparation_usage
+                (id,run_id,source_row_id,provider,model,profile,key_fingerprint,
+                 started_at,input_tokens,output_tokens,outcome)
+                VALUES ('usage','run','source','groq','model','profile','fp',
+                        '2026-01-01',10,20,'completed')"""
+            )
+            conn.commit()
+
+        upgraded = DatabaseService(path)
+        await upgraded.initialize()
+        try:
+            usage = (await upgraded._rows(
+                "SELECT run_id,source_row_id,input_tokens,output_tokens "
+                "FROM preparation_usage"
+            ))[0]
+            self.assertEqual(usage,
+                             {"run_id": "run", "source_row_id": "source",
+                              "input_tokens": 10, "output_tokens": 20})
+            self.assertEqual(await upgraded._rows("PRAGMA foreign_key_check"), [])
+            await upgraded.reset_registry_data()
+            usage = (await upgraded._rows(
+                "SELECT run_id,source_row_id,input_tokens,output_tokens "
+                "FROM preparation_usage"
+            ))[0]
+            self.assertEqual(usage,
+                             {"run_id": None, "source_row_id": None,
+                              "input_tokens": 10, "output_tokens": 20})
+            self.assertEqual(await upgraded._rows("PRAGMA foreign_key_check"), [])
+        finally:
+            await upgraded.close()
+
+    async def test_review_upgrade_backfills_source_coverage_and_run_count(self):
+        self.body = json.dumps([
+            registry_row(name="Linked", website="linked.example", desc=""),
+            registry_row(name="Linked", website="linked.example", desc="Evidence text"),
+        ]).encode()
+        result = await self.pipeline.run_pipeline()
+        await self.db._execute(
+            "UPDATE entity_review_items SET resolved=0,resolution_note=NULL "
+            "WHERE code='incomplete_desc'"
+        )
+        await self.db._execute("UPDATE pipeline_runs SET review_count=1 WHERE id=?", (result.run_id,))
+        await self.db._execute("DELETE FROM schema_migrations WHERE version=10")
+        await self.db._execute("DROP INDEX idx_review_open")
+        await self.db.close()
+        self.db = DatabaseService(self.path)
+        await self.db.initialize()
+        self.assertEqual((await self.db.get_run(result.run_id)).review_count, 0)
+        self.assertEqual((await self.db.record_page(review_only=True)).total, 0)
+        findings = await self.db._rows(
+            "SELECT resolved,resolution_note FROM entity_review_items "
+            "WHERE code='incomplete_desc'"
+        )
+        self.assertEqual(findings[0]["resolved"], 1)
+        self.assertIn("source row 2", findings[0]["resolution_note"])
+
+    async def test_review_upgrade_does_not_trust_legacy_false_entity_group(self):
+        self.body = json.dumps([
+            registry_row(name="Hosted", website="https://facebook.com/first", desc=""),
+            registry_row(name="Hosted", website="https://facebook.com/second", desc="Evidence text"),
+        ]).encode()
+        result = await self.pipeline.run_pipeline()
+        self.assertEqual(result.review_count, 1)
+        entities = await self.db._rows(
+            "SELECT entity_id FROM normalized_records WHERE snapshot_id=? ORDER BY row_number",
+            (result.snapshot_id,),
+        )
+        self.assertNotEqual(entities[0]["entity_id"], entities[1]["entity_id"])
+        await self.db._execute(
+            "UPDATE normalized_records SET entity_id=? WHERE snapshot_id=? AND row_number=2",
+            (entities[0]["entity_id"], result.snapshot_id),
+        )
+        await self.db._execute("DELETE FROM schema_migrations WHERE version=10")
+        await self.db._execute("DROP INDEX idx_review_open")
+        await self.db.close()
+        self.db = DatabaseService(self.path)
+        await self.db.initialize()
+        self.assertEqual((await self.db.record_page(review_only=True)).total, 1)
+        findings = await self.db._rows(
+            "SELECT resolved FROM entity_review_items WHERE code='incomplete_desc'"
+        )
+        self.assertEqual(findings[0]["resolved"], 0)
 
     async def test_upgrade_from_002_schema_preserves_review_items(self):
         path = Path(self.directory.name) / "upgrade002.db"
@@ -695,13 +854,18 @@ class PipelineTests(IsolatedAsyncioTestCase):
         founders = await self.db.table_page("entity_founders")
         self.assertIn("Example Person", [row[2] for row in founders.rows])
 
-    async def test_clean_pipeline_retains_incomplete_notes_without_human_review(self):
+    async def test_clean_pipeline_keeps_source_gaps_in_review_without_blocking(self):
         self.body = json.dumps([registry_row(website="bad host")]).encode()
-        await self.pipeline.run_pipeline()
+        collected = await self.pipeline.run_pipeline()
+        await self.db._execute(
+            "UPDATE pipeline_runs SET review_count=99 WHERE id=?", (collected.run_id,)
+        )
         result = await self.pipeline.run_clean_pipeline()
         self.assertEqual(result.status, "completed")
-        # One record parked in review; its identity and website entries stay open.
-        self.assertEqual(result.review_count, 0)
+        # Two findings on one record count once, and Clean still completes.
+        self.assertEqual(result.review_count, 1)
+        self.assertEqual((await self.db.get_run(collected.run_id)).review_count, 1)
+        self.assertEqual((await self.db.get_overview_stats())["reviews"], 1)
         reviews = await self.db.table_page("entity_review_items")
         self.assertIn(
             "Invalid website; original retained", [row[3] for row in reviews.rows]

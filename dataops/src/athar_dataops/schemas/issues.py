@@ -15,6 +15,7 @@ def classify_issue(reason: str) -> RecordIssue:
     if reason.startswith("Duplicate of row "):
         return RecordIssue("exact_duplicate", "automatic", reason)
     known = {
+        "Website extracted from mixed source field": ("website_extracted", "automatic"),
         "Conflicting name/domain match; identity needs review": ("identity_conflict", "human"),
         "Cohort predates creation year": ("date_conflict", "human"),
         "Identity needs a valid name and website": ("identity_incomplete", "incomplete"),

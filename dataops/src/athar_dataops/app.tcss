@@ -130,7 +130,8 @@ TabPane {
 }
 
 #run-primary-actions,
-#run-impact-actions {
+#run-impact-actions,
+#run-reset-actions {
     height: 3;
     margin-top: 1;
     margin-bottom: 0;
@@ -140,6 +141,19 @@ TabPane {
 #run-impact-actions Button {
     width: 18;
     min-width: 18;
+}
+
+#run-reset {
+    width: 24;
+    min-width: 24;
+    color: $warning;
+    border: round $warning;
+}
+
+#run-reset:hover,
+#run-reset:focus {
+    background: $warning;
+    color: $background;
 }
 
 #run-impact-actions Button.impact {

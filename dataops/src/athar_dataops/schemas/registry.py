@@ -40,11 +40,6 @@ class NormalizedRecord(BaseModel):
     def issues(self) -> list[RecordIssue]:
         return [classify_issue(reason) for reason in self.review_reasons]
 
-    @property
-    def needs_review(self) -> bool:
-        return any(issue.category == "human" for issue in self.issues)
-
-
 @dataclass(frozen=True)
 class RecordDetail:
     snapshot_id: str
@@ -56,3 +51,12 @@ class RecordDetail:
     descriptions: tuple[tuple[int, str], ...] = ()
     founder_evidence: tuple[tuple[str, str], ...] = ()
     related: tuple[tuple[str, int], ...] = ()
+    open_issues: tuple[RecordIssue, ...] = ()
+
+    @property
+    def needs_review(self) -> bool:
+        return bool(self.open_issues)
+
+    @property
+    def needs_decision(self) -> bool:
+        return any(issue.category == "human" for issue in self.open_issues)

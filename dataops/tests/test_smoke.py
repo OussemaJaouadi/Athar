@@ -176,6 +176,20 @@ class WorkspaceTests(IsolatedAsyncioTestCase):
                 render_text(app.query_one("#detail-original", Static).render()),
             )
 
+    async def test_source_gap_appears_in_review_without_decision_badge(self):
+        self.fixture_rows = [registry_row(name="Gap", desc="")]
+        result = await self.orchestrator.run_pipeline()
+        self.assertEqual(result.review_count, 1)
+        app = self.app()
+        async with app.run_test(size=(80, 24)) as pilot:
+            await pilot.press("ctrl+2")
+            await pilot.pause()
+            self.assertIn("SOURCE GAP", render_text(app.query_one("#detail-badge", Static).render()))
+            self.assertIn("Source gap (nonblocking)", str(app.query_one("#detail-review", Static).render()))
+            await pilot.click("#records-review-filter")
+            await pilot.pause()
+            self.assertIn("1–1 of 1", str(app.query_one("#records-count", Static).render()))
+
     async def test_registry_table_cells_keep_literal_text_without_terminal_controls(self):
         website = "https://example.com/path[red]OK[/]\x1b[2J"
         self.fixture_rows = [

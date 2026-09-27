@@ -72,6 +72,7 @@ class HelpScreen(ModalScreen):
             )
             table.add_row("↑  /  ↓", "Navigate records, tables, and rows")
             table.add_row("Prepare all", "Preview uncached model work, then confirm before starting")
+            table.add_row("Reset registry data", "Clear registry evidence and runs; keep Groq usage")
             table.add_row("F1", "Toggle this Help modal")
             table.add_row("F6", "Toggle light / dark theme")
             table.add_row("Ctrl+Q", "Graceful quit (cancels active pipeline safely)")

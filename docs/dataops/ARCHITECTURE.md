@@ -101,7 +101,7 @@ flowchart TD
 | `RegistryService` | Deterministic field normalization and review reasons; returns `NormalizedRecord` values. |
 | `GroqPreparationClient` | Groq transport for one description or several labeled descriptions in one strict-JSON call; secrets never surfaced. |
 | `PreparationService` | Prepare run loop: entity-level candidates, ordered-description caching, usage accounting, run history. |
-| `DatabaseService` | Migrations, evidence, run history, `run_steps` timing, site identity resolution, content-equivalent duplicate suppression, founder evidence, related entities, prepare provenance/usage, and bounded queries. |
+| `DatabaseService` | Migrations, evidence, run history, `run_steps` timing, site identity resolution, content-equivalent duplicate suppression, founder evidence, related entities, prepare provenance/usage, scoped registry reset, and bounded queries. |
 | `PipelineOrchestrator` | Collection, offline cleaning, and preparation sequences, overlap guard, progress, timeout, and failure/cancellation bookkeeping. |
 
 - Services have no Textual dependency; UI consumes service methods and shared types.
@@ -153,6 +153,8 @@ flowchart LR
 3. Normalization produces records and review reasons; identity resolution and derived writes commit together.
 4. Progress callbacks update Run and the global operational masthead; completion refreshes Records, History, and Database.
 5. Inspection calls database query methods; widgets render records, evidence, and JSON.
+
+Records reads open findings from `entity_review_items`; its review filter, badges, and detail list share that ledger. Cleaning can resolve a missing description from another row of the same confirmed entity, with the evidence row in the resolution note. The stored source row and its normalized description are not rewritten.
 
 - Failed parsing or processing retains evidence already saved; failed derived writes roll back.
 - Cancellation and timeout update run history; cancellation propagates after bookkeeping.

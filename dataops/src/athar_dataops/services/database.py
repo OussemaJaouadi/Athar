@@ -9,6 +9,7 @@ from datetime import UTC, datetime, timedelta
 from importlib.resources import files
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 import turso.aio
@@ -34,6 +35,44 @@ from athar_dataops.services.groq import ProfileStatus
 LEGACY_MIGRATION_CHECKSUMS: dict[int, set[str]] = {
     3: {"c4e73296518f62ee66d42af311f970a30ec3d139d88ec21fbfe2694a206de6ff"},
 }
+
+
+def _site_identity(domain: str, website: str | None) -> str:
+    """A hosted page owns its path; an ordinary company site owns its host."""
+    if domain not in {"facebook.com", "sites.google.com"} or not website:
+        return domain
+    path = urlsplit(website).path.strip("/")
+    if domain == "facebook.com":
+        path = path.split("/", 1)[0].casefold()
+    elif path.startswith("view/"):
+        path = "/".join(path.split("/")[:2])
+    return f"{domain}/{path}" if path else domain
+
+
+def _founder_key(name: str) -> str:
+    return " ".join(unicodedata.normalize("NFC", name).casefold().split())
+
+
+def _content_key(value: Any) -> str:
+    """Ignore JSON field order and absent-vs-null placeholders only."""
+    def canonical(item: Any) -> Any:
+        if isinstance(item, dict):
+            return {key: canonical(val) for key, val in item.items() if val is not None}
+        if isinstance(item, list):
+            return [canonical(val) for val in item]
+        return item
+
+    return hashlib.sha256(
+        json.dumps(canonical(value), ensure_ascii=False, sort_keys=True).encode()
+    ).hexdigest()
+
+
+def _description_hash(descriptions: list[str]) -> str:
+    if len(descriptions) == 1:
+        return hashlib.sha256(descriptions[0].encode()).hexdigest()
+    return hashlib.sha256(
+        json.dumps(descriptions, ensure_ascii=False).encode()
+    ).hexdigest()
 
 
 def _day_window() -> tuple[str, str]:
@@ -134,31 +173,42 @@ class DatabaseService:
                 if version in applied_versions:
                     continue
                 sql = path.read_text()
-                async with self._transaction():
-                    # These packaged migrations contain simple SQL statements, no triggers.
-                    for statement in sql.split(";"):
-                        if statement.strip():
-                            await self._execute(statement)
-                    if version == 5:
-                        # Upgrade classifications without deleting reasons or evidence.
-                        findings = await self._rows("SELECT id, reason FROM entity_review_items")
-                        for finding in findings:
-                            issue = classify_issue(finding["reason"])
-                            await self._execute(
-                                "UPDATE entity_review_items SET code=?, category=?, resolved=CASE WHEN ?='automatic' THEN 1 ELSE resolved END WHERE id=?",
-                                (issue.code, issue.category, issue.category, finding["id"]),
-                            )
-                        for run in await self._rows("SELECT id, snapshot_id FROM pipeline_runs"):
-                            await self._execute("UPDATE pipeline_runs SET review_count=? WHERE id=?", (await self._review_count(run["snapshot_id"]), run["id"]))
-                        await self._repair_duplicate_pointers()
-                    await self._execute(
-                        "INSERT INTO schema_migrations VALUES (?, ?, ?)",
-                        (
-                            version,
-                            hashlib.sha256(path.read_bytes()).hexdigest(),
-                            utc_now(),
-                        ),
-                    )
+                if version == 8:
+                    await self._execute("PRAGMA foreign_keys = OFF")
+                try:
+                    async with self._transaction():
+                        # These packaged migrations contain simple SQL statements, no triggers.
+                        for statement in sql.split(";"):
+                            if statement.strip():
+                                await self._execute(statement)
+                        if version == 5:
+                            # Upgrade classifications without deleting reasons or evidence.
+                            findings = await self._rows("SELECT id, reason FROM entity_review_items")
+                            for finding in findings:
+                                issue = classify_issue(finding["reason"])
+                                await self._execute(
+                                    "UPDATE entity_review_items SET code=?, category=?, resolved=CASE WHEN ?='automatic' THEN 1 ELSE resolved END WHERE id=?",
+                                    (issue.code, issue.category, issue.category, finding["id"]),
+                                )
+                            for run in await self._rows("SELECT id, snapshot_id FROM pipeline_runs"):
+                                await self._execute("UPDATE pipeline_runs SET review_count=? WHERE id=?", (await self._review_count(run["snapshot_id"]), run["id"]))
+                            await self._repair_duplicate_pointers()
+                        if version == 8:
+                            await self._backfill_identity_keys()
+                            violations = await self._rows("PRAGMA foreign_key_check")
+                            if violations:
+                                raise RuntimeError("Migration 008 left invalid references")
+                        await self._execute(
+                            "INSERT INTO schema_migrations VALUES (?, ?, ?)",
+                            (
+                                version,
+                                hashlib.sha256(path.read_bytes()).hexdigest(),
+                                utc_now(),
+                            ),
+                        )
+                finally:
+                    if version == 8:
+                        await self._execute("PRAGMA foreign_keys = ON")
         except BaseException:
             await self.close()
             raise
@@ -167,6 +217,13 @@ class DatabaseService:
         if self._conn is not None:
             await self._conn.close()
             self._conn = None
+
+    async def _backfill_identity_keys(self) -> None:
+        for row in await self._rows("SELECT id, domain, website FROM entities"):
+            key = _site_identity(row["domain"], row["website"])
+            await self._execute(
+                "UPDATE entities SET identity_key=? WHERE id=?", (key, row["id"])
+            )
 
     async def start_run(self, run_id: str, operation: str = "collect") -> None:
         async with self._lock:
@@ -252,255 +309,223 @@ class DatabaseService:
     async def complete_run(
         self, run_id: str, snapshot_id: str, records: list[NormalizedRecord], row_ids: dict[int, str]
     ) -> PipelineRunResult:
-        """Resolve conservative identities and commit records with the success marker."""
+        """Resolve identities and evidence before committing the collection marker."""
         async with self._transaction():
-            identities = await self._rows("SELECT id, name_key, domain FROM entities")
-            by_key = {(row["name_key"], row["domain"]): row["id"] for row in identities}
-            names: dict[str, set[str]] = {}
-            domains: dict[str, set[str]] = {}
-            candidates = [
-                (self._name_key(record.name), record.domain)
-                for record in records
-                if record.name and record.domain
-            ]
-            for name, domain in list(by_key) + candidates:
-                names.setdefault(name, set()).add(domain)
-                domains.setdefault(domain, set()).add(name)
-            seen_keys: dict[tuple[str, str], int] = {}
-            for record in records:
-                name = self._name_key(record.name)
-                domain = record.domain
-                source_row_id = row_ids.get(record.row_number)
-                is_duplicate = False
-                if not name or not domain:
-                    record.review_reasons.append(
-                        "Identity needs a valid name and website"
-                    )
-                elif len(names[name]) > 1 or len(domains[domain]) > 1:
-                    record.review_reasons.append(
-                        "Conflicting name/domain match; identity needs review"
-                    )
-                else:
-                    key = (name, domain)
-                    now_str = utc_now()
-                    if key not in by_key:
-                        by_key[key] = str(uuid4())
-                        await self._execute(
-                            """INSERT INTO entities (
-                                id, name_key, domain, name, website, description, sector,
-                                cohort_label, cohort_date, creation_year,
-                                first_snapshot_id, latest_snapshot_id, latest_row_id,
-                                created_at, updated_at
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                            (
-                                by_key[key], name, domain, record.name, record.website,
-                                record.description, record.sector, record.cohort_label,
-                                record.cohort_date, record.creation_year,
-                                snapshot_id, snapshot_id, source_row_id,
-                                now_str, now_str,
-                            ),
-                        )
-                        # Founders are written once at entity creation; a re-clean
-                        # updates fields but never duplicates the founder rows.
-                        if record.founders:
-                            for founder in record.founders:
-                                await self._execute(
-                                    "INSERT INTO entity_founders (id, entity_id, full_name, created_at) VALUES (?, ?, ?, ?)",
-                                    (str(uuid4()), by_key[key], founder, now_str),
-                                )
-                    elif key not in seen_keys:
-                        await self._execute(
-                            """UPDATE entities SET
-                                retrieval_text=CASE WHEN description IS ? THEN retrieval_text ELSE NULL END,
-                                detected_language=CASE WHEN description IS ? THEN detected_language ELSE NULL END,
-                                is_embedded=CASE WHEN description IS ? THEN is_embedded ELSE 0 END,
-                                name = ?, website = ?, description = ?, sector = ?,
-                                cohort_label = ?, cohort_date = ?, creation_year = ?,
-                                latest_snapshot_id = ?, latest_row_id = ?, updated_at = ?
-                               WHERE id = ?""",
-                            (
-                                record.description, record.description, record.description,
-                                record.name, record.website, record.description, record.sector,
-                                record.cohort_label, record.cohort_date, record.creation_year,
-                                snapshot_id, source_row_id, now_str,
-                                by_key[key],
-                            ),
-                        )
-                    record.entity_id = by_key[key]
-                    # A row with the same name and website already seen in this run
-                    # is a duplicate listing, kept as evidence but hidden from views.
-                    if key in seen_keys:
-                        is_duplicate = True
-                        record.review_reasons.append(
-                            f"Duplicate of row {seen_keys[key]}; same name and website"
-                        )
-                    else:
-                        seen_keys[key] = record.row_number
-                if is_duplicate and source_row_id:
-                    await self._execute(
-                        "UPDATE source_rows SET is_duplicate=1 WHERE id=?", (source_row_id,)
-                    )
-                if record.review_reasons:
-                    now_str = utc_now()
-                    for reason in record.review_reasons:
-                        issue = classify_issue(reason)
-                        # One open item per row and reason, so repeated cleans are idempotent.
-                        seen = await self._rows(
-                            "SELECT 1 FROM entity_review_items WHERE entity_id IS ? AND source_row_id IS ? AND reason = ?",
-                            (record.entity_id, source_row_id, reason),
-                        )
-                        if seen:
-                            continue
-                        await self._execute(
-                            """INSERT INTO entity_review_items (
-                                id, entity_id, source_row_id, reason, resolved, created_at, code, category
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                            (str(uuid4()), record.entity_id, source_row_id, reason, int(issue.category == "automatic"), now_str, issue.code, issue.category),
-                        )
-                await self._execute(
-                    "INSERT INTO normalized_records (snapshot_id, row_number, entity_id, name, record_json, is_duplicate) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(snapshot_id, row_number) DO UPDATE SET entity_id=excluded.entity_id, name=excluded.name, record_json=excluded.record_json, is_duplicate=excluded.is_duplicate",
-                    (
-                        snapshot_id,
-                        record.row_number,
-                        record.entity_id,
-                        record.name,
-                        record.model_dump_json(),
-                        int(is_duplicate),
-                    ),
-                )
+            await self._resolve_records(snapshot_id, records, row_ids)
             review_count = await self._review_count(snapshot_id)
             await self._execute(
                 "UPDATE pipeline_runs SET completed_at=?, status='completed', records_processed=?, review_count=?, snapshot_id=? WHERE id=?",
                 (utc_now(), len(records), review_count, snapshot_id, run_id),
             )
             await self._complete_step(run_id, "resolve", len(records), f"{review_count} rows need review")
-        return PipelineRunResult(
-            run_id, "completed", snapshot_id, len(records), review_count
-        )
+        return PipelineRunResult(run_id, "completed", snapshot_id, len(records), review_count)
 
     @staticmethod
     def _name_key(name: str | None) -> str:
         return " ".join(unicodedata.normalize("NFC", name or "").casefold().split())
 
+    async def _resolve_records(
+        self, snapshot_id: str, records: list[NormalizedRecord], row_ids: dict[int, str]
+    ) -> None:
+        """Rebuild derived links and findings from the preserved current snapshot."""
+        raw_rows = await self._rows(
+            "SELECT row_number, raw_json FROM source_rows WHERE snapshot_id=?", (snapshot_id,)
+        )
+        raw = {row["row_number"]: json.loads(row["raw_json"]) for row in raw_rows}
+        identities = await self._rows("SELECT id, name_key, identity_key FROM entities")
+        by_key = {(row["name_key"], row["identity_key"]): row["id"] for row in identities}
+        seen_content: dict[str, int] = {}
+        seen_identity: set[tuple[str, str]] = set()
+        duplicates: set[int] = set()
+        for record in records:
+            name = self._name_key(record.name)
+            identity = _site_identity(record.domain, record.website) if record.domain else ""
+            source_row_id = row_ids.get(record.row_number)
+            if name and identity:
+                key = (name, identity)
+                entity_id = by_key.get(key)
+                if entity_id is None:
+                    entity_id = str(uuid4())
+                    by_key[key] = entity_id
+                    now = utc_now()
+                    await self._execute(
+                        """INSERT INTO entities (
+                        id,name_key,domain,identity_key,name,website,description,sector,
+                        cohort_label,cohort_date,creation_year,first_snapshot_id,
+                        latest_snapshot_id,latest_row_id,created_at,updated_at
+                        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                        (entity_id,name,record.domain,identity,record.name,record.website,
+                         record.description,record.sector,record.cohort_label,record.cohort_date,
+                         record.creation_year,snapshot_id,snapshot_id,source_row_id,now,now),
+                    )
+                elif key not in seen_identity:
+                    await self._execute(
+                        """UPDATE entities SET domain=?,name=?,website=?,sector=?,
+                        cohort_label=?,cohort_date=?,creation_year=?,latest_snapshot_id=?,
+                        updated_at=? WHERE id=?""",
+                        (record.domain,record.name,record.website,record.sector,
+                         record.cohort_label,record.cohort_date,record.creation_year,
+                         snapshot_id,utc_now(),entity_id),
+                    )
+                record.entity_id = entity_id
+                seen_identity.add(key)
+            else:
+                record.review_reasons.append("Identity needs a valid name and website")
+
+            content = _content_key(raw.get(record.row_number))
+            canonical = seen_content.get(content)
+            is_duplicate = canonical is not None
+            if is_duplicate:
+                duplicates.add(record.row_number)
+                record.review_reasons.append(f"Duplicate of row {canonical}; identical content")
+            else:
+                seen_content[content] = record.row_number
+            await self._execute(
+                "UPDATE source_rows SET is_duplicate=? WHERE id=?",
+                (int(is_duplicate), source_row_id),
+            )
+            existing = await self._rows(
+                "SELECT id,reason,resolved FROM entity_review_items WHERE source_row_id=?",
+                (source_row_id,),
+            )
+            current = set(record.review_reasons)
+            for item in existing:
+                if item["reason"] not in current and not item["resolved"]:
+                    await self._execute(
+                        "UPDATE entity_review_items SET resolved=1,resolution_note=? WHERE id=?",
+                        ("Superseded by current normalization", item["id"]),
+                    )
+            old_reasons = {item["reason"] for item in existing}
+            for reason in record.review_reasons:
+                if reason in old_reasons:
+                    continue
+                issue = classify_issue(reason)
+                await self._execute(
+                    """INSERT INTO entity_review_items (
+                    id,entity_id,source_row_id,reason,resolved,created_at,code,category
+                    ) VALUES (?,?,?,?,?,?,?,?)""",
+                    (str(uuid4()),record.entity_id,source_row_id,reason,
+                     int(issue.category == "automatic"),utc_now(),issue.code,issue.category),
+                )
+            await self._execute(
+                """INSERT INTO normalized_records
+                (snapshot_id,row_number,entity_id,name,record_json,is_duplicate)
+                VALUES (?,?,?,?,?,?) ON CONFLICT(snapshot_id,row_number) DO UPDATE SET
+                entity_id=excluded.entity_id,name=excluded.name,
+                record_json=excluded.record_json,is_duplicate=excluded.is_duplicate""",
+                (snapshot_id,record.row_number,record.entity_id,record.name,
+                 record.model_dump_json(),int(is_duplicate)),
+            )
+        await self._refresh_entities(snapshot_id, records, row_ids, duplicates)
+
+    async def _refresh_entities(
+        self, snapshot_id: str, records: list[NormalizedRecord],
+        row_ids: dict[int, str], duplicates: set[int],
+    ) -> None:
+        """Publish one main account, all founder evidence, and related identities."""
+        from collections import defaultdict
+        from itertools import combinations
+
+        groups: dict[str, list[NormalizedRecord]] = defaultdict(list)
+        for record in records:
+            if record.entity_id and record.row_number not in duplicates:
+                groups[record.entity_id].append(record)
+        representatives: list[tuple[str, NormalizedRecord, set[str]]] = []
+        for entity_id, group in groups.items():
+            group.sort(key=lambda item: item.row_number)
+            main = next((item for item in group if item.description), group[0])
+            descriptions = list(dict.fromkeys(
+                item.description for item in group if item.description
+            ))
+            input_hash = _description_hash(descriptions)
+            await self._execute(
+                """UPDATE entities SET name=?,website=?,domain=?,description=?,sector=?,
+                cohort_label=?,cohort_date=?,creation_year=?,latest_snapshot_id=?,
+                latest_row_id=?,latest_row_number=?,
+                retrieval_text=CASE WHEN preparation_input_hash=? THEN retrieval_text ELSE NULL END,
+                detected_language=CASE WHEN preparation_input_hash=? THEN detected_language ELSE NULL END,
+                is_embedded=CASE WHEN preparation_input_hash=? THEN is_embedded ELSE 0 END,
+                preparation_input_hash=? WHERE id=?""",
+                (main.name,main.website,main.domain,main.description,main.sector,
+                 main.cohort_label,main.cohort_date,main.creation_year,snapshot_id,
+                 row_ids[main.row_number],main.row_number,input_hash,input_hash,
+                 input_hash,input_hash,entity_id),
+            )
+            founder_lists = [
+                {_founder_key(name) for name in item.founders if name.strip()}
+                for item in group if item.founders
+            ]
+            names: dict[str, str] = {}
+            for item in group:
+                for name in item.founders:
+                    names.setdefault(_founder_key(name), name)
+            existing = {
+                row["name_key"]: row for row in await self._rows(
+                    "SELECT id,name_key FROM entity_founders WHERE entity_id=?", (entity_id,)
+                ) if row["name_key"]
+            }
+            for name_key, display_name in names.items():
+                support = sum(name_key in listed for listed in founder_lists)
+                if len(founder_lists) == 1:
+                    status = "reported"
+                elif support == len(founder_lists):
+                    status = "confirmed"
+                else:
+                    status = "to_confirm"
+                if name_key in existing:
+                    await self._execute(
+                        "UPDATE entity_founders SET full_name=?,evidence_status=?,support_count=? WHERE id=?",
+                        (display_name,status,support,existing[name_key]["id"]),
+                    )
+                else:
+                    await self._execute(
+                        """INSERT INTO entity_founders
+                        (id,entity_id,full_name,created_at,name_key,evidence_status,support_count)
+                        VALUES (?,?,?,?,?,?,?)""",
+                        (str(uuid4()),entity_id,display_name,utc_now(),name_key,status,support),
+                    )
+            if names:
+                slots = ",".join("?" for _ in names)
+                await self._execute(
+                    f"DELETE FROM entity_founders WHERE entity_id=? AND (name_key IS NULL OR name_key NOT IN ({slots}))",
+                    (entity_id,*names),
+                )
+            else:
+                await self._execute("DELETE FROM entity_founders WHERE entity_id=?", (entity_id,))
+            representatives.append((entity_id, group[0], set(names)))
+        await self._execute("DELETE FROM entity_relations")
+        for left, right in combinations(representatives, 2):
+            left_id, a, a_founders = left
+            right_id, b, b_founders = right
+            if not a.creation_year or a.creation_year != b.creation_year:
+                continue
+            if self._name_key(a.name) == self._name_key(b.name):
+                continue
+            shared = len(a_founders & b_founders)
+            if shared < 2 or shared / min(len(a_founders), len(b_founders)) < 0.75:
+                continue
+            a_id, b_id = sorted((left_id, right_id))
+            a_row, b_row = (a, b) if a_id == left_id else (b, a)
+            await self._execute(
+                """INSERT INTO entity_relations VALUES (?,?,?,?,?,?,?)""",
+                (a_id,b_id,row_ids[a_row.row_number],row_ids[b_row.row_number],
+                 "shared_registry_team",shared,utc_now()),
+            )
+
     async def reconcile_corpus(
-        self,
-        run_id: str,
-        snapshot_id: str,
-        records: list[NormalizedRecord],
+        self, run_id: str, snapshot_id: str, records: list[NormalizedRecord],
         row_ids: dict[int, str],
     ) -> PipelineRunResult:
-        """Offline pass over the stored corpus: mark exact duplicates, backfill
-        founders and descriptions. Evidence rows are never deleted or rewritten."""
+        """Re-resolve the preserved snapshot offline under the current rules."""
         async with self._transaction():
-            stored = await self._rows(
-                "SELECT row_number, entity_id, record_json, is_duplicate FROM normalized_records WHERE snapshot_id=?", (snapshot_id,)
-            )
-            now_str = utc_now()
-
-            shadow_count = 0
-            groups: dict[tuple[str, str], list[tuple[int, str | None]]] = {}
-            for row in stored:
-                parsed = NormalizedRecord.model_validate_json(row["record_json"])
-                key = (self._name_key(parsed.name), parsed.domain or "")
-                if not key[0] or not key[1]:
-                    continue
-                groups.setdefault(key, []).append((row["row_number"], row["entity_id"]))
-            for key, members in groups.items():
-                if len(members) < 2:
-                    continue
-                members.sort()
-                canonical_row, _ = members[0]
-                for shadow_number, shadow_entity in members[1:]:
-                    sid = row_ids.get(shadow_number)
-                    await self._execute(
-                        "UPDATE source_rows SET is_duplicate=1 WHERE snapshot_id=? AND row_number=?",
-                        (snapshot_id, shadow_number),
-                    )
-                    await self._execute(
-                        "UPDATE normalized_records SET is_duplicate=1 WHERE snapshot_id=? AND row_number=?",
-                        (snapshot_id, shadow_number),
-                    )
-                    if sid:
-                        dup_reason = (
-                            f"Duplicate of row {canonical_row}; same name and website"
-                        )
-                        await self._execute(
-                            "UPDATE entity_review_items SET resolved=1 WHERE source_row_id=? AND reason != ?",
-                            (sid, dup_reason),
-                        )
-                        seen_dup = await self._rows(
-                            "SELECT 1 FROM entity_review_items WHERE source_row_id=? AND reason=?",
-                            (sid, dup_reason),
-                        )
-                        if not seen_dup:
-                            await self._execute(
-                                """INSERT INTO entity_review_items (
-                                    id, entity_id, source_row_id, reason, resolved, created_at, code, category
-                                ) VALUES (?, ?, ?, ?, 1, ?, 'exact_duplicate', 'automatic')""",
-                                (
-                                    str(uuid4()),
-                                    shadow_entity,
-                                    sid,
-                                    dup_reason,
-                                    now_str,
-                                ),
-                            )
-                    shadow_count += 1
-
-            rows_with_entity = await self._rows(
-                "SELECT entity_id, record_json FROM normalized_records WHERE entity_id IS NOT NULL AND is_duplicate=0"
-            )
-            existing_founders_rows = await self._rows(
-                "SELECT entity_id, full_name FROM entity_founders"
-            )
-            existing_founders: dict[str, set[str]] = {}
-            for row in existing_founders_rows:
-                existing_founders.setdefault(row["entity_id"], set()).add(
-                    row["full_name"]
-                )
-            founder_count = 0
-            descriptions: dict[str, str] = {}
-            for row in rows_with_entity:
-                entity_id = row["entity_id"]
-                parsed = NormalizedRecord.model_validate_json(row["record_json"])
-                if parsed.description and entity_id not in descriptions:
-                    descriptions[entity_id] = parsed.description
-                have = existing_founders.setdefault(entity_id, set())
-                for founder in parsed.founders:
-                    if founder in have:
-                        continue
-                    have.add(founder)
-                    await self._execute(
-                        "INSERT INTO entity_founders (id, entity_id, full_name, created_at) VALUES (?, ?, ?, ?)",
-                        (str(uuid4()), entity_id, founder, now_str),
-                    )
-                    founder_count += 1
-
-            desc_count = 0
-            for entity_id, description in descriptions.items():
-                current = await self._rows(
-                    "SELECT description FROM entities WHERE id=?", (entity_id,)
-                )
-                if current and not current[0]["description"]:
-                    await self._execute(
-                        "UPDATE entities SET description=? WHERE id=?",
-                        (description, entity_id),
-                    )
-                    desc_count += 1
-
+            await self._resolve_records(snapshot_id, records, row_ids)
             review_count = await self._review_count(snapshot_id)
             await self._execute(
                 "UPDATE pipeline_runs SET completed_at=?, status='completed', records_processed=?, review_count=?, snapshot_id=? WHERE id=?",
                 (utc_now(), len(records), review_count, snapshot_id, run_id),
             )
             await self._complete_step(run_id, "reconcile", len(records), f"{review_count} records need review")
-        return PipelineRunResult(
-            run_id,
-            "completed",
-            snapshot_id,
-            len(records),
-            review_count,
-        )
+        return PipelineRunResult(run_id, "completed", snapshot_id, len(records), review_count)
 
     async def _complete_step(self, run_id: str, name: str, items: int, message: str) -> None:
         """Commit terminal step status with its data, even if later UI reporting fails."""
@@ -726,25 +751,77 @@ class DatabaseService:
             # Only the visible page's preparations and review decisions are needed.
             page_slots = ",".join("?" for _ in page_numbers)
             preparations = await self._rows(
-                f"""SELECT s.row_number,p.input_hash,p.profile,p.model,p.output_json
-                FROM text_preparations p
-                JOIN source_rows s ON s.id=p.source_row_id
-                WHERE s.snapshot_id=? AND s.row_number IN ({page_slots})
+                f"""SELECT n.row_number,p.profile,p.model,p.output_json
+                FROM normalized_records n JOIN entities e ON e.id=n.entity_id
+                JOIN text_preparations p ON p.entity_id=e.id
+                    AND p.input_hash=e.preparation_input_hash
+                WHERE n.snapshot_id=? AND n.row_number IN ({page_slots})
                 ORDER BY p.created_at""", (snapshot_id, *page_numbers)
             )
+            entity_ids = tuple(dict.fromkeys(
+                record.entity_id for record in records if record.entity_id
+            ))
+            description_rows: list[dict[str, Any]] = []
+            founder_rows: list[dict[str, Any]] = []
+            relation_rows: list[dict[str, Any]] = []
+            if entity_ids:
+                entity_slots = ",".join("?" for _ in entity_ids)
+                description_rows = await self._rows(
+                    f"""SELECT entity_id,row_number,
+                    json_extract(record_json,'$.description') AS description
+                    FROM normalized_records WHERE snapshot_id=? AND is_duplicate=0
+                    AND entity_id IN ({entity_slots}) ORDER BY row_number""",
+                    (snapshot_id,*entity_ids),
+                )
+                founder_rows = await self._rows(
+                    f"""SELECT entity_id,full_name,evidence_status FROM entity_founders
+                    WHERE entity_id IN ({entity_slots}) ORDER BY full_name""",
+                    entity_ids,
+                )
+                relation_rows = await self._rows(
+                    f"""SELECT r.entity_a_id,r.entity_b_id,r.shared_founders,
+                    a.name AS name_a,b.name AS name_b FROM entity_relations r
+                    JOIN entities a ON a.id=r.entity_a_id
+                    JOIN entities b ON b.id=r.entity_b_id
+                    WHERE r.entity_a_id IN ({entity_slots})
+                    OR r.entity_b_id IN ({entity_slots})""",
+                    (*entity_ids,*entity_ids),
+                )
             resolved = await self._rows(
                 f"""SELECT s.row_number,i.reason FROM entity_review_items i JOIN source_rows s ON s.id=i.source_row_id
                 WHERE s.snapshot_id=? AND i.category='human' AND i.resolved=1
                 AND s.row_number IN ({page_slots})""", (snapshot_id, *page_numbers)
             )
         prepared = {
-            (row["row_number"], row["input_hash"]): {
+            row["row_number"]: {
                 **json.loads(row["output_json"]),
                 "profile": row["profile"],
                 "model": row["model"],
             }
             for row in preparations
         }
+        descriptions_by_entity: dict[str, list[tuple[int, str]]] = {}
+        for row in description_rows:
+            if row["description"]:
+                descriptions = descriptions_by_entity.setdefault(row["entity_id"], [])
+                if any(text == row["description"] for _, text in descriptions):
+                    continue
+                descriptions.append(
+                    (row["row_number"], row["description"])
+                )
+        founders_by_entity: dict[str, list[tuple[str, str]]] = {}
+        for row in founder_rows:
+            founders_by_entity.setdefault(row["entity_id"], []).append(
+                (row["full_name"], row["evidence_status"])
+            )
+        related_by_entity: dict[str, list[tuple[str, int]]] = {}
+        for row in relation_rows:
+            related_by_entity.setdefault(row["entity_a_id"], []).append(
+                (row["name_b"], row["shared_founders"])
+            )
+            related_by_entity.setdefault(row["entity_b_id"], []).append(
+                (row["name_a"], row["shared_founders"])
+            )
         resolved_reasons = {(row["row_number"], row["reason"]) for row in resolved}
         originals = {row["row_number"]: row for row in rows}
         details = []
@@ -758,7 +835,10 @@ class DatabaseService:
                     source["content_hash"],
                     json.loads(source["raw_json"]),
                     record,
-                    prepared.get((record.row_number, hashlib.sha256((record.description or "").encode()).hexdigest())),
+                    prepared.get(record.row_number),
+                    tuple(descriptions_by_entity.get(record.entity_id, ())),
+                    tuple(founders_by_entity.get(record.entity_id, ())),
+                    tuple(related_by_entity.get(record.entity_id, ())),
                 )
             )
         return RecordPage(details, total, unfiltered)
@@ -848,9 +928,11 @@ class DatabaseService:
         # that trips an immediate FK check on the wipe of its parent row.
         preferred = (
             "preparation_usage",
+            "text_preparation_sources",
             "text_preparations",
             "run_steps",
             "entity_review_items",
+            "entity_relations",
             "entity_founders",
             "entity_embeddings",
             "normalized_records",
@@ -900,17 +982,47 @@ class DatabaseService:
 
     async def preparation_candidates(self) -> list[dict[str, Any]]:
         async with self._lock:
-            return await self._rows(
-                """SELECT e.id AS entity_id, s.id AS source_row_id, s.snapshot_id,
-                e.description FROM entities e JOIN source_rows s ON s.id=e.latest_row_id
-                WHERE s.is_duplicate=0 AND e.description IS NOT NULL
-                AND trim(e.description) != '' ORDER BY e.id"""
+            rows = await self._rows(
+                """SELECT n.entity_id,s.id AS source_row_id,s.snapshot_id,
+                s.row_number,json_extract(n.record_json,'$.description') AS description
+                FROM normalized_records n JOIN source_rows s
+                ON s.snapshot_id=n.snapshot_id AND s.row_number=n.row_number
+                WHERE n.snapshot_id=(SELECT snapshot_id FROM pipeline_runs
+                    WHERE operation='collect' AND status='completed'
+                    ORDER BY completed_at DESC,started_at DESC,rowid DESC LIMIT 1)
+                AND n.entity_id IS NOT NULL AND n.is_duplicate=0
+                ORDER BY n.entity_id,s.row_number"""
             )
+        grouped: dict[str, list[dict[str, Any]]] = {}
+        for row in rows:
+            if not row["description"] or not row["description"].strip():
+                continue
+            sources = grouped.setdefault(row["entity_id"], [])
+            if any(item["description"] == row["description"] for item in sources):
+                continue
+            sources.append({
+                "source_row_id": row["source_row_id"],
+                "row_number": row["row_number"],
+                "description": row["description"],
+            })
+        candidates = []
+        for entity_id, sources in grouped.items():
+            main = sources[0]
+            candidates.append({
+                "entity_id": entity_id,
+                "source_row_id": main["source_row_id"],
+                "snapshot_id": next(row["snapshot_id"] for row in rows if row["entity_id"] == entity_id),
+                "description": main["description"],
+                "sources": sources,
+                "input_hash": _description_hash([item["description"] for item in sources]),
+            })
+        return candidates
 
-    async def prepared_text(self, cache_key: str, entity_id: str, input_hash: str, model: str) -> dict[str, Any] | None:
+    async def prepared_text(
+        self, cache_key: str, entity_id: str, input_hash: str, model: str,
+        prompt_version: str, schema_version: str,
+    ) -> dict[str, Any] | None:
         from athar_dataops.schemas.preparation import (
-            PROMPT_VERSION,
-            SCHEMA_VERSION,
             TARGET_LANGUAGE,
         )
         async with self._lock:
@@ -918,18 +1030,17 @@ class DatabaseService:
                 """SELECT output_json FROM text_preparations WHERE cache_key=? OR
                 (entity_id=? AND input_hash=? AND provider='groq' AND model=?
                 AND prompt_version=? AND schema_version=? AND target_language=?) LIMIT 1""",
-                (cache_key, entity_id, input_hash, model, PROMPT_VERSION, SCHEMA_VERSION, TARGET_LANGUAGE),
+                (cache_key, entity_id, input_hash, model, prompt_version, schema_version, TARGET_LANGUAGE),
             )
         return json.loads(rows[0]["output_json"]) if rows else None
 
     async def save_preparation(self, candidate: dict[str, Any], cache_key: str,
                                input_hash: str, model: str, profile: str,
                                output: dict[str, Any]) -> None:
-        from athar_dataops.schemas.preparation import (
-            PROMPT_VERSION,
-            SCHEMA_VERSION,
-            TARGET_LANGUAGE,
-        )
+        from athar_dataops.schemas.preparation import TARGET_LANGUAGE
+        from athar_dataops.services.preparation import candidate_versions
+
+        prompt_version, schema_version = candidate_versions(candidate)
         async with self._transaction():
             await self._execute(
                 """INSERT INTO text_preparations
@@ -938,15 +1049,31 @@ class DatabaseService:
                 VALUES (?, ?, ?, ?, 'groq', ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(cache_key) DO NOTHING""",
                 (cache_key, candidate["source_row_id"], candidate["entity_id"], input_hash,
-                 model, profile, PROMPT_VERSION, SCHEMA_VERSION, TARGET_LANGUAGE,
+                 model, profile, prompt_version, schema_version, TARGET_LANGUAGE,
                  json.dumps(output, ensure_ascii=False), utc_now()),
             )
-            # Only publish preparation for the exact current description, never stale evidence.
+            for index, source in enumerate(candidate["sources"]):
+                await self._execute(
+                    """INSERT INTO text_preparation_sources
+                    (cache_key,source_row_id,role,input_hash) VALUES (?,?,?,?)
+                    ON CONFLICT(cache_key,source_row_id) DO NOTHING""",
+                    (cache_key,source["source_row_id"],
+                     "main" if index == 0 else "secondary",
+                     hashlib.sha256(source["description"].encode()).hexdigest()),
+                )
+            if len(candidate["sources"]) > 1:
+                retrieval = output["english_summary"]
+                languages = {item["detected_language"] for item in output["sources"]}
+                language = next(iter(languages)) if len(languages) == 1 else "mixed"
+            else:
+                retrieval = output["english_translation"] or output["cleaned_text"]
+                language = output["detected_language"]
+            # Only publish while the current set of descriptions still matches.
             await self._execute(
                 """UPDATE entities SET retrieval_text=?, detected_language=?, is_embedded=0
-                WHERE id=? AND latest_row_id=? AND description=?""",
-                (output["english_translation"] or output["cleaned_text"], output["detected_language"],
-                 candidate["entity_id"], candidate["source_row_id"], candidate["description"]),
+                WHERE id=? AND latest_row_id=? AND preparation_input_hash=?""",
+                (retrieval, language, candidate["entity_id"],
+                 candidate["source_row_id"], input_hash),
             )
 
     async def start_preparation_usage(self, attempt_id: str, run_id: str, source_row_id: str,

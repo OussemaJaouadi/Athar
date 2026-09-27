@@ -11,6 +11,8 @@ from uuid import uuid4
 
 from athar_dataops.schemas.pipeline import PipelineRunResult, StageProgress
 from athar_dataops.schemas.preparation import (
+    MULTI_PROMPT_VERSION,
+    MULTI_SCHEMA_VERSION,
     PROMPT_VERSION,
     SCHEMA_VERSION,
     TARGET_LANGUAGE,
@@ -30,11 +32,23 @@ _QUOTA_EXHAUSTED = "Groq daily allowance reached across all profiles; resume aft
 _RATE_LIMITED = "Groq rate limits still throttling; resume later with your configured profiles"
 
 
+def candidate_versions(candidate: dict) -> tuple[str, str]:
+    return (
+        (MULTI_PROMPT_VERSION, MULTI_SCHEMA_VERSION)
+        if len(candidate["sources"]) > 1 else (PROMPT_VERSION, SCHEMA_VERSION)
+    )
+
+
 def preparation_key(candidate: dict, model: str) -> tuple[str, str]:
-    input_hash = hashlib.sha256(candidate["description"].encode()).hexdigest()
+    input_hash = candidate["input_hash"]
+    prompt_version, schema_version = candidate_versions(candidate)
     # Source identity prevents attaching another record's provenance to reused text.
-    material = [candidate["source_row_id"], input_hash, "groq", model,
-                PROMPT_VERSION, SCHEMA_VERSION, TARGET_LANGUAGE]
+    source_identity = (
+        [item["source_row_id"] for item in candidate["sources"]]
+        if len(candidate["sources"]) > 1 else candidate["source_row_id"]
+    )
+    material = [source_identity, input_hash, "groq", model,
+                prompt_version, schema_version, TARGET_LANGUAGE]
     return hashlib.sha256(json.dumps(material).encode()).hexdigest(), input_hash
 
 
@@ -166,8 +180,10 @@ class PreparationService:
         """Find reusable output under any currently configured model, without spending quota."""
         for status in self.provider.profiles:
             key, input_hash = preparation_key(candidate, status.model)
+            prompt_version, schema_version = candidate_versions(candidate)
             output = await self._db.prepared_text(
-                key, candidate["entity_id"], input_hash, status.model
+                key, candidate["entity_id"], input_hash, status.model,
+                prompt_version, schema_version,
             )
             if output is not None:
                 return status, key, input_hash, output
@@ -255,8 +271,10 @@ class PreparationService:
                 while True:
                     profile = await self._reserve(ledger, hinted)
                     cache_key, input_hash = preparation_key(candidate, ledger.model_for(profile))
+                    prompt_version, schema_version = candidate_versions(candidate)
                     cached_output = await self._db.prepared_text(
-                        cache_key, candidate["entity_id"], input_hash, ledger.model_for(profile)
+                        cache_key, candidate["entity_id"], input_hash, ledger.model_for(profile),
+                        prompt_version, schema_version,
                     )
                     if cached_output is not None:
                         # Reuse cached evidence with fresh provenance for this source row.
@@ -275,7 +293,10 @@ class PreparationService:
                     )
                     start = monotonic()
                     try:
-                        reply = await self.provider.prepare(profile, candidate["description"])
+                        if len(candidate["sources"]) > 1:
+                            reply = await self.provider.prepare_multi(profile, candidate["sources"])
+                        else:
+                            reply = await self.provider.prepare(profile, candidate["description"])
                     except asyncio.CancelledError:
                         await self._db.finish_preparation_usage(
                             attempt_id, monotonic() - start, "cancelled",

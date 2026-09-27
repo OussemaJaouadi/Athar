@@ -53,3 +53,6 @@ class RecordDetail:
     original: Any
     normalized: NormalizedRecord
     prepared: dict[str, Any] | None = None
+    descriptions: tuple[tuple[int, str], ...] = ()
+    founder_evidence: tuple[tuple[str, str], ...] = ()
+    related: tuple[tuple[str, int], ...] = ()

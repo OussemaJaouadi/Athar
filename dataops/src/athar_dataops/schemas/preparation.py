@@ -7,6 +7,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 PROMPT_VERSION = "prepare-v1"
 SCHEMA_VERSION = "1"
+MULTI_PROMPT_VERSION = "prepare-multi-v1"
+MULTI_SCHEMA_VERSION = "2"
 TARGET_LANGUAGE = "en"
 
 
@@ -60,9 +62,26 @@ class PreparedText(BaseModel):
     fluff_excerpts: list[str]
 
 
+class PreparedSource(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    row_number: int
+    detected_language: str = Field(min_length=2, max_length=32)
+    cleaned_text: str
+    english_translation: str | None
+    fluff_excerpts: list[str]
+
+
+class CombinedPreparedText(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    sources: list[PreparedSource] = Field(min_length=2)
+    english_summary: str = Field(min_length=1)
+
+
 @dataclass(frozen=True)
 class PreparationReply:
-    output: PreparedText | None = None
+    output: PreparedText | CombinedPreparedText | None = None
     input_tokens: int | None = None
     output_tokens: int | None = None
     request_id: str | None = None

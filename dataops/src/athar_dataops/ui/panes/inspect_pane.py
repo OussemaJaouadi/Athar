@@ -122,6 +122,8 @@ class InspectPane(Vertical):
                 yield Static(
                     "", id="detail-description", classes="description", markup=False
                 )
+                yield Static("", id="detail-secondary", classes="description", markup=False)
+                yield Static("", id="detail-related", classes="note", markup=False)
                 yield Static("", id="detail-normalized", markup=False)
                 with Vertical(id="review-section"):
                     yield Label("Data notes", classes="section-label")
@@ -215,12 +217,16 @@ class InspectPane(Vertical):
                     "#detail-title",
                     "#detail-summary",
                     "#detail-description",
+                    "#detail-secondary",
+                    "#detail-related",
                     "#detail-normalized",
                     "#detail-review",
                     "#detail-fields",
                     "#detail-original",
                 ):
                     self.query_one(selector).update("")
+                self.query_one("#detail-secondary").display = False
+                self.query_one("#detail-related").display = False
             count = (
                 f"{self._offset + 1}–{self._offset + len(self._records)} of {page.total}"
                 if self._records
@@ -327,9 +333,23 @@ class InspectPane(Vertical):
         self.query_one("#detail-summary", Static).update(
             format_arabic(f"Sector: {record.sector or 'Not listed'}")
         )
+        descriptions = detail.descriptions
+        main_description = descriptions[0][1] if descriptions else record.description
         self.query_one("#detail-description", Static).update(
-            format_arabic(record.description or "No description provided.")
+            format_arabic(main_description or "No description provided.")
         )
+        secondary = self.query_one("#detail-secondary", Static)
+        secondary.display = len(descriptions) > 1
+        secondary.update(format_arabic("\n\n".join(
+            f"Additional registry description · row {number}\n{description}"
+            for number, description in descriptions[1:]
+        )))
+        related = self.query_one("#detail-related", Static)
+        related.display = bool(detail.related)
+        related.update(format_arabic("\n".join(
+            f"Related registry entry: {name} · {count} shared founders; separate startup"
+            for name, count in detail.related
+        )))
         # Structured registry property table with real borders
         norm_table = Table(
             box=box.ROUNDED, expand=True, show_header=True, header_style=f"bold {pri}"
@@ -342,9 +362,17 @@ class InspectPane(Vertical):
             str(record.creation_year) if record.creation_year else "Not listed",
         )
         norm_table.add_row("Cohort", Text(format_arabic(record.cohort_label or "Not listed")))
-        norm_table.add_row(
-            "Founders", Text(format_arabic(", ".join(record.founders) or "Not listed"))
+        founder_labels = {
+            "confirmed": "confirmed across entries",
+            "to_confirm": "to confirm",
+            "reported": "registry reported",
+        }
+        founders = (
+            ", ".join(f"{name} ({founder_labels.get(status, status)})"
+                      for name, status in detail.founder_evidence)
+            if detail.founder_evidence else ", ".join(record.founders)
         )
+        norm_table.add_row("Founders", Text(format_arabic(founders or "Not listed")))
         self.query_one("#detail-normalized", Static).update(norm_table)
 
         self.query_one("#review-section").display = bool(record.review_reasons)
@@ -389,6 +417,24 @@ class InspectPane(Vertical):
         """Structured view of one prepared description: meta strip, blocks, flags."""
         pal = DARK if is_dark else LIGHT
         muted = pal.variables["muted"]
+        if "english_summary" in output:
+            text = Text()
+            text.append("COMBINED ENGLISH SUMMARY\n", style=f"bold {pri}")
+            text.append(format_arabic(output["english_summary"]), style=pal.foreground)
+            producers = " · ".join(str(value) for value in
+                                   (output.get("profile"), output.get("model")) if value)
+            if producers:
+                text.append("\nPRODUCED BY  ", style=f"bold {muted}")
+                text.append(producers, style=pal.foreground)
+            for source in output.get("sources", []):
+                text.append(f"\n\nREGISTRY ROW {source['row_number']} · ", style=f"bold {muted}")
+                text.append(format_arabic(source["detected_language"].upper()), style=f"bold {pri}")
+                text.append("\n")
+                text.append(format_arabic(source["cleaned_text"]), style=pal.foreground)
+                if source.get("english_translation"):
+                    text.append("\nEnglish: ", style=f"bold {muted}")
+                    text.append(format_arabic(source["english_translation"]), style=pal.foreground)
+            return text
         lang = str(output.get("detected_language") or "—")
         profile = output.get("profile")
         model = output.get("model")

@@ -59,6 +59,17 @@ class PreparationTests(IsolatedAsyncioTestCase):
             "detected_language": "fr", "cleaned_text": "Logiciel pour 12 magasins.",
             "english_translation": "Software for 12 shops.", "fluff_excerpts": ["Le meilleur"],
         }
+        if self.mode == "multi":
+            sources = json.loads(payload["messages"][1]["content"])
+            output = {
+                "sources": [
+                    {"row_number": source["row_number"], "detected_language": "en",
+                     "cleaned_text": source["description"],
+                     "english_translation": None, "fluff_excerpts": []}
+                    for source in sources
+                ],
+                "english_summary": "Software for 12 shops and schools.",
+            }
         if self.mode == "hallucinated_excerpt":
             output["fluff_excerpts"] = ["not in source"]
         if self.mode == "lost_number":
@@ -274,6 +285,49 @@ class PreparationTests(IsolatedAsyncioTestCase):
         self.assertEqual(len(candidates), 1)
         result = await self.pipeline.run_preparation()
         self.assertEqual(result.records_processed, 1)
+
+    async def test_two_descriptions_get_one_combined_call_with_both_sources(self):
+        self.rows = [
+            registry_row(name="Dual", website="dual.example",
+                         desc="Software for 12 shops."),
+            registry_row(name="Dual", website="dual.example",
+                         desc="Software for schools."),
+        ]
+        await self.pipeline.run_pipeline()
+        self.mode = "multi"
+        result = await self.pipeline.run_preparation()
+        self.assertEqual(result.status, "completed")
+        self.assertEqual(self.calls, 1)
+        details = await self.db.list_records()
+        self.assertEqual(len(details), 2)
+        self.assertEqual(details[0].prepared["english_summary"],
+                         "Software for 12 shops and schools.")
+        sources = await self.db._rows(
+            "SELECT role FROM text_preparation_sources ORDER BY role"
+        )
+        self.assertEqual([row["role"] for row in sources], ["main", "secondary"])
+        retrieval = await self.db._rows("SELECT retrieval_text FROM entities WHERE name='Dual'")
+        self.assertEqual(retrieval[0]["retrieval_text"],
+                         "Software for 12 shops and schools.")
+        from test_smoke import render_text
+        from textual.widgets import Static
+
+        from athar_dataops.app import DataOpsApp
+
+        app = DataOpsApp(self.pipeline, self.db, self.config)
+        async with app.run_test(size=(120, 50)) as pilot:
+            app.action_navigate("inspect")
+            await pilot.pause()
+            self.assertIn("Software for schools",
+                          render_text(app.query_one("#detail-secondary", Static).render()))
+            self.assertIn("COMBINED ENGLISH SUMMARY",
+                          render_text(app.query_one("#detail-prepared", Static).render()))
+        await self.pipeline.run_preparation()
+        self.assertEqual(self.calls, 1)
+        self.rows[1]["desc"] = "Software for 3 schools."
+        await self.pipeline.run_pipeline()
+        await self.pipeline.run_preparation()
+        self.assertEqual(self.calls, 2)
 
     async def test_invalid_and_refused_outputs_are_retryable_and_accounted(self):
         for mode in ("bad_json", "refused", "hallucinated_excerpt", "lost_number"):

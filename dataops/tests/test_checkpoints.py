@@ -297,7 +297,18 @@ class CheckpointTests(IsolatedAsyncioTestCase):
         ]
         result = await self.pipeline.run_pipeline()
         self.assertEqual(result.status, "completed")
-        self.assertEqual(result.review_count, 2)
+        self.assertEqual(result.review_count, 0)
+        sources = await self.db._rows(
+            "SELECT id FROM source_rows WHERE snapshot_id=? ORDER BY row_number LIMIT 2",
+            (result.snapshot_id,),
+        )
+        for index, source in enumerate(sources):
+            await self.db._execute(
+                """INSERT INTO entity_review_items
+                (id,source_row_id,reason,resolved,created_at,code,category)
+                VALUES (?,?,?,0,'2026-01-01','identity_conflict','human')""",
+                (f"manual-{index}", source["id"], "Conflicting registry evidence"),
+            )
 
         app = self.app()
         async with app.run_test(size=(120, 40)) as pilot:

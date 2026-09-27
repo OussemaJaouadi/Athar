@@ -99,9 +99,9 @@ flowchart TD
 | --- | --- |
 | `ArtifactService` | HTTP fetching and hashing original bytes; returns `RegistrySnapshot`. |
 | `RegistryService` | Deterministic field normalization and review reasons; returns `NormalizedRecord` values. |
-| `GroqPreparationClient` | Single-credential Groq transport: strict-JSON one-call detection/translation/fluff removal, secret never surfaced. |
-| `PreparationService` | Prepare run loop: candidate selection, per-description caching, usage accounting, run history. |
-| `DatabaseService` | Migrations, evidence, run history, `run_steps` timing, transactional identity resolution, corpus reconcile (duplicate suppression, founder/description backfill), prepare storage/usage, and bounded queries. |
+| `GroqPreparationClient` | Groq transport for one description or several labeled descriptions in one strict-JSON call; secrets never surfaced. |
+| `PreparationService` | Prepare run loop: entity-level candidates, ordered-description caching, usage accounting, run history. |
+| `DatabaseService` | Migrations, evidence, run history, `run_steps` timing, site identity resolution, content-equivalent duplicate suppression, founder evidence, related entities, prepare provenance/usage, and bounded queries. |
 | `PipelineOrchestrator` | Collection, offline cleaning, and preparation sequences, overlap guard, progress, timeout, and failure/cancellation bookkeeping. |
 
 - Services have no Textual dependency; UI consumes service methods and shared types.

@@ -74,7 +74,7 @@ flowchart TD
 
 ## 2. Product Schema & Relationships (ERD)
 
-All searchable attributes are indexed first-class columns. Duplicate rows are flagged `is_duplicate` on the derived layer and suppressed from default views, never deleted; `source_rows` serves as the sole citation evidence. Staged fields (`retrieval_text`, `detected_language`, `is_embedded`) are pre-allocated and post-filled cleanly: the Prepare operation fills `retrieval_text`/`detected_language` from a one-call language detection, fluff removal, and English translation, keyed to the exact description hash so unchanged input is never reprocessed. Review findings carry a shared `code`/`category` (automatic, incomplete, or human) so storage and UI classify issues identically; only unresolved human items count as "records needing review".
+All searchable attributes are indexed first-class columns. Content-equivalent rows are flagged `is_duplicate` on the derived layer and suppressed from default views, never deleted; `source_rows` serves as citation evidence. An entity is keyed by normalized name and site identity, including hosted page paths for Facebook and Google Sites. Distinct descriptions from one entity remain linked and visible. Prepare fills `retrieval_text`/`detected_language` from one call per entity: a single-description result or a combined English summary of multiple labeled descriptions. The ordered description set is hashed so changed input invalidates prepared output. Review findings carry `code`/`category` (automatic, incomplete, or human); only unresolved human items count as "records needing review".
 
 ```mermaid
 erDiagram
@@ -83,11 +83,14 @@ erDiagram
     SOURCE_SNAPSHOTS ||--o{ ENTITIES : "latest updated in"
     SOURCE_ROWS ||--o{ ENTITIES : "cites verbatim evidence"
     ENTITIES ||--o{ ENTITY_FOUNDERS : "founded by"
+    ENTITIES ||--o{ ENTITY_RELATIONS : "related to"
     ENTITIES ||--o{ ENTITY_REVIEW_ITEMS : "flags"
     SOURCE_ROWS ||--o{ ENTITY_REVIEW_ITEMS : "flagged evidence"
     ENTITIES ||--o| ENTITY_EMBEDDINGS : "vectorized into"
     SOURCE_SNAPSHOTS ||--o{ PIPELINE_RUNS : "produced in"
     SOURCE_ROWS ||--o{ TEXT_PREPARATIONS : "prepared once per hashed description"
+    SOURCE_ROWS ||--o{ TEXT_PREPARATION_SOURCES : "contributes description"
+    TEXT_PREPARATIONS ||--o{ TEXT_PREPARATION_SOURCES : "source provenance"
     ENTITIES ||--o{ TEXT_PREPARATIONS : "canonical output"
     PIPELINE_RUNS ||--o{ PREPARATION_USAGE : "consumed"
     SOURCE_ROWS ||--o{ PREPARATION_USAGE : "attempted per record"
@@ -105,7 +108,7 @@ erDiagram
         string snapshot_id FK
         int row_number "audit/display only"
         string raw_json
-        int is_duplicate "1 when exact name+website dup"
+        int is_duplicate "1 when content-equivalent row"
     }
 
     ENTITIES {
@@ -113,6 +116,7 @@ erDiagram
         string name
         string name_key
         string domain
+        string identity_key "host or hosted page"
         string website
         string description
         string sector
@@ -120,6 +124,7 @@ erDiagram
         string cohort_date
         int creation_year
         string retrieval_text "NULL until LLM fluff removal"
+        string preparation_input_hash "ordered descriptions"
         string detected_language "NULL until LLM language detection"
         int is_embedded "0 until Qwen embeddings generated"
         string status_signal "NULL reserved for R3/R4"
@@ -134,7 +139,17 @@ erDiagram
         string id PK
         string entity_id FK
         string full_name
+        string name_key
+        string evidence_status "confirmed | to_confirm | reported"
+        int support_count
         string created_at
+    }
+
+    ENTITY_RELATIONS {
+        string entity_a_id PK, FK
+        string entity_b_id PK, FK
+        string relation_kind
+        int shared_founders
     }
 
     ENTITY_REVIEW_ITEMS {
@@ -145,6 +160,7 @@ erDiagram
         string code "shared issue code"
         string category "automatic | incomplete | human"
         int resolved
+        string resolution_note
         string created_at
     }
 
@@ -182,14 +198,21 @@ erDiagram
         string cache_key PK
         string source_row_id FK
         string entity_id FK
-        string input_hash "sha-256 of the original description"
+        string input_hash "sha-256 of ordered descriptions"
         string provider "groq"
         string model
         string prompt_version
         string schema_version
         string target_language "en"
-        string output_json "detected_language, cleaned_text, english_translation, fluff_excerpts"
+        string output_json "single result or per-source results and English summary"
         string created_at
+    }
+
+    TEXT_PREPARATION_SOURCES {
+        string cache_key PK, FK
+        string source_row_id PK, FK
+        string role "main | secondary"
+        string input_hash
     }
 
     PREPARATION_USAGE {

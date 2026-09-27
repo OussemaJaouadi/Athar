@@ -29,12 +29,12 @@ uv run --project dataops python -m unittest discover -s dataops/tests
 ### `test_pipeline.py`
 
 - Collection, preserved bytes/source rows, normalized records, and run history.
-- Stable identity across reimports; ambiguous, conflicting, and malformed records.
+- Stable identity across reimports; distinct hosted pages and websites; malformed records.
 - Invalid JSON, unexpected payloads, HTTP failures, timeout, and cancellation.
 - Transaction rollback, foreign keys, migrations, reopening, retained legacy migration 003 checksums, and refusal of unknown schemas.
 - Upgrading a 001-era database with existing evidence through migrations 002, 003, and 004.
 - Offline "Clean data" over stored evidence: entity, founder, and review-item writes, idempotent re-runs, and refusal when only failed collection snapshots exist.
-- Corpus reconcile: within-run and cross-corpus duplicate flagging, `is_duplicate` suppression in default listings, founders/description backfill on a legacy-shaped corpus, idempotence across repeated cleans, and `run_steps` recorded with stable start times.
+- Corpus reconcile: content-equivalent duplicate suppression, distinct descriptions under one entity, founder evidence status, related but separate startups, legacy backfill, idempotence, and `run_steps` timing.
 - Bounded queries, Unicode search across pages, overview failures, and absolute-path validation.
 - Committed terminal steps survive reporting failure; failed startup does not create orphan steps.
 
@@ -59,7 +59,7 @@ uv run --project dataops python -m unittest discover -s dataops/tests
 
 ### `test_preparation.py`
 
-- Prepare lifecycle: records, caching across configured models, usage/marker tracking, key switching, the issue classification pipeline, and confirmation before model calls.
+- Prepare lifecycle: single and combined descriptions in one call per entity, source provenance, cache invalidation, usage/marker tracking, key switching, issue classification, and confirmation before model calls.
 - Missing keys disable only preparation; authentication and rate limits stop without rotation or token guessing.
 
 ### `test_profiles.py`

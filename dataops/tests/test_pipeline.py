@@ -180,10 +180,12 @@ class PipelineTests(IsolatedAsyncioTestCase):
         ).encode()
         result = await self.pipeline.run_pipeline()
         self.assertEqual(result.status, "completed")
-        self.assertEqual(result.review_count, 2)  # Only the two conflicting identities.
+        self.assertEqual(result.review_count, 0)
         records = await self.db.list_records()
         self.assertEqual(len(records), 4)
-        self.assertTrue(all(record.normalized.entity_id is None for record in records))
+        self.assertTrue(all(record.normalized.entity_id for record in records[:2]))
+        self.assertNotEqual(records[0].normalized.entity_id, records[1].normalized.entity_id)
+        self.assertTrue(all(record.normalized.entity_id is None for record in records[2:]))
         self.assertIsNone(records[2].normalized.cohort_date)
         self.assertEqual(records[3].original, 42)
         self.assertEqual(len((await self.db.table_page("source_rows")).rows), 4)
@@ -199,31 +201,101 @@ class PipelineTests(IsolatedAsyncioTestCase):
         ).encode()
         result = await self.pipeline.run_pipeline()
         self.assertEqual(result.status, "completed")
-        self.assertEqual(result.review_count, 2)
+        self.assertEqual(result.review_count, 0)
+
+        # A genuinely unresolved item must still drive the review filter.
+        source = await self.db._rows(
+            "SELECT id FROM source_rows WHERE snapshot_id=? AND row_number=1",
+            (result.snapshot_id,),
+        )
+        await self.db._execute(
+            """INSERT INTO entity_review_items
+            (id,source_row_id,reason,resolved,created_at,code,category)
+            VALUES ('manual-test',?,'Conflicting registry evidence',0,'2026-01-01',
+                    'identity_conflict','human')""",
+            (source[0]["id"],),
+        )
 
         everything = await self.db.record_page()
         review = await self.db.record_page(review_only=True)
         self.assertEqual(everything.total, 4)
-        self.assertEqual(review.total, 2)
+        self.assertEqual(review.total, 1)
         self.assertEqual(review.unfiltered_total, 4)
         # The filtered total is the same ledger the stats' review count uses.
         self.assertEqual(review.total, await self.db._review_count(result.snapshot_id))
-        # The filter combines with search: both conflicted rows carry "Example".
+        # The filter combines with search.
         combined = await self.db.record_page("example", review_only=True)
-        self.assertEqual(combined.total, 2)
-        self.assertEqual(len(combined.records), 2)
+        self.assertEqual(combined.total, 1)
+        self.assertEqual(len(combined.records), 1)
         # Pagination stays inside the filtered set.
         past = await self.db.record_page("", offset=100, review_only=True)
         self.assertEqual(past.records, [])
-        self.assertEqual(past.total, 2)
+        self.assertEqual(past.total, 1)
 
-    async def test_conflict_with_previous_identity_is_not_merged(self):
+    async def test_different_website_creates_separate_identity(self):
         await self.pipeline.run_pipeline()
         self.body = json.dumps([registry_row(website="different.example")]).encode()
         result = await self.pipeline.run_pipeline()
-        self.assertEqual(result.review_count, 1)
-        self.assertIsNone((await self.db.list_records())[0].normalized.entity_id)
-        self.assertEqual(len((await self.db.table_page("entities")).rows), 1)
+        self.assertEqual(result.review_count, 0)
+        self.assertIsNotNone((await self.db.list_records())[0].normalized.entity_id)
+        self.assertEqual(len((await self.db.table_page("entities")).rows), 2)
+
+    async def test_hosted_pages_keep_distinct_site_identities(self):
+        self.body = json.dumps([
+            registry_row(name="Hosted", website="https://facebook.com/first/page"),
+            registry_row(name="Hosted", website="https://facebook.com/second/page"),
+            registry_row(name="Sites", website="https://sites.google.com/view/first/home"),
+            registry_row(name="Sites", website="https://sites.google.com/view/second/home"),
+        ]).encode()
+        result = await self.pipeline.run_pipeline()
+        self.assertEqual(result.review_count, 0)
+        records = await self.db.list_records()
+        self.assertEqual(len({record.normalized.entity_id for record in records}), 4)
+
+    async def test_distinct_descriptions_share_entity_and_founder_evidence(self):
+        self.body = json.dumps([
+            registry_row(name="Twin", website="twin.example", desc="First product",
+                         founders=["Ali", "Bola"]),
+            registry_row(name="Twin", website="twin.example", desc="Second product",
+                         founders=["Ali", "Chika"]),
+        ]).encode()
+        result = await self.pipeline.run_pipeline()
+        self.assertEqual(result.review_count, 0)
+        records = await self.db.list_records()
+        self.assertEqual(len(records), 2)
+        self.assertEqual(records[0].normalized.entity_id, records[1].normalized.entity_id)
+        self.assertEqual(records[0].descriptions,
+                         ((1, "First product"), (2, "Second product")))
+        self.assertEqual(dict(records[0].founder_evidence),
+                         {"Ali": "confirmed", "Bola": "to_confirm", "Chika": "to_confirm"})
+        self.assertEqual(len(await self.db.preparation_candidates()), 1)
+        self.assertEqual(len((await self.db.table_page("source_rows")).rows), 2)
+
+    async def test_related_startups_remain_separate(self):
+        self.body = json.dumps([
+            registry_row(name="Atome Edtech", website="edtech.example",
+                         founders=["Ali", "Bola", "Chika"]),
+            registry_row(name="Atome Academy", website="academy.example",
+                         founders=["Ali", "Bola", "Chika"]),
+        ]).encode()
+        result = await self.pipeline.run_pipeline()
+        self.assertEqual(result.review_count, 0)
+        records = await self.db.list_records()
+        self.assertNotEqual(records[0].normalized.entity_id, records[1].normalized.entity_id)
+        self.assertEqual(records[0].related, (("Atome Academy", 3),))
+        self.assertEqual(records[1].related, (("Atome Edtech", 3),))
+
+    async def test_null_placeholder_and_key_order_only_are_duplicates(self):
+        first = registry_row(name="Same", website="same.example")
+        second = {"extra": {"untouched": True, "optional": None}, **first,
+                  "unused": None}
+        self.body = json.dumps([first, second]).encode()
+        await self.pipeline.run_pipeline()
+        self.assertEqual(len(await self.db.list_records()), 1)
+        flags = await self.db._rows(
+            "SELECT is_duplicate FROM source_rows ORDER BY row_number"
+        )
+        self.assertEqual([row["is_duplicate"] for row in flags], [0, 1])
 
     async def test_bad_json_retains_bytes_and_previous_inspection(self):
         first = await self.pipeline.run_pipeline()
@@ -491,7 +563,7 @@ class PipelineTests(IsolatedAsyncioTestCase):
             records = await upgraded.table_page("normalized_records")
             self.assertEqual(len(records.rows), 2)
             migrations = await upgraded.table_page("schema_migrations")
-            self.assertEqual(len(migrations.rows), 7)
+            self.assertEqual(len(migrations.rows), 8)
         finally:
             await upgraded.close()
 
@@ -691,7 +763,7 @@ class PipelineTests(IsolatedAsyncioTestCase):
         await self.db._execute("DELETE FROM entity_founders")
         await self.db._execute("UPDATE entities SET description=''")
         reviews = await self.db._rows(
-            "SELECT id FROM entity_review_items WHERE reason = 'Duplicate of row 1; same name and website'"
+            "SELECT id FROM entity_review_items WHERE reason = 'Duplicate of row 1; identical content'"
         )
         for row in reviews:
             await self.db._execute(
@@ -714,7 +786,7 @@ class PipelineTests(IsolatedAsyncioTestCase):
 
         reviews = await self.db.table_page("entity_review_items")
         self.assertIn(
-            "Duplicate of row 1; same name and website",
+            "Duplicate of row 1; identical content",
             [row[3] for row in reviews.rows],
         )
         founders = await self.db.table_page("entity_founders")

@@ -20,7 +20,7 @@ flowchart TD
 
     ROWS --> CLEAN["Cleaning & Normalization<br/>• Drop logo & logo_id<br/>• Strip PII (phone/email)<br/>• Collapse industry -> sector<br/>• Normalize URLs, dates, founders"]
 
-    CLEAN --> DEDUP["Deduplication & Resolution<br/>(name_key + domain)"]
+    CLEAN --> DEDUP["Deduplication & Resolution<br/>(name_key + site identity)"]
 
     DEDUP --> DB[("Turso DB<br/>• entities<br/>• entity_founders<br/>• entity_review_items")]
 
@@ -33,13 +33,13 @@ flowchart TD
 ### Operation 1: Run Clean from Start
 * **Trigger:** "Collect registry" button or scheduled ingest.
 * **Flow:** Network fetch $\rightarrow$ SHA-256 check $\rightarrow$ store raw evidence in `source_rows` $\rightarrow$ clean & deduplicate $\rightarrow$ write canonical `entities`.
-* **Within-run duplicates:** a row whose `(name_key, domain)` already appeared in the same run is flagged `is_duplicate=1` and queued (`Duplicate of row N`); the row itself is never deleted.
+* **Within-run duplicates:** only content-equivalent rows are flagged `is_duplicate=1`; JSON key order and absent-versus-null placeholders do not count as differences. Every source row remains stored.
 
 ### Operation 2: Clean Existing Data
 * **Trigger:** "Clean data" button or offline re-process.
 * **Flow:** Read `source_rows` from the latest completed collection $\rightarrow$ re-run cleaning rules & deduplication $\rightarrow$ update `entities`. If no collection completed, Clean stops without using a failed snapshot.
-* **Reconcile pass:** flags exact `(name_key, domain)` duplicates across the whole corpus, backfills `entity_founders` and missing `entities.description` from preserved records, supersedes stale review items on shadow rows, and reports the open review count.
-* **Zero Network:** 100% offline, idempotent, safe to run anytime; a repeated run reports 0 new changes.
+* **Reconcile pass:** reapplies current identity and duplicate rules to the latest preserved snapshot, rebuilds founder evidence and related-entry links, resolves stale review reasons with an audit note, and reports the open review count.
+* **Zero Network:** 100% offline; it never invokes Groq or replaces preserved source rows.
 
 ---
 
@@ -61,11 +61,11 @@ flowchart TD
 
 ## 3. Deduplication Rules
 
-* **Canonical Key:** `(name_key, domain)`.
-* **Match:** Updates `entities` and links latest evidence row.
-* **New:** Inserts new canonical startup into `entities`.
-* **Conflict:** Name/domain mismatch queued into `entity_review_items` (zero guessing).
-* **Duplicate (same key again in one run):** the later row is flagged `is_duplicate=1` on both `source_rows` and `normalized_records`; it stays readable in the Database pane and its review item records the canonical row it duplicates.
+* **Canonical Key:** normalized name plus site identity. Ordinary sites use the host; Facebook and Google Sites use the hosted page path as well.
+* **Match:** rows with the same key link to one entity. Distinct descriptions remain visible; the first nonempty description is the main one.
+* **New:** a different site identity creates a separate startup. Startups with different names and sites can be marked related when the registry gives the same founding year and a strong overlap of at least two founders.
+* **Founders:** agreement across linked registry rows is marked `confirmed across entries`; names present in only some rows are `to confirm`. A sole registry row is `registry reported`. These labels do not independently verify anyone's identity.
+* **Duplicate:** a later content-equivalent row is flagged on `source_rows` and `normalized_records` and records its canonical source row in an automatic finding.
 * **Suppression:** default views (`records_search`, run metrics) read `is_duplicate=0` only; raw evidence is always preserved and no DELETE ever runs against source rows.
 
 ---
@@ -84,10 +84,10 @@ Fields pre-allocated in `entities`:
 
 A separate "Prepare all" run (independent of Collect/Clean, shown on the same timeline):
 
-* **Engine:** one Groq call per uncached description (`qwen/qwen3.8-27b`, strict JSON) that detects the original language, removes only subjective marketing fluff, preserves all concrete facts, keeps cleaned text in the source language, and provides a faithful English translation (`cleaned_text` is always retained; English is the translation target).
-* **Candidates:** canonical, nonduplicate entities with a non-empty description (`is_duplicate=0`, `latest_row_id` evidence). Rows without a description are skipped; nothing is invented.
-* **Cache & provenance:** a `text_preparations` row is keyed by the source row, the sha-256 of the exact description, the provider, the model, and the prompt/schema/target versions. Prepare checks cached output under every configured model before selecting a profile or reserving quota. The preview counts calls only when none of those models has cached output. Unchanged descriptions reuse the stored output — including after switching credentials — and are never re-invoked.
-* **Evidence checks:** each flagged `fluff_excerpt` must be an exact contiguous quote from the input; lost numeric details invalidate the reply. Outputs are written to `retrieval_text`/`detected_language` only while the entity still points at the exact evidence row and description that produced them.
+* **Engine:** one Groq call per uncached entity (`qwen/qwen3.8-27b`, strict JSON). A single-description entity gets detection, fluff removal, cleaned original-language text, and an English translation. Multiple distinct descriptions are submitted together as labeled source rows; the output retains a cleaned result per row and adds one English retrieval summary.
+* **Candidates:** entities with at least one nonempty description from the current snapshot. Exact duplicate rows are skipped; distinct descriptions remain inputs.
+* **Cache & provenance:** input hashes include the ordered set of distinct descriptions; `text_preparation_sources` links the result to each contributing source row. Prepare checks cached output under configured models before reserving quota. A changed description invalidates the entity's published retrieval text until Prepare runs again.
+* **Evidence checks:** each flagged `fluff_excerpt` must occur in its source input; lost numeric details invalidate cleaned text, and invented numeric details invalidate a combined summary. Outputs publish only while the entity still points to the same source and input hash.
 * **Failures are retryable:** validation failures (malformed/refused/unanchored replies) skip the record and keep it retryable; the run ends as failed and completed work stays. Errors stop the run visibly and retain completed work — there is no paid fallback and no fallback to another model or provider.
 * **Credentials & rotation:** Groq keys come from a project-local `dataops/.env.profiles.toml` (`[[profile]]` blocks with `name`, `api_key`, optional `model`); a lone legacy `GROQ_API_KEY`/`GROQ_PROFILE` behaves as a single implicit profile when the file is absent. Keys never leave the file — the `profiles` table registry stores only the name, model, and a partial key fingerprint, and carries the operational state (`disabled`). At most one profile fires per attempt: the least-loaded profile with remaining budget is selected, a `401`/`403` permanently disables that profile (persisted, run continues on the next), and a `429`/`503`/`530` spends that profile's single throttling round (the run rotates to the next). When every remaining profile has already spent its round, or no daily budget remains anywhere, the run stops visibly with "resume later" / "resume after reset" semantics — completed work stays and a later run resumes from the cache. The UI shows the profile list next to the Prepare button; the key itself is never stored or displayed.
 * **Data-driven quotas:** each registered profile is seeded free-tier default rows in `dataops_quotas` (task `prepare`): `records_per_day=1000/day`, `tokens_per_day=200000/day`, `requests_per_minute=30/minute`, `estimate_tokens_per_record=1000` (used only when Groq omits token counts). Quotas are ordinary rows the operator can edit directly; the TOML store never carries limits. Cache hits consume no quota. This is DataOps maintainer consumption per profile and task — distinct from the Go backend's end-user `user_usage` quota.
@@ -103,4 +103,4 @@ Review findings carry a shared `code`/`category` (`automatic`, `incomplete`, or 
 * **Incomplete** (e.g. `invalid_website`): shows what is missing without demanding a human decision.
 * **Human** (genuine conflicts, e.g. `identity_conflict`, `date_conflict`): the only category that counts toward "records needing review" — and only if unresolved. The LLM never approves identity merges.
 
-Repeated cleaning never reopens already handled issues: inserts are idempotent per (row, reason), and suppressing a shadow row marks its stale reasons resolved instead of deleting them. Existing flags were reclassified in-place by migration 005 without losing source evidence.
+Repeated cleaning does not reopen handled issues. Reasons no longer produced by current rules are marked resolved with a note, while source evidence stays intact. Existing flags were reclassified in-place by migration 005 without losing source evidence.

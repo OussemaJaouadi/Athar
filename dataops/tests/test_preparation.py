@@ -345,7 +345,7 @@ class PreparationTests(IsolatedAsyncioTestCase):
             await pilot.pause()
             self.assertIn("Software for schools",
                           render_text(app.query_one("#detail-secondary", Static).render()))
-            self.assertIn("COMBINED ENGLISH SUMMARY",
+            self.assertIn("Combined English summary",
                           render_text(app.query_one("#detail-prepared", Static).render()))
         await self.pipeline.run_preparation()
         self.assertEqual(self.calls, 1)
@@ -445,7 +445,7 @@ class PreparationTests(IsolatedAsyncioTestCase):
             await pilot.pause()
             self.assertTrue(app.query_one("#prepared-disclosure").display)
             self.assertIn("Software for 12 shops", render_text(app.query_one("#detail-prepared", Static).render()))
-            self.assertIn("PRODUCED BY", render_text(app.query_one("#detail-prepared", Static).render()))
+            self.assertIn("Produced by", render_text(app.query_one("#detail-prepared", Static).render()))
             self.assertIn("account-a", render_text(app.query_one("#detail-prepared", Static).render()))
             app.action_navigate("settings")
             await pilot.pause()

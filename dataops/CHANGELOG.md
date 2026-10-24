@@ -44,6 +44,7 @@
 - Logs no longer redraw the whole console for every entry once the 2000-entry buffer is full, so long Prepare sessions stay responsive. The Prepare preview loads cache state in one query instead of one per description per profile, and the minute-rate wait is as short as the oldest request allows.
 - Improved Run and Probes on 80×24 terminals: controls stay visible, content stacks and scrolls, and status and log labels stay readable.
 - Fixed empty-profile startup, misleading collection status, probe cancellation, and several error and focus cases found during manual testing.
+- Prepare all and its confirmation now use information blue so amber means only destructive actions; inline labels in the prepared-text card use sentence case.
 - Fixed two clipped button labels (Clean data, Prev), made the About dialog with the Athar mark reachable from Settings, kept disabled buttons readable in dark mode instead of fading them, kept the Records evidence disclosure open while stepping between records, showed unknown token counts as such, and stopped arrow keys in the Logs search box from moving focus.
 - Added offline pipeline and UI tests plus architecture, pipeline, data, design, and test guides.
 - Split the 1400-line database service into a package of five stores (connection core, registry, runs, retrieval, preparation) behind the unchanged `DatabaseService` name; migration data fix-ups moved next to the registry rules they apply.

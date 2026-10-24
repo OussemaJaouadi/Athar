@@ -130,7 +130,7 @@ class RunPane(VerticalScroll):
                 with Vertical(id="prepare-preview"):
                     yield Static("Select Prepare all to review the work before any model call.", id="prepare-preview-body", classes="muted")
                     with Horizontal(classes="actions"):
-                        yield Button("Confirm Prepare all", id="prepare-confirm", variant="primary", disabled=True)
+                        yield Button("Confirm Prepare all", id="prepare-confirm", classes="impact", disabled=True)
                         yield Button("Cancel preview", id="prepare-cancel")
                 yield RunTimeline(id="run-timeline")
                 with Collapsible(title="Activity & step details", collapsed=True, id="run-activity"):

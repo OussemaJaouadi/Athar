@@ -193,6 +193,9 @@
 - Neutral light surfaces remove the pervasive blue-gray cast; blue marks actions and selection.
 - Records search covers names, sectors, and descriptions across the latest completed collection.
 - Use an explicit `block-hover-background` in the TUI: Textual’s generated `boost` resolves to transparent in light mode.
+- Uppercase is reserved for section headers, card titles, and status badges. Inline field labels such as the prepared-text card's language or producer use sentence case.
+- Actions that spend provider quota (Prepare all and its confirmation) use the information blue pair, dark `#9BC7F2` / ink, light `#275E91` / white. Amber is reserved for destructive actions: Reset registry data and the wipe confirmation.
+- The light-mode override block in `app.tcss` is deliberate: a white terminal changes color density enough that generated tints are wrong, so light states are specified explicitly per widget. Extend it when adding a widget rather than consolidating it.
 - Disabled buttons in both themes keep full opacity and use muted ink plus italic text; no theme fades controls.
 - The About dialog, which carries the ASCII mark, opens from the Settings identity card.
 - Opening a record's source evidence persists while stepping between records; a reload of the listing starts collapsed.

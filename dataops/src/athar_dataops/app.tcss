@@ -156,21 +156,29 @@ TabPane {
     color: $background;
 }
 
-#run-impact-actions Button.impact {
-    background: $warning;
-    color: $background;
-    border: round $warning;
+/* Spends provider quota: information blue, so amber stays for destructive actions. */
+Button.impact {
+    background: $quota-bg;
+    color: $quota-fg;
+    border: round $quota-bg;
     text-style: bold;
 }
 
-#run-impact-actions Button.impact:hover {
-    background: $warning;
-    color: $background;
+Button.impact:hover {
+    background: $quota-hover;
+    color: $quota-fg;
+    border: round $quota-hover;
     text-style: bold;
 }
 
-#run-impact-actions Button.impact:disabled,
-Screen:light #run-impact-actions Button.impact:disabled {
+Button.impact:focus {
+    background: $quota-bg;
+    color: $quota-fg;
+    border: round $quota-fg;
+}
+
+Button.impact:disabled,
+Screen:light Button.impact:disabled {
     background: $panel;
     color: $muted;
     border: round $control-line;
@@ -1351,9 +1359,10 @@ Screen:light #logs-rail Button.-active:hover { background: $action-hover; color:
 Screen:light #logs-rail Button:focus { background: $selection; color: $link-ink; text-style: bold; border: none; border-left: thick $link-ink; }
 Screen:light #logs-rail Button.-active:focus { background: $action-bg; color: $action-fg; text-style: bold; }
 
-Screen:light #run-impact-actions Button.impact { background: $warning; color: $background; border: round $warning; }
-Screen:light #run-impact-actions Button.impact:hover { background: $warning; color: $background; }
-Screen:light #run-impact-actions Button.impact:disabled { background: $panel; color: $muted; border: round $control-line; text-style: italic; }
+Screen:light Button.impact { background: $quota-bg; color: $quota-fg; border: round $quota-bg; }
+Screen:light Button.impact:hover { background: $quota-hover; color: $quota-fg; border: round $quota-hover; }
+Screen:light Button.impact:focus { border: round $quota-fg; }
+Screen:light Button.impact:disabled { background: $panel; color: $muted; border: round $control-line; text-style: italic; }
 
 Screen:light SelectCurrent { background: $surface; color: $foreground; }
 Screen:light SelectCurrent:hover { background: $block-hover-background; }

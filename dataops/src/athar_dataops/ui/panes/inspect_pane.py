@@ -423,15 +423,15 @@ class InspectPane(Vertical):
         muted = pal.variables["muted"]
         if "english_summary" in output:
             text = Text()
-            text.append("COMBINED ENGLISH SUMMARY\n", style=f"bold {pri}")
+            text.append("Combined English summary\n", style=f"bold {pri}")
             text.append(format_arabic(output["english_summary"]), style=pal.foreground)
             producers = " · ".join(str(value) for value in
                                    (output.get("profile"), output.get("model")) if value)
             if producers:
-                text.append("\nPRODUCED BY  ", style=f"bold {muted}")
+                text.append("\nProduced by  ", style=f"bold {muted}")
                 text.append(producers, style=pal.foreground)
             for source in output.get("sources", []):
-                text.append(f"\n\nREGISTRY ROW {source['row_number']} · ", style=f"bold {muted}")
+                text.append(f"\n\nRegistry row {source['row_number']} · ", style=f"bold {muted}")
                 text.append(format_arabic(source["detected_language"].upper()), style=f"bold {pri}")
                 text.append("\n")
                 text.append(format_arabic(source["cleaned_text"]), style=pal.foreground)
@@ -447,11 +447,11 @@ class InspectPane(Vertical):
         fluff = output.get("fluff_excerpts") or []
 
         text = Text()
-        text.append("LANGUAGE  ", style=f"bold {muted}")
+        text.append("Language  ", style=f"bold {muted}")
         text.append(format_arabic(lang.upper()), style=f"bold {pri}")
         producers = " · ".join(str(value) for value in (profile, model) if value)
         if producers:
-            text.append("   PRODUCED BY  ", style=f"bold {muted}")
+            text.append("   Produced by  ", style=f"bold {muted}")
             text.append(producers, style=pal.foreground)
         text.append("\n\n")
 

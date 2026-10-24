@@ -71,7 +71,8 @@ uv run --project dataops python -m unittest discover -s dataops/tests
 
 - Groq rotation: least-loaded selection, 401/403 permanent disable, throttling and cooldown (one round per profile), "resume later"/"reset" stops, and unknown-usage outcomes.
 - Legacy single-key fallback, free-tier quota seeding per profile, quota-aware rotation, and loss of last eligible profile.
-- TOML profiles loading, including a malformed file yielding no profiles.
+- Provider faults (for example HTTP 400) stop the run after one call without cooling or disabling any profile; a rotated key clears a persisted `disabled` flag while an unchanged key keeps it.
+- TOML profiles loading, including a malformed or entry-less file yielding no profiles plus a visible reason that never echoes the file's values.
 
 ### `test_logs.py`
 

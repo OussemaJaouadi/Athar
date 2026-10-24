@@ -72,12 +72,14 @@ class RunPane(VerticalScroll):
         orchestrator: PipelineOrchestrator,
         database: DatabaseService | None = None,
         sampler: ProcessSampler | None = None,
+        profiles_warning: str | None = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
         self._orchestrator = orchestrator
         self._database = database
         self._sampler = sampler
+        self._profiles_warning = profiles_warning
         self._collection_worker: Worker | None = None
         self.collecting = False
         self._resetting = False
@@ -159,7 +161,9 @@ class RunPane(VerticalScroll):
         configured = {
             entry["name"]: entry for entry in self._orchestrator.preparation_profiles
         }
-        if not configured and not rows:
+        if not configured and self._profiles_warning:
+            summary = f"Groq profiles unavailable: {self._profiles_warning}"
+        elif not configured and not rows:
             summary = "No Groq profiles configured"
         else:
             # Configured (TOML/env) is truth on first launch; registered/disabled

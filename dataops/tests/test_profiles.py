@@ -11,6 +11,7 @@ from test_pipeline import registry_row
 from athar_dataops.config import (
     Settings,
     credential_file_warnings,
+    inspect_groq_profiles,
     load_groq_profiles,
 )
 from athar_dataops.services.artifacts import ArtifactService
@@ -112,6 +113,37 @@ class ProfileRotationTests(IsolatedAsyncioTestCase):
         self.assertNotIn("key-a", str(overview))
         self.assertNotIn("key-a", str(await self.db.preparation_usage_summary()))
 
+    async def test_provider_error_stops_run_without_rotating_or_cooling(self):
+        # A 400 (for example a wrong model name) would repeat on every profile.
+        self.hints["account-a"] = 400
+        self.hints["account-b"] = 400
+        result = await self.pipeline.run_preparation()
+        self.assertEqual(result.status, "failed")
+        self.assertIn("HTTP 400", result.error or "")
+        self.assertNotIn("throttl", (result.error or "").lower())
+        self.assertEqual(len(self.calls["account-a"]) + len(self.calls["account-b"]), 1)
+        state = {entry["name"]: entry for entry in await self.db.preparation_quota_state()}
+        self.assertFalse(state["account-a"]["disabled"])
+        self.assertFalse(state["account-b"]["disabled"])
+        outcomes = await self.db._rows("SELECT outcome FROM preparation_usage")
+        self.assertEqual([row["outcome"] for row in outcomes], ["provider_error"])
+
+    async def test_rotated_key_clears_disabled_flag_and_same_key_keeps_it(self):
+        await self.db.sync_profiles(list(self.provider.profiles), list(GROQ_DEFAULT_QUOTAS))
+        await self.db.mark_profile_disabled("account-a", True)
+        await self.db.sync_profiles(list(self.provider.profiles), list(GROQ_DEFAULT_QUOTAS))
+        state = {entry["name"]: entry for entry in await self.db.preparation_quota_state()}
+        self.assertTrue(state["account-a"]["disabled"], "unchanged key must stay disabled")
+        self.profiles_path.write_text(
+            PROFILES_TOML.replace('api_key = "key-a"', 'api_key = "key-a-rotated"'),
+            encoding="utf-8",
+        )
+        rotated = GroqPreparationClient(self.http, self.config)
+        await self.db.sync_profiles(list(rotated.profiles), list(GROQ_DEFAULT_QUOTAS))
+        state = {entry["name"]: entry for entry in await self.db.preparation_quota_state()}
+        self.assertFalse(state["account-a"]["disabled"], "a new key is the repair")
+        self.assertEqual(state["account-a"]["fingerprint"], rotated.profiles[0].fingerprint)
+
     async def test_daily_quota_exhaustion_fails_visibly_and_keeps_saved_output(self):
         # Register + constrain: account-a is capped at one record today, account-b disabled.
         await self.db.sync_profiles(list(self.provider.profiles), list(GROQ_DEFAULT_QUOTAS))
@@ -203,11 +235,23 @@ class ProfileTomlTests(IsolatedAsyncioTestCase):
                 credential_file_warnings([Path(directory) / "missing.env"]), []
             )
 
-    def test_malformed_file_yields_no_profiles(self):
+    def test_malformed_file_yields_no_profiles_and_a_visible_reason(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "profiles.toml"
             path.write_text("[[profile]]\nname = oops\napi_key = gsk-not-quoted\n")
             self.assertEqual(load_groq_profiles(path), ())
+            profiles, reason = inspect_groq_profiles(path)
+            self.assertEqual(profiles, ())
+            self.assertIn("could not be parsed", reason)
+            self.assertNotIn("gsk-not-quoted", reason)
+            config = Settings(_env_file=None, groq_profiles_path=path)
+            self.assertEqual(config.groq_profiles, ())
+            self.assertIn("could not be parsed", config.groq_profiles_warning)
+            path.write_text('[[profile]]\nname = "only-name"\n')
+            self.assertIn("name and an api_key", inspect_groq_profiles(path)[1])
+            self.assertIsNone(inspect_groq_profiles(Path(directory) / "absent.toml")[1])
+            path.write_text(PROFILES_TOML, encoding="utf-8")
+            self.assertIsNone(inspect_groq_profiles(path)[1])
 
     async def test_settings_usage_caps_many_profiles(self):
         import io

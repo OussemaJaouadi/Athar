@@ -152,7 +152,10 @@ class DataOpsApp(App[None]):
         with Workspace(initial="run", id="workspace"):
             with TabPane("Run", id="run"):
                 yield RunPane(
-                    self._orchestrator, database=self._database, sampler=self._sampler
+                    self._orchestrator,
+                    database=self._database,
+                    sampler=self._sampler,
+                    profiles_warning=self._config.groq_profiles_warning,
                 )
             with TabPane("Records", id="inspect"):
                 yield InspectPane(self._database)

@@ -21,6 +21,8 @@ async def run() -> None:
     config = Settings()
     for warning in credential_file_warnings((_ENV_FILE, config.groq_profiles_path)):
         print(warning, file=sys.stderr)
+    if config.groq_profiles_warning:
+        print(f"warning: {config.groq_profiles_warning}", file=sys.stderr)
     database = DatabaseService(config.db_path)
     try:
         await database.initialize()

@@ -27,18 +27,25 @@ class GroqProfile:
     model: str | None = None
 
 
-def load_groq_profiles(path: Path) -> tuple[GroqProfile, ...]:
-    """Parse the optional profiles TOML; a missing or malformed file yields no
-    profiles so the caller can fall back to the legacy single .env key."""
+def inspect_groq_profiles(path: Path) -> tuple[tuple[GroqProfile, ...], str | None]:
+    """Parse the optional profiles TOML and explain why it yielded nothing.
+
+    A missing file is normal (the legacy single .env key applies). A file that
+    exists but cannot be parsed, or parses to no usable entry, is a configuration
+    fault the operator must see; silently reporting "not configured" hides it.
+    """
     if not path.exists():
-        return ()
+        return (), None
     try:
         with path.open("rb") as handle:
             data = tomllib.load(handle)
-    except tomllib.TOMLDecodeError:
-        return ()
+    except tomllib.TOMLDecodeError as exc:
+        return (), f"{path.name} could not be parsed: {exc}"
+    except OSError as exc:
+        return (), f"{path.name} could not be read: {exc.strerror or exc}"
+    entries = data.get("profile", [])
     profiles = []
-    for entry in data.get("profile", []):
+    for entry in entries:
         if not isinstance(entry, dict):
             continue
         name = entry.get("name")
@@ -53,7 +60,16 @@ def load_groq_profiles(path: Path) -> tuple[GroqProfile, ...]:
                 model=model if isinstance(model, str) and model.strip() else None,
             )
         )
-    return tuple(profiles)
+    if entries and not profiles:
+        return (), f"{path.name} has no [[profile]] entry with both a name and an api_key"
+    if not entries:
+        return (), f"{path.name} has no [[profile]] entries"
+    return tuple(profiles), None
+
+
+def load_groq_profiles(path: Path) -> tuple[GroqProfile, ...]:
+    """Profiles only; see ``inspect_groq_profiles`` for the reason when empty."""
+    return inspect_groq_profiles(path)[0]
 
 
 def credential_file_warnings(paths: Iterable[Path]) -> list[str]:
@@ -97,6 +113,11 @@ class Settings(BaseSettings):
     @property
     def groq_marker(self) -> str:
         return f"{self.groq_profile} / {self.groq_fingerprint}"
+
+    @property
+    def groq_profiles_warning(self) -> str | None:
+        """Why the profiles file contributed nothing, or None when it is absent or fine."""
+        return inspect_groq_profiles(self.groq_profiles_path)[1]
 
     @property
     def groq_profiles(self) -> tuple[GroqProfile, ...]:

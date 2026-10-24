@@ -163,9 +163,14 @@ class GroqPreparationClient:
                     error="Groq rate limit reached; this profile cools and the run rotates",
                     stop=False, profile=name, limit_hint="rate_limited",
                 )
+            # Any other status is a request or provider fault, not a quota signal.
+            # Rotating would repeat the same fault on every profile.
             return PreparationReply(
-                error=f"Groq returned HTTP {response.status_code}",
-                stop=True, profile=name, limit_hint="transport",
+                error=(
+                    f"Groq returned HTTP {response.status_code}; "
+                    f"check the model name ({model}) and request before retrying"
+                ),
+                stop=True, profile=name, limit_hint="provider_error",
             )
         usage: dict[str, Any] = {}
         request_id = None

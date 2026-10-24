@@ -228,7 +228,7 @@ erDiagram
         int input_tokens
         int output_tokens
         string request_id
-        string outcome "started | completed | failed | cancelled | rate_limited | authentication | transport"
+        string outcome "started | completed | failed | cancelled | rate_limited | authentication | transport | provider_error"
         string error
     }
 

@@ -1251,12 +1251,16 @@ class DatabaseService:
             now = utc_now()
             for status in profiles:
                 existing = await self._rows(
-                    "SELECT id FROM profiles WHERE name=?", (status.name,)
+                    "SELECT id, fingerprint FROM profiles WHERE name=?", (status.name,)
                 )
                 if existing:
+                    # A new key is the documented repair for a disabled profile:
+                    # a changed fingerprint lifts the flag, the same key keeps it.
+                    rotated = existing[0]["fingerprint"] != status.fingerprint
                     await self._execute(
-                        "UPDATE profiles SET model=?, fingerprint=?, updated_at=? WHERE id=?",
-                        (status.model, status.fingerprint, now, existing[0]["id"]),
+                        """UPDATE profiles SET model=?, fingerprint=?, updated_at=?,
+                        disabled=CASE WHEN ? THEN 0 ELSE disabled END WHERE id=?""",
+                        (status.model, status.fingerprint, now, int(rotated), existing[0]["id"]),
                     )
                     continue
                 profile_id = str(uuid4())

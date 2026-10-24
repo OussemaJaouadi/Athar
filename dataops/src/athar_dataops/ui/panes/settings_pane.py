@@ -176,7 +176,8 @@ class SettingsPane(VerticalScroll):
     def _profiles_summary(self) -> str:
         names = [profile.name for profile in self._config.groq_profiles]
         if not names:
-            return "not configured"
+            warning = self._config.groq_profiles_warning
+            return f"not configured · {warning}" if warning else "not configured"
         if len(names) <= 2:
             return ", ".join(names)
         return f"{len(names)} profiles · {names[0]}, {names[1]} …"

@@ -22,6 +22,7 @@
 - Added multiple Groq profiles with rotation when one is unavailable or rate limited. A run can resume from completed work; no paid fallback is used.
 - Added per-profile usage and limits in Run and Settings. Missing credentials disable preparation only; collection and cleaning remain available.
 - Preparation results are applied only to the record and description that produced them. Invalid responses remain retryable, and attempts and usage stay visible.
+- A Groq request or provider fault such as a wrong model name now stops Prepare immediately with its HTTP status instead of being reported as throttling after one wasted call per profile. Replacing a disabled profile's key re-enables it on the next Prepare, and a profiles file that cannot be parsed is reported instead of showing as not configured.
 
 ### Workspace and review
 

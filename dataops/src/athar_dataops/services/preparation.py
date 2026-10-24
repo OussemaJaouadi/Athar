@@ -314,8 +314,12 @@ class PreparationService:
                         if reply.limit_hint == "authentication":
                             await self._db.mark_profile_disabled(profile, True)
                             ledger.disable(profile)
-                        else:
+                        elif reply.limit_hint in ("rate_limited", "transport"):
                             ledger.cool(profile)
+                        else:
+                            # A provider or request fault is not throttling: stop
+                            # visibly instead of spending one call per profile.
+                            raise RuntimeError(reply.error)
                         hinted.add(profile)
                         if progress:
                             progress(StageProgress(stage, "running",

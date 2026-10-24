@@ -46,4 +46,5 @@
 - Fixed empty-profile startup, misleading collection status, probe cancellation, and several error and focus cases found during manual testing.
 - Fixed two clipped button labels (Clean data, Prev), made the About dialog with the Athar mark reachable from Settings, kept disabled buttons readable in dark mode instead of fading them, kept the Records evidence disclosure open while stepping between records, showed unknown token counts as such, and stopped arrow keys in the Logs search box from moving focus.
 - Added offline pipeline and UI tests plus architecture, pipeline, data, design, and test guides.
+- Split the 1400-line database service into a package of five stores (connection core, registry, runs, retrieval, preparation) behind the unchanged `DatabaseService` name; migration data fix-ups moved next to the registry rules they apply.
 - Removed unused badge, editor-theme, and stylesheet code, dropped stage names no operation emits, shared one theme-detection helper across panes, passed structured step metrics to the timeline, and streamed registry downloads straight into memory instead of through a temporary file.

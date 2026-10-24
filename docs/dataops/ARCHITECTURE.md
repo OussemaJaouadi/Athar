@@ -11,7 +11,8 @@ Paths below are relative to `src/athar_dataops/`.
 | --- | --- |
 | `main.py`, `__main__.py` | Entry point, dependency construction, resource cleanup. |
 | `config.py` | Validated settings and absolute database path. |
-| `services/` | Acquisition, normalization, persistence, prepare (Groq), and pipeline coordination. |
+| `services/` | Acquisition, normalization, prepare (Groq), and pipeline coordination. |
+| `services/database/` | `DatabaseService` composed from one store per responsibility: `core` (connection, transactions, migrations, schema previews), `registry` (evidence, identity, findings, reset), `runs` (run and step bookkeeping), `retrieval` (Records pages), `preparation` (prepare cache, usage, quotas). |
 | `schemas/` | Shared records, progress events, prepared output, issue classification, and query results. |
 | `migrations/` | Numbered SQL migrations with recorded checksums. |
 | `app.py` | Application shell, seven primary tabs, navigation, refresh events, and quit handling. |
@@ -83,6 +84,7 @@ flowchart TD
 - `main.run()` opens a second, independent HTTP client for Groq and wraps it in `GroqPreparationClient` + `PreparationService`, injected into the orchestrator. The client holds one `_Profile` per Groq key (from `dataops/.env.profiles.toml`, falling back to a single legacy `GROQ_API_KEY`); preparation is disabled entirely when no key is configured.
 - `PreparationService` seeds the `profiles` registry and free-tier `dataops_quotas` rows, then drives a per-run `_QuotaLedger` that selects the least-loaded eligible profile per attempt (excluding profiles that already spent a throttling round), smooths onto remaining daily envelopes across profiles, and stops visibly ("resume later"/"resume after reset") when rotation and budgets are exhausted. `401`/`403` persist `profiles.disabled=1`; throttling rounds cool the profile and rotate to the next.
 - `DataOpsApp` receives the orchestrator, database, and settings; panes borrow those dependencies.
+- Store mixins never open their own connection; every method goes through `ConnectionCore._rows`, `_execute`, `_lock`, and `_transaction`. Add a method to the store that owns its tables, not to the facade.
 - The workspace is a `TabbedContent` subclass whose `TabPane.Focused` handling ignores hidden panes: programmatic tab switches survive Textual's focus restoration into the pane being left.
 - The workspace exposes seven primary tabs: Run, Records, History, Database, Logs, Probes, and Settings.
 - The History pane reads persisted run metadata and step summaries. Refresh and filtering automatically load the first or preserved run detail. The Probes pane is a read-only, single-stage test surface with bounded result areas and no database writes.
@@ -101,7 +103,7 @@ flowchart TD
 | `RegistryService` | Deterministic field normalization and review reasons; returns `NormalizedRecord` values. |
 | `GroqPreparationClient` | Groq transport for one description or several labeled descriptions in one strict-JSON call; secrets never surfaced. |
 | `PreparationService` | Prepare run loop: entity-level candidates, ordered-description caching matched against one in-memory index of stored preparations, usage accounting, run history. |
-| `DatabaseService` | Migrations, evidence, run history, `run_steps` timing, site identity resolution, content-equivalent duplicate suppression, founder evidence, related entities, prepare provenance/usage, scoped registry reset, and bounded queries. |
+| `DatabaseService` | One object over one connection and lock. Its stores own migrations and schema previews (`core`), evidence, identity, duplicate suppression, founder evidence, related entities, findings, and scoped reset (`registry`), run history and `run_steps` timing (`runs`), bounded record pages (`retrieval`), and prepare provenance, usage, profiles, and quotas (`preparation`). Data fix-ups a migration needs run through the registry store's `_post_migration` hook. |
 | `PipelineOrchestrator` | Collection, offline cleaning, and preparation sequences, overlap guard, progress, timeout, and failure/cancellation bookkeeping. |
 
 - Services have no Textual dependency; UI consumes service methods and shared types.

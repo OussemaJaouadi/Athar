@@ -381,8 +381,9 @@ class CheckpointsPane(VerticalScroll):
         meta.add_row("Profile", reply.profile or "—")
         meta.add_row("Model", status.model if status else "—")
         meta.add_row("Key fingerprint", status.fingerprint if status else "—")
-        meta.add_row("Input tokens", str(reply.input_tokens))
-        meta.add_row("Output tokens", str(reply.output_tokens))
+        unknown = "unknown (provider omitted usage)"
+        meta.add_row("Input tokens", unknown if reply.input_tokens is None else str(reply.input_tokens))
+        meta.add_row("Output tokens", unknown if reply.output_tokens is None else str(reply.output_tokens))
         meta.add_row("Request id", reply.request_id or "—")
 
         rule = Rule(style=pal.variables["control-line"])

@@ -126,6 +126,9 @@ class LogsPane(Vertical):
         self._move_rail_focus(-1)
 
     def _move_rail_focus(self, delta: int) -> None:
+        if isinstance(self.app.focused, Input):
+            # Arrow keys inside the search box must not yank focus to the rail.
+            return
         index = self._rail_index(self.app.focused)
         if index < 0:
             index = 0 if delta > 0 else len(self.RAIL_BUTTONS) - 1

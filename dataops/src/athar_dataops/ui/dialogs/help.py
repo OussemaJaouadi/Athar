@@ -65,7 +65,7 @@ class HelpScreen(ModalScreen):
                 "Ctrl+← / Ctrl+→",
                 "Previous / Next page (Records & Database)",
             )
-            table.add_row("/  /  Ctrl+F", "Search all records / filter logs")
+            table.add_row("/  /  Ctrl+F", "Search records (names, sectors, descriptions) / filter logs")
             table.add_row("Ctrl+L", "Clear operational logs console (in Logs)")
             table.add_row(
                 "PageUp / PageDown", "Previous / next page (Records & Database)"

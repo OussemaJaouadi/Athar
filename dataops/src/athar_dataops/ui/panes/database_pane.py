@@ -84,7 +84,7 @@ class DatabasePane(Vertical):
                 )
                 yield Button("Inspect row · Enter", id="inspect-row", disabled=True)
                 with Horizontal(classes="pager", id="table-pager"):
-                    yield Button("Previous (p)", id="table-prev", disabled=True)
+                    yield Button("Prev (p)", id="table-prev", disabled=True)
                     yield Button("Next (n)", id="table-next", disabled=True)
             with VerticalScroll(classes="rail", id="db-drawer"):
                 yield Button("Back to table · Esc", id="drawer-back")

@@ -112,7 +112,7 @@ class RunPane(VerticalScroll):
                 yield Static("Choose an operation, then inspect its result in the activity panel.", classes="muted")
                 with Horizontal(classes="actions", id="run-primary-actions"):
                     yield Button("Collect registry", id="run-pipeline", variant="primary")
-                    yield Button("Clean stored data", id="clean-pipeline")
+                    yield Button("Clean data", id="clean-pipeline")
                 with Horizontal(classes="actions", id="run-impact-actions"):
                     yield Button("Prepare all", id="prepare-pipeline", classes="impact", disabled=not self._orchestrator.preparation_available)
                     yield Button("Cancel", id="cancel-pipeline", disabled=True)

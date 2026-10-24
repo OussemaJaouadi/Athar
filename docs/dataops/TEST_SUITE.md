@@ -49,6 +49,8 @@ uv run --project dataops python -m unittest discover -s dataops/tests
 - Responsive cancellation, failure recovery, and cancellation before shutdown.
 - Narrow-terminal row inspection, keyboard open/close, and resizing.
 - Primary-button contrast in both themes and honest status when database reads fail.
+- Every visible button label fits inside its box on every primary tab at 80×24 and 120×40, including the Records pager with more than one page.
+- The About dialog opens from Settings; the Records evidence disclosure stays open while stepping between records and collapses only when the listing reloads.
 - About dialog resizing and packaged artwork/migration availability.
 - Live step filtering, preserved tab shortcuts, sampler stop, History isolation, and older runs without step details.
 - First-class History: persisted run metadata, operation, outcome, filter/refresh, and step-summary inspection.
@@ -80,7 +82,7 @@ uv run --project dataops python -m unittest discover -s dataops/tests
 
 - Entry formatting, severity filtering, and text search.
 - A full 2000-entry buffer evicts the oldest entry without redrawing the console; severity counts and the visible/total header stay correct, including right after a filter change.
-- Search focus, Escape behavior, clearing logs, and unintended shortcut prevention.
+- Search focus, Escape behavior, clearing logs, and unintended shortcut prevention; arrow keys inside the search box never move focus to the rail.
 - Retained entries when rebuilding for light mode; active sidebar label contrast and filtered states.
 
 ### `test_arabic.py`

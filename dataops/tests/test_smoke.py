@@ -176,6 +176,29 @@ class WorkspaceTests(IsolatedAsyncioTestCase):
                 render_text(app.query_one("#detail-original", Static).render()),
             )
 
+    async def test_source_disclosure_survives_record_changes_but_not_reloads(self):
+        self.fixture_rows = [
+            registry_row(name="Alpha", website="https://alpha.example"),
+            registry_row(name="Beta", website="https://beta.example"),
+        ]
+        await self.orchestrator.run_pipeline()
+        app = self.app()
+        async with app.run_test(size=(120, 40)) as pilot:
+            await pilot.press("ctrl+2")
+            await pilot.pause()
+            source = app.query_one("#source-disclosure", Collapsible)
+            source.collapsed = False
+            await pilot.pause()
+            await pilot.press("down")
+            await pilot.pause()
+            self.assertIn("Beta", str(app.query_one("#detail-title", Label).render()))
+            self.assertFalse(source.collapsed, "stepping records must keep the evidence open")
+            await pilot.click("#records-review-filter")
+            await pilot.pause()
+            await pilot.click("#records-review-filter")
+            await pilot.pause()
+            self.assertTrue(source.collapsed, "a reload of the listing starts collapsed")
+
     async def test_source_gap_appears_in_review_without_decision_badge(self):
         self.fixture_rows = [registry_row(name="Gap", desc="")]
         result = await self.orchestrator.run_pipeline()
@@ -369,9 +392,42 @@ class WorkspaceTests(IsolatedAsyncioTestCase):
                 render_text(app.query_one("#masthead-status", Static).render()),
             )
 
-    async def test_about_resizes(self):
+    async def test_every_visible_button_label_fits_its_box(self):
+        self.fixture_rows = [
+            registry_row(name=f"Startup {i}", website=f"https://s{i}.example")
+            for i in range(150)
+        ]
+        await self.orchestrator.run_pipeline()
+        for size in ((80, 24), (120, 40)):
+            app = self.app()
+            async with app.run_test(size=size) as pilot:
+                await pilot.pause()
+                clipped = []
+                for pane in app.PANES:
+                    app.action_navigate(pane)
+                    await pilot.pause()
+                    await pilot.pause()
+                    for button in app.query(Button):
+                        if not button.display or not button.region.width:
+                            continue
+                        label = button.label
+                        text = label.plain if hasattr(label, "plain") else str(label)
+                        if len(text) > button.content_size.width:
+                            clipped.append((size, pane, button.id, text, button.content_size.width))
+                self.assertEqual(clipped, [], f"labels wider than their buttons: {clipped}")
+                self.assertTrue(app.query_one("#records-pager").display)
+
+    async def test_about_opens_from_settings_and_resizes(self):
         app = self.app()
         async with app.run_test(size=(120, 70)) as pilot:
+            await pilot.press("7")
+            await pilot.pause()
+            await pilot.click("#about")
+            await pilot.pause()
+            self.assertIsInstance(app.screen, AboutScreen)
+            await pilot.press("escape")
+            await pilot.pause()
+            self.assertNotIsInstance(app.screen, AboutScreen)
             app.push_screen(AboutScreen())
             await pilot.pause()
             self.assertNotEqual(

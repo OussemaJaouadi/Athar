@@ -8,7 +8,7 @@ from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import Horizontal, VerticalScroll
 from textual.css.query import NoMatches
-from textual.widgets import DataTable, Label, Select, Static
+from textual.widgets import Button, DataTable, Label, Select, Static
 
 from athar_dataops.config import Settings
 from athar_dataops.schemas.preparation import ProfileOverview
@@ -59,6 +59,7 @@ class SettingsPane(VerticalScroll):
                     markup=True,
                     id="settings-footer-note",
                 )
+                yield Button("About Athar", id="about")
 
     def on_mount(self) -> None:
         self.update_tables()
@@ -143,7 +144,7 @@ class SettingsPane(VerticalScroll):
                 str(entry.get("calls", 0)),
                 str(entry.get("requests_today", 0)),
                 str(entry.get("requests_minute", 0)),
-                "—" if tokens_today is None else str(tokens_today),
+                "—" if tokens_today is None else f"{round(tokens_today):,}",
                 key=str(entry.get("name", "")),
             )
         if len(rows) > PROFILE_CAP:

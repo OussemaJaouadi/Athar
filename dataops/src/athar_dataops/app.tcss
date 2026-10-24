@@ -174,7 +174,7 @@ Screen:light #run-impact-actions Button.impact:disabled {
     background: $panel;
     color: $muted;
     border: round $control-line;
-    text-style: none;
+    text-style: italic;
 }
 
 #run-profiles-summary {
@@ -495,12 +495,14 @@ Button.-primary:focus {
 }
 Button.-primary:hover:focus { background: $action-hover; border: round $action-fg; }
 
+/* Unavailable controls keep full opacity: muted ink plus italic, never fading alone. */
 Button:disabled {
-    opacity: 0.5;
+    opacity: 1;
+    text-opacity: 1;
     background: $panel;
     color: $muted;
     border: round $panel;
-    text-style: none;
+    text-style: italic;
 }
 
 .actions {
@@ -1117,6 +1119,12 @@ Button:disabled {
     margin-bottom: 1;
 }
 
+#about {
+    margin-top: 1;
+    width: 18;
+    min-width: 18;
+}
+
 #theme-picker {
     width: 100%;
     margin-bottom: 1;
@@ -1302,10 +1310,7 @@ Screen:light Button.-primary { background: $action-bg; border: round $action-bg;
 Screen:light Button.-primary:hover,
 Screen:light Button.-primary.-active { background: $action-hover; border: round $action-hover; color: $action-fg; }
 Screen:light Button.-primary:focus { border: round $action-fg; }
-Screen:light Button:disabled {
-    background: $panel; color: $muted; border: round $panel;
-    opacity: 1; text-opacity: 1; text-style: italic;
-}
+Screen:light Button:disabled { background: $panel; color: $muted; border: round $panel; }
 
 /* Records: hover is temporary; the selected record keeps a stronger fill. */
 Screen:light #records-list > ListItem.-hovered { background: $block-hover-background; }
@@ -1369,7 +1374,7 @@ Screen:light #logs-rail Button.-active:focus { background: $action-bg; color: $a
 
 Screen:light #run-impact-actions Button.impact { background: $warning; color: $background; border: round $warning; }
 Screen:light #run-impact-actions Button.impact:hover { background: $warning; color: $background; }
-Screen:light #run-impact-actions Button.impact:disabled { background: $panel; color: $muted; border: round $control-line; text-style: none; }
+Screen:light #run-impact-actions Button.impact:disabled { background: $panel; color: $muted; border: round $control-line; text-style: italic; }
 
 Screen:light SelectCurrent { background: $surface; color: $foreground; }
 Screen:light SelectCurrent:hover { background: $block-hover-background; }

@@ -193,6 +193,9 @@
 - Neutral light surfaces remove the pervasive blue-gray cast; blue marks actions and selection.
 - Records search covers names, sectors, and descriptions across the latest completed collection.
 - Use an explicit `block-hover-background` in the TUI: Textual’s generated `boost` resolves to transparent in light mode.
+- Disabled buttons in both themes keep full opacity and use muted ink plus italic text; no theme fades controls.
+- The About dialog, which carries the ASCII mark, opens from the Settings identity card.
+- Opening a record's source evidence persists while stepping between records; a reload of the listing starts collapsed.
 - Light-mode states are explicit in Records, Database, Logs, and Settings, including dropdowns and the tab bar. Active navigation/filter fills are solid cyan; row selections use the stronger cyan tint. Keyboard focus adds a double border or underline, without implicit framework tinting.
 - No matches keeps search available and clears previous record details.
 - At fewer than 120 terminal columns, Database opens row details on Enter; Escape restores the table and selected row.

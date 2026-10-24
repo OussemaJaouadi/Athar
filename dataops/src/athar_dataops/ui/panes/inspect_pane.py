@@ -99,13 +99,15 @@ class InspectPane(Vertical):
 
         with Horizontal(classes="split", id="records-content"):
             with Vertical(classes="rail", id="records-rail"):
-                yield Input(placeholder="Search all records…", id="records-search")
+                yield Input(
+                    placeholder="Search names, sectors, descriptions…", id="records-search"
+                )
                 with Horizontal(classes="count-row", id="records-count-row"):
                     yield Button("In review", id="records-review-filter")
                     yield Static("", id="records-count", classes="muted")
                 yield ListView(id="records-list")
                 with Horizontal(classes="pager", id="records-pager"):
-                    yield Button("Previous (p)", id="records-prev", disabled=True)
+                    yield Button("Prev (p)", id="records-prev", disabled=True)
                     yield Button("Next (n)", id="records-next", disabled=True)
 
             with Vertical(id="records-no-match"):
@@ -208,6 +210,7 @@ class InspectPane(Vertical):
             await listing.extend(
                 [self._record_item(detail) for detail in self._records]
             )
+            self.query_one("#source-disclosure", Collapsible).collapsed = True
             if self._records:
                 listing.index = 0
                 self._show_detail(self._records[0])
@@ -410,7 +413,8 @@ class InspectPane(Vertical):
         self.query_one("#detail-original", Static).update(
             themed_json(format_arabic_obj(detail.original), dark=is_dark)
         )
-        self.query_one("#source-disclosure", Collapsible).collapsed = True
+        # Keep the evidence disclosure as the user left it while stepping through
+        # records; only a reload of the listing collapses it.
         self.query_one(".detail", VerticalScroll).scroll_home(animate=False)
 
     def _prepared_card(self, output: dict, is_dark: bool, pri: str) -> Text:

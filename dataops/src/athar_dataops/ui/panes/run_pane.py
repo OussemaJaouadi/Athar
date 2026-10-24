@@ -40,16 +40,10 @@ PREPARE_STEPS = [("load", "Load descriptions"), ("prepare", "Prepare text")]
 
 
 def _build_step_titles() -> dict[str, str]:
-    """Unique fallback titles; operation-specific titles live on the active step list."""
+    """Fallback titles; operation-specific titles live on the active step list."""
     titles: dict[str, str] = {}
     for name, title in (*COLLECT_STEPS, *CLEAN_STEPS, *PREPARE_STEPS):
         titles.setdefault(name, title)
-    titles.update(
-        collect="Collect registry",
-        save="Save records",
-        commit="Commit run",
-        parse="Parse source",
-    )
     return titles
 
 
@@ -488,7 +482,7 @@ class RunPane(VerticalScroll):
         sample = self._sample()
         metrics.observe(sample)
         elapsed = monotonic() - self._stage_starts[name]
-        self._timeline().tick(name, elapsed, metrics.label())
+        self._timeline().tick(name, elapsed, metrics)
         rss = "—" if sample is None else f"{sample.rss_bytes / 1024**2:.1f} MiB"
         self.query_one("#run-resources", Static).update(
             f"App process during step · {metrics.label()} · RSS {rss}"
@@ -544,13 +538,13 @@ class RunPane(VerticalScroll):
             self.query_one("#run-activity", Collapsible).collapsed = False
 
     async def _collect(self, cleaning: bool, preparing: bool = False) -> None:
-        mode = "Preparation" if preparing else "Cleaning" if cleaning else "Collection"
+        if preparing:
+            mode, operation = "Preparation", self._orchestrator.run_preparation
+        elif cleaning:
+            mode, operation = "Cleaning", self._orchestrator.run_clean_pipeline
+        else:
+            mode, operation = "Collection", self._orchestrator.run_pipeline
         try:
-            operation = (
-                self._orchestrator.run_preparation if preparing else self._orchestrator.run_clean_pipeline
-                if cleaning or preparing
-                else self._orchestrator.run_pipeline
-            )
             result = await operation(self._progress)
             self._set_collection_status(result.status)
             if result.status == "completed":

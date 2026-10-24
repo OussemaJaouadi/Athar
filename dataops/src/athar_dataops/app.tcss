@@ -228,21 +228,6 @@ Screen:light #run-impact-actions Button.impact:disabled {
     margin-bottom: 1;
 }
 
-#recent-runs {
-    margin-top: 1;
-}
-
-#recent-runs-list {
-    height: auto;
-    max-height: 10;
-    border: round $control-line;
-    background: $surface;
-}
-
-#recent-runs-list:focus-within {
-    border: round $link-ink;
-}
-
 /* Split Rails & Dossier Panels */
 .split {
     height: 1fr;
@@ -544,6 +529,7 @@ Button:disabled {
 }
 
 #results-table {
+    width: 1fr;
     height: 1fr;
     background: $surface;
     border: round $control-line;
@@ -573,13 +559,6 @@ Button:disabled {
 #db-detail {
     width: 1fr;
     height: 1fr;
-}
-
-#results-table {
-    width: 1fr;
-    height: 1fr;
-    background: $surface;
-    border: round $control-line;
 }
 
 #db-drawer {

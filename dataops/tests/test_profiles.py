@@ -276,10 +276,8 @@ class ProfileTomlTests(IsolatedAsyncioTestCase):
             self.assertIsNone(inspect_groq_profiles(path)[1])
 
     async def test_settings_usage_caps_many_profiles(self):
-        import io
-
-        from rich.console import Console
         from textual.app import App, ComposeResult
+        from textual.widgets import DataTable
 
         from athar_dataops.ui.panes.settings_pane import SettingsPane
 
@@ -314,10 +312,11 @@ class ProfileTomlTests(IsolatedAsyncioTestCase):
             harness = SettingsHarness(SettingsPane(config))
             async with harness.run_test() as pilot:
                 await pilot.pause()
-                text = harness.query_one(SettingsPane)._profile_usage(rows)
-                stream = io.StringIO()
-                Console(file=stream, width=120, color_system=None).print(text)
-                rendered = stream.getvalue()
+                harness.query_one(SettingsPane)._profile_usage(rows)
+                table = harness.query_one("#settings-usage", DataTable)
+                rendered = " ".join(
+                    str(cell) for key in table.rows for cell in table.get_row(key)
+                )
                 for name in ("profile-0", "profile-1", "profile-5"):
                     self.assertIn(name, rendered)
                 self.assertNotIn("profile-7", rendered)

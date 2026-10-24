@@ -285,7 +285,8 @@ class DataOpsApp(App[None]):
             self.query_one(LogsPane).on_theme_changed()
         with suppress(NoMatches):
             self.query_one(InspectPane).on_theme_changed()
-        self.query_one(DatabasePane).on_theme_changed()
+        with suppress(NoMatches):
+            self.query_one(DatabasePane).on_theme_changed()
         with suppress(NoMatches):
             self.query_one(RunPane).on_theme_changed()
         with suppress(NoMatches):

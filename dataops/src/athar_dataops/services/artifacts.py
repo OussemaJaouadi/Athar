@@ -2,7 +2,6 @@
 
 import hashlib
 import json
-from tempfile import TemporaryFile
 from typing import Any
 from uuid import uuid4
 
@@ -41,21 +40,18 @@ class ArtifactService:
 
     async def fetch(self) -> RegistrySnapshot:
         digest = hashlib.sha256()
-        received = 0
+        artifact = bytearray()
         # Hash the exact JSON payload bytes, before parsing or character decoding.
-        with TemporaryFile() as artifact:
-            async with self._client.stream("GET", self.source_url) as response:
-                response.raise_for_status()
-                async for chunk in response.aiter_bytes():
-                    received += len(chunk)
-                    if received > self.max_bytes:
-                        raise ValueError(
-                            f"Registry response exceeds the {self.max_bytes} byte limit"
-                        )
-                    digest.update(chunk)
-                    artifact.write(chunk)
-            artifact.seek(0)
-            content = artifact.read()
+        # The snapshot is stored whole, so the bounded body stays in memory.
+        async with self._client.stream("GET", self.source_url) as response:
+            response.raise_for_status()
+            async for chunk in response.aiter_bytes():
+                if len(artifact) + len(chunk) > self.max_bytes:
+                    raise ValueError(
+                        f"Registry response exceeds the {self.max_bytes} byte limit"
+                    )
+                digest.update(chunk)
+                artifact += chunk
         return RegistrySnapshot(
-            str(uuid4()), self.source_url, digest.hexdigest(), utc_now(), content
+            str(uuid4()), self.source_url, digest.hexdigest(), utc_now(), bytes(artifact)
         )

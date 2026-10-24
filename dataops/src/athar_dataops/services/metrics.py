@@ -41,11 +41,21 @@ class StepMetrics:
             self.last = sample
             self.peak_rss = max(self.peak_rss or 0, sample.rss_bytes)
 
+    @property
+    def cpu_percent(self) -> float | None:
+        """Time-weighted CPU use over the observed window, or None when unknown."""
+        if self.first is None or self.last is None:
+            return None
+        duration = self.last.elapsed_at - self.first.elapsed_at
+        if duration <= 0:
+            return None
+        return max(0.0, self.last.cpu_seconds - self.first.cpu_seconds) / duration * 100
+
+    @property
+    def peak_rss_mib(self) -> float | None:
+        return None if self.peak_rss is None else self.peak_rss / 1024**2
+
     def label(self) -> str:
-        cpu = "—"
-        if self.first is not None and self.last is not None:
-            duration = self.last.elapsed_at - self.first.elapsed_at
-            if duration > 0:
-                cpu = f"{max(0, self.last.cpu_seconds - self.first.cpu_seconds) / duration * 100:.1f}%"
-        memory = "—" if self.peak_rss is None else f"{self.peak_rss / 1024**2:.1f} MiB"
+        cpu = "—" if self.cpu_percent is None else f"{self.cpu_percent:.1f}%"
+        memory = "—" if self.peak_rss_mib is None else f"{self.peak_rss_mib:.1f} MiB"
         return f"CPU avg {cpu} · peak RSS {memory}"

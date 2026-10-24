@@ -26,7 +26,7 @@ from textual.widgets import (
 
 from athar_dataops.schemas.registry import RecordDetail
 from athar_dataops.services.database import DatabaseService
-from athar_dataops.themes import DARK, LIGHT, themed_json
+from athar_dataops.themes import DARK, LIGHT, is_dark_theme, themed_json
 from athar_dataops.ui.arabic import format_arabic, format_arabic_obj
 from athar_dataops.ui.widgets.badges import review_badge, review_chip
 
@@ -297,7 +297,7 @@ class InspectPane(Vertical):
             self._show_detail(self._records[index])
 
     def _is_dark(self) -> bool:
-        return self.app.theme != "athar-light"
+        return is_dark_theme(self.app)
 
     def on_theme_changed(self) -> None:
         listing = self.query_one("#records-list", ListView)

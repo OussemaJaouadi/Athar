@@ -4,7 +4,6 @@ from rich.json import JSON
 from rich.style import Style
 from rich.text import Span
 from textual.theme import Theme
-from textual.widgets.text_area import TextAreaTheme
 
 DARK = Theme(
     name="athar-dark",
@@ -85,29 +84,20 @@ LIGHT = Theme(
 )
 
 
-def editor_theme(dark: bool) -> TextAreaTheme:
-    """Keep SQL chrome and syntax inside the selected Athar theme."""
-    fg, bg, muted, accent, selection = (
-        ("#EEF5F6", "#0E1417", "#A7B9BE", "#82D5E5", "#16333B")
-        if dark
-        else ("#1C1D1F", "#FFFFFF", "#5A5D61", "#075E73", "#B9E3EB")
-    )
-    return TextAreaTheme(
-        name="athar-sql",
-        base_style=Style(color=fg, bgcolor=bg),
-        gutter_style=Style(color=muted, bgcolor=bg),
-        cursor_style=Style(color=bg, bgcolor=accent),
-        cursor_line_style=Style(bgcolor=bg),
-        cursor_line_gutter_style=Style(color=accent, bgcolor=bg),
-        selection_style=Style(color=fg, bgcolor=selection),
-        bracket_matching_style=Style(color=accent, bold=True),
-        syntax_styles={
-            "keyword": Style(color=accent, bold=True),
-            "string": Style(color="#80CFA6" if dark else "#176344"),
-            "number": Style(color="#F1C276" if dark else "#7A4B08"),
-            "comment": Style(color=muted, italic=True),
-        },
-    )
+def is_dark_theme(app) -> bool:
+    """One answer for every pane: anything but the light theme renders dark.
+
+    Widgets may ask before they are attached to a running app, where reading
+    ``app`` raises; dark is the configured default in that case.
+    """
+    try:
+        return getattr(app, "theme", DARK.name) != LIGHT.name
+    except RuntimeError:
+        return True
+
+
+def palette_for(app) -> Theme:
+    return DARK if is_dark_theme(app) else LIGHT
 
 
 def themed_json(data, *, dark: bool) -> JSON:

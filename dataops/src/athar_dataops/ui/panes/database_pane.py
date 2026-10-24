@@ -22,7 +22,7 @@ from textual.widgets import Button, Collapsible, DataTable, Input, Label, Static
 from athar_dataops.schemas.database import TablePage
 from athar_dataops.services.database import DatabaseService
 from athar_dataops.services.orchestrator import PipelineOrchestrator
-from athar_dataops.themes import DARK, LIGHT, themed_json
+from athar_dataops.themes import DARK, LIGHT, is_dark_theme, themed_json
 from athar_dataops.ui.arabic import format_arabic, format_arabic_obj
 from athar_dataops.ui.dialogs.wipe import WipeConfirmScreen
 
@@ -286,10 +286,7 @@ class DatabasePane(Vertical):
                 self.inspect_row()
 
     def _is_dark(self) -> bool:
-        try:
-            return getattr(self.app, "theme", "athar-dark") != "athar-light"
-        except RuntimeError:
-            return True
+        return is_dark_theme(self.app)
 
     def on_theme_changed(self) -> None:
         self._render_migrations_table()

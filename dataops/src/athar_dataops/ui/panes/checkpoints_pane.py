@@ -21,7 +21,7 @@ from athar_dataops.schemas.preparation import PreparationReply
 from athar_dataops.services.artifacts import ArtifactService, parse_registry_payload
 from athar_dataops.services.groq import GroqPreparationClient
 from athar_dataops.services.registry import RegistryService
-from athar_dataops.themes import DARK, LIGHT, themed_json
+from athar_dataops.themes import DARK, LIGHT, is_dark_theme, themed_json
 from athar_dataops.ui.arabic import format_arabic, format_arabic_obj
 
 
@@ -458,10 +458,7 @@ class CheckpointsPane(VerticalScroll):
             self._render_prepare(self._prepare_reply)
 
     def _is_dark(self) -> bool:
-        try:
-            return getattr(self.app, "theme", "athar-dark") != "athar-light"
-        except RuntimeError:
-            return True
+        return is_dark_theme(self.app)
 
     def _set_status(self, text: str, state: str = "") -> None:
         status = self.query_one("#checkpoint-status", Static)

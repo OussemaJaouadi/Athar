@@ -16,11 +16,11 @@ Paths below are relative to `src/athar_dataops/`.
 | `migrations/` | Numbered SQL migrations with recorded checksums. |
 | `app.py` | Application shell, seven primary tabs, navigation, refresh events, and quit handling. |
 | `ui/panes/` | Run, Records, History, Database, Logs, Probes (`checkpoints_pane.py`), and Settings. |
-| `ui/widgets/` | Artwork, progress, logs, metrics, and badges. |
+| `ui/widgets/` | Artwork, progress, logs, metrics, and review badges. The timeline receives `StepMetrics` values, not formatted labels. |
 | `services/groq.py` | HTTP transport for Groq preparation; never touches the database or UI. |
 | `services/preparation.py` | Prepare run loop: candidates, caching, usage accounting, run history. |
 | `ui/dialogs/` | Help and About dialogs. |
-| `themes.py`, `app.tcss` | Theme roles, JSON rendering, layout, and interaction states. |
+| `themes.py`, `app.tcss` | Theme roles, shared light/dark detection for panes and widgets, JSON rendering, layout, and interaction states. |
 | `ui/arabic.py` | Display-only Arabic formatting. |
 | `assets/` | Packaged terminal artwork. |
 

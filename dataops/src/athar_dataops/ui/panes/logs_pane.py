@@ -15,7 +15,7 @@ from textual.css.query import NoMatches
 from textual.widgets import Button, Input, Label, RichLog, Static
 
 from athar_dataops.schemas.logs import LogEntry
-from athar_dataops.themes import DARK, LIGHT
+from athar_dataops.themes import DARK, LIGHT, is_dark_theme
 from athar_dataops.ui.log_format import render_entry, severity_color
 
 
@@ -177,10 +177,7 @@ class LogsPane(Vertical):
         return not (self._search_query and self._search_query not in searchable.lower())
 
     def _is_dark(self) -> bool:
-        try:
-            return getattr(self.app, "theme", "athar-dark") != "athar-light"
-        except RuntimeError:
-            return True
+        return is_dark_theme(self.app)
 
     def on_theme_changed(self) -> None:
         self._rebuild_console()

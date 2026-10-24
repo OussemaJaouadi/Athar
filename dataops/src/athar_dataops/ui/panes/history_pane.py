@@ -12,7 +12,7 @@ from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.widgets import Button, Input, Label, ListItem, ListView, Static
 
 from athar_dataops.services.database import DatabaseService
-from athar_dataops.themes import DARK, LIGHT
+from athar_dataops.themes import DARK, LIGHT, is_dark_theme
 from athar_dataops.ui.arabic import sanitize_display
 
 
@@ -224,10 +224,7 @@ class HistoryPane(Vertical):
         self.query_one("#history-detail-body", Static).update("\n".join(lines))
 
     def _is_dark(self) -> bool:
-        try:
-            return getattr(self.app, "theme", "athar-dark") != "athar-light"
-        except RuntimeError:
-            return True
+        return is_dark_theme(self.app)
 
     def _set_status(self, text: str, state: str = "") -> None:
         status = self.query_one("#history-status", Static)

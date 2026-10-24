@@ -4,7 +4,6 @@ from contextlib import suppress
 
 from rich import box
 from rich.table import Table
-from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import Horizontal, VerticalScroll
 from textual.css.query import NoMatches
@@ -14,7 +13,7 @@ from athar_dataops.config import Settings
 from athar_dataops.schemas.preparation import ProfileOverview
 from athar_dataops.services.database import DatabaseService
 from athar_dataops.services.groq import PROVIDER
-from athar_dataops.themes import DARK, LIGHT
+from athar_dataops.themes import palette_for
 
 PROFILE_CAP = 6
 
@@ -149,10 +148,6 @@ class SettingsPane(VerticalScroll):
             )
         if len(rows) > PROFILE_CAP:
             table.add_row(f"… and {len(rows) - PROFILE_CAP} more profiles", *["" for _ in range(6)])
-        return Text(
-            " ".join(str(entry.get("name", "—")) for entry in rows[:PROFILE_CAP])
-            + (f" … and {len(rows) - PROFILE_CAP} more profiles" if len(rows) > PROFILE_CAP else "")
-        )
 
     def _profile_limits(self, rows: list[ProfileOverview]) -> None:
         table = self.query_one("#settings-limits", DataTable)
@@ -187,8 +182,7 @@ class SettingsPane(VerticalScroll):
         self.update_tables()
 
     def update_tables(self) -> None:
-        is_dark = getattr(self.app, "theme", "athar-dark") != "athar-light"
-        pri = (DARK if is_dark else LIGHT).primary
+        pri = palette_for(self.app).primary
 
         env_table = Table(
             box=box.ROUNDED,

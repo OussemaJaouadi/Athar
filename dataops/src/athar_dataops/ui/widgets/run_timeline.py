@@ -1,14 +1,13 @@
 """Horizontal pipeline road: linked circles, colored badges, live metrics."""
 
-import re
-
 from rich.text import Text
 from textual import events
 from textual.message import Message
 from textual.widget import Widget
 
 from athar_dataops.schemas.pipeline import StageProgress
-from athar_dataops.themes import DARK, LIGHT
+from athar_dataops.services.metrics import StepMetrics
+from athar_dataops.themes import is_dark_theme, palette_for
 
 _NODE = {
     "pending": "○",
@@ -40,12 +39,6 @@ def _compact_elapsed(seconds: float) -> str:
     return f"{seconds:.1f}s" if seconds < 60 else f"{int(seconds // 60)}m{int(seconds % 60)}s"
 
 
-def _parse_metrics(label: str) -> tuple[str | None, float | None]:
-    cpu = re.search(r"CPU avg\s+([0-9.]+)%", label)
-    rss = re.search(r"peak RSS\s+([0-9.]+)\s*MiB", label)
-    return (cpu.group(1) if cpu else None, float(rss.group(1)) if rss else None)
-
-
 class RunTimeline(Widget):
     DEFAULT_CSS = """
     RunTimeline {
@@ -72,7 +65,7 @@ class RunTimeline(Widget):
         self._titles: dict[str, str] = {}
         self._progress: dict[str, StageProgress] = {}
         self._elapsed: dict[str, float] = {}
-        self._metrics: dict[str, str] = {}
+        self._metrics: dict[str, StepMetrics] = {}
         self._highlighted = 0
 
     @property
@@ -99,7 +92,7 @@ class RunTimeline(Widget):
             self._elapsed[progress.stage_name] = elapsed
         self.refresh()
 
-    def tick(self, name: str, elapsed: float, metrics: str) -> None:
+    def tick(self, name: str, elapsed: float, metrics: StepMetrics) -> None:
         self._elapsed[name] = elapsed
         self._metrics[name] = metrics
         self.refresh()
@@ -135,7 +128,7 @@ class RunTimeline(Widget):
         self.post_message(self.StepSelected(self.selected))
 
     def _palette(self):
-        return LIGHT if self.app.theme == "athar-light" else DARK
+        return palette_for(self.app)
 
     def _status(self, name: str) -> str:
         progress = self._progress.get(name)
@@ -156,7 +149,7 @@ class RunTimeline(Widget):
 
     def render(self) -> Text:
         palette = self._palette()
-        dark = self.app.theme != "athar-light"
+        dark = is_dark_theme(self.app)
         muted = palette.variables["muted"]
         selection = palette.variables["selection"]
         if not self._steps:
@@ -217,16 +210,16 @@ class RunTimeline(Widget):
             if name in self._elapsed:
                 badges.append(self._badge(_compact_elapsed(self._elapsed[name]), muted, selection))
             progress = self._progress.get(name)
-            if status == "completed" and name not in ("fetch", "collect") and progress:
+            if status == "completed" and name != "fetch" and progress:
                 badges.append(
                     self._badge(f"{progress.items_processed} rows", palette.success, selection)
                 )
             if status == "running" and name in self._metrics:
-                cpu, rss = _parse_metrics(self._metrics[name])
-                if cpu is not None:
-                    detail = f"CPU {cpu}%"
-                    if rss is not None:
-                        detail += f"·{rss:.0f}M"
+                metrics = self._metrics[name]
+                if metrics.cpu_percent is not None:
+                    detail = f"CPU {metrics.cpu_percent:.1f}%"
+                    if metrics.peak_rss_mib is not None:
+                        detail += f"·{metrics.peak_rss_mib:.0f}M"
                     badges.append(self._badge(detail, palette.primary, selection))
             if badges:
                 row = Text()

@@ -5,6 +5,7 @@ from textual.containers import Vertical
 from textual.widgets import RichLog
 
 from athar_dataops.schemas.logs import LogEntry
+from athar_dataops.themes import is_dark_theme
 from athar_dataops.ui.log_format import render_entry
 
 
@@ -21,7 +22,7 @@ class LogView(Vertical):
 
     def write_entry(self, entry: LogEntry) -> None:
         self.query_one(RichLog).write(
-            render_entry(entry, self.app.theme != "athar-light")
+            render_entry(entry, is_dark_theme(self.app))
         )
 
     def render_log(self, entries: list[LogEntry]) -> None:

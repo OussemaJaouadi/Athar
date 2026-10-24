@@ -23,7 +23,7 @@ from athar_dataops.schemas.database import TablePage
 from athar_dataops.services.database import DatabaseService
 from athar_dataops.services.orchestrator import PipelineOrchestrator
 from athar_dataops.themes import DARK, LIGHT, is_dark_theme, themed_json
-from athar_dataops.ui.arabic import format_arabic, format_arabic_obj
+from athar_dataops.ui.arabic import describe_error, format_arabic, format_arabic_obj
 from athar_dataops.ui.dialogs.wipe import WipeConfirmScreen
 
 
@@ -146,7 +146,7 @@ class DatabasePane(Vertical):
                 await self._show_table()
         except (turso.Error, RuntimeError, ValueError, LookupError) as exc:
             self.query_one("#results-label", Label).update(
-                f"Could not load schema: {exc}"
+                f"Could not load schema: {describe_error(exc)}"
             )
 
     async def refresh_migrations(self) -> None:
@@ -154,7 +154,7 @@ class DatabasePane(Vertical):
         try:
             rows = await self._db.migration_status()
         except (turso.Error, RuntimeError, ValueError, LookupError) as exc:
-            summary.update(f"Migrations unknown: {exc}")
+            summary.update(f"Migrations unknown: {describe_error(exc)}")
             summary.set_classes("muted error")
             return
         self._migration_rows = rows
@@ -227,7 +227,7 @@ class DatabasePane(Vertical):
         try:
             deleted = await self._db.wipe_data()
         except (turso.Error, RuntimeError, ValueError, LookupError) as exc:
-            summary.update(f"Wipe failed: {exc}")
+            summary.update(f"Wipe failed: {describe_error(exc)}")
             summary.set_classes("muted error")
             self.query_one("#db-wipe", Button).disabled = False
             self._wiping = False
@@ -429,7 +429,7 @@ class DatabasePane(Vertical):
                 )
         except (turso.Error, RuntimeError, ValueError, LookupError, NoMatches) as exc:
             self.query_one("#results-label", Label).update(
-                f"Table preview failed: {exc}"
+                f"Table preview failed: {describe_error(exc)}"
             )
             self.query_one("#drawer-content", Static).update(
                 "Could not load this table."

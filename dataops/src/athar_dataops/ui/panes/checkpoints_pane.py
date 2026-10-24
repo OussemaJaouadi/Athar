@@ -22,7 +22,7 @@ from athar_dataops.services.artifacts import ArtifactService, parse_registry_pay
 from athar_dataops.services.groq import GroqPreparationClient
 from athar_dataops.services.registry import RegistryService
 from athar_dataops.themes import DARK, LIGHT, is_dark_theme, themed_json
-from athar_dataops.ui.arabic import format_arabic, format_arabic_obj
+from athar_dataops.ui.arabic import describe_error, format_arabic, format_arabic_obj
 
 
 class CheckpointsPane(VerticalScroll):
@@ -234,7 +234,7 @@ class CheckpointsPane(VerticalScroll):
             IndexError,
             NoMatches,
         ) as exc:
-            self._set_status(f"Registry checkpoint failed: {exc}", "error")
+            self._set_status(f"Registry checkpoint failed: {describe_error(exc)}", "error")
             self._card_chip("registry", "failed", "error")
             return
         self._registry_result = {
@@ -349,7 +349,7 @@ class CheckpointsPane(VerticalScroll):
         try:
             reply = await self._groq.prepare(profile, description)
         except (httpx.HTTPError, RuntimeError, ValueError, TypeError, KeyError) as exc:
-            self._set_status(f"Preparation checkpoint failed: {exc}", "error")
+            self._set_status(f"Preparation checkpoint failed: {describe_error(exc)}", "error")
             self._card_chip("prepare", "failed", "error")
             return
         self._prepare_reply = reply

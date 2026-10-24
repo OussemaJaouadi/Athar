@@ -13,7 +13,7 @@ from textual.widgets import Button, Input, Label, ListItem, ListView, Static
 
 from athar_dataops.services.database import DatabaseService
 from athar_dataops.themes import DARK, LIGHT, is_dark_theme
-from athar_dataops.ui.arabic import sanitize_display
+from athar_dataops.ui.arabic import describe_error, sanitize_display
 
 
 class HistoryPane(Vertical):
@@ -68,7 +68,7 @@ class HistoryPane(Vertical):
         except (turso.Error, RuntimeError) as exc:
             self._set_status("Unavailable", "error")
             self.query_one("#history-detail-body", Static).update(
-                f"Could not load run history: {exc}\n\nPress Refresh to try again."
+                f"Could not load run history: {describe_error(exc)}\n\nPress Refresh to try again."
             )
             return
         filtered = [run for run in runs if self._matches(run)]
@@ -163,7 +163,7 @@ class HistoryPane(Vertical):
         except (turso.Error, RuntimeError) as exc:
             self._set_status("Unavailable", "error")
             self.query_one("#history-detail-body", Static).update(
-                f"Could not load run {escape(run_id[:8])}: {escape(str(exc))}"
+                f"Could not load run {escape(run_id[:8])}: {escape(describe_error(exc))}"
             )
             return
         if run is None:

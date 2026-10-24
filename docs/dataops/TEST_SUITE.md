@@ -44,6 +44,7 @@ uv run --project dataops python -m unittest discover -s dataops/tests
 ### `test_smoke.py`
 
 - Headless Textual interactions: collection, records, evidence, database previews, and tab shortcuts; literal rendering of hostile registry text in Records.
+- A source row whose JSON key carries a C1 control renders without it in the evidence view; a failing record load shows its error without terminal controls.
 - Empty states, search beyond the first page, and stale-detail clearing.
 - Source gaps appear in the In review filter with a nonblocking badge.
 - Responsive cancellation, failure recovery, and cancellation before shutdown.
@@ -88,6 +89,7 @@ uv run --project dataops python -m unittest discover -s dataops/tests
 ### `test_arabic.py`
 
 - Arabic detection, escaped Unicode decoding, and mojibake repair.
+- Every string key of a source object is sanitized, not only Arabic ones; exception text shown in a widget is control-free and never empty.
 - Reshaping/reordering mixed and multiline text, including nested objects.
 
 ### `test_metrics.py`

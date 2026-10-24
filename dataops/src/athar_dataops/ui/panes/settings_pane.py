@@ -14,6 +14,7 @@ from athar_dataops.schemas.preparation import ProfileOverview
 from athar_dataops.services.database import DatabaseService
 from athar_dataops.services.groq import PROVIDER
 from athar_dataops.themes import palette_for
+from athar_dataops.ui.arabic import describe_error
 
 PROFILE_CAP = 6
 
@@ -109,7 +110,7 @@ class SettingsPane(VerticalScroll):
             self._profile_limits(rows)
         except Exception as exc:  # noqa: BLE001 - usage is optional UI; never crash the settings tab
             self._set_table_message(
-                self.query_one("#settings-usage", DataTable), f"Usage unavailable: {exc}"
+                self.query_one("#settings-usage", DataTable), f"Usage unavailable: {describe_error(exc)}"
             )
             self._set_table_message(self.query_one("#settings-limits", DataTable), "Limits unavailable")
 

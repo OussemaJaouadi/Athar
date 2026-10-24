@@ -19,6 +19,7 @@ from athar_dataops.schemas.preparation import PreparePreview
 from athar_dataops.services.database import DatabaseService
 from athar_dataops.services.metrics import ProcessSampler, StepMetrics
 from athar_dataops.services.orchestrator import PipelineOrchestrator
+from athar_dataops.ui.arabic import describe_error
 from athar_dataops.ui.dialogs.wipe import WipeConfirmScreen
 from athar_dataops.ui.panes.logs_pane import LogsPane
 from athar_dataops.ui.widgets.log_view import LogView
@@ -241,7 +242,7 @@ class RunPane(VerticalScroll):
         try:
             deleted = await self._orchestrator.reset_registry_data()
         except (RuntimeError, ValueError, LookupError, turso.Error) as exc:
-            error = str(exc)
+            error = describe_error(exc)
         finally:
             self._resetting = False
             self._set_running(False)
@@ -289,7 +290,7 @@ class RunPane(VerticalScroll):
         try:
             preview_data = await self._orchestrator.preparation_preview()
         except (RuntimeError, ValueError, LookupError, turso.Error) as exc:
-            self._set_status(f"Could not load preparation preview: {exc}", "error")
+            self._set_status(f"Could not load preparation preview: {describe_error(exc)}", "error")
             return
         self._prepare_preview = preview_data
         body = self.query_one("#prepare-preview-body", Static)

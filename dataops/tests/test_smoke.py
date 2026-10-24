@@ -199,6 +199,34 @@ class WorkspaceTests(IsolatedAsyncioTestCase):
             await pilot.pause()
             self.assertTrue(source.collapsed, "a reload of the listing starts collapsed")
 
+    async def test_hostile_json_keys_and_error_text_never_carry_terminal_controls(self):
+        row = registry_row()
+        row["ex\x9btra\x1b[2J"] = "value"
+        self.fixture_rows = [row]
+        await self.orchestrator.run_pipeline()
+        app = self.app()
+        async with app.run_test(size=(120, 40)) as pilot:
+            await pilot.press("ctrl+2")
+            await pilot.pause()
+            app.query_one("#source-disclosure", Collapsible).collapsed = False
+            await pilot.pause()
+            original = render_text(app.query_one("#detail-original", Static).render())
+            self.assertIn("extra", original)
+            self.assertNotIn("\x9b", original)
+            self.assertNotIn("\x1b", original)
+
+            async def failing_page(*args, **kwargs):
+                raise ValueError("stored text \x1b[2J\x9b broke")
+
+            with patch.object(self.db, "record_page", failing_page):
+                await pilot.click("#records-review-filter")
+                await pilot.pause()
+                await pilot.pause()
+            message = render_text(app.query_one("#records-empty-message", Static).render())
+            self.assertIn("stored text", message)
+            self.assertNotIn("\x1b", message)
+            self.assertNotIn("\x9b", message)
+
     async def test_source_gap_appears_in_review_without_decision_badge(self):
         self.fixture_rows = [registry_row(name="Gap", desc="")]
         result = await self.orchestrator.run_pipeline()

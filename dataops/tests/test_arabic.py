@@ -4,6 +4,7 @@ import unittest
 
 from athar_dataops.ui.arabic import (
     decode_unicode_escapes,
+    describe_error,
     format_arabic,
     format_arabic_obj,
     has_arabic,
@@ -69,3 +70,11 @@ class ArabicDisplayTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DisplayBoundaryTests(unittest.TestCase):
+    def test_every_string_key_is_sanitized_and_errors_are_literal(self):
+        hostile = {"na\x9bme": {"in\x1b[2Jner": ["v\x07alue"]}, 7: "ok"}
+        self.assertEqual(format_arabic_obj(hostile), {"name": {"in[2Jner": ["value"]}, 7: "ok"})
+        self.assertEqual(describe_error(ValueError("bad\x1b[2J value")), "bad[2J value")
+        self.assertEqual(describe_error(RuntimeError("")), "RuntimeError")

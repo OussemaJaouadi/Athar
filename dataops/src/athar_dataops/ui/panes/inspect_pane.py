@@ -27,7 +27,7 @@ from textual.widgets import (
 from athar_dataops.schemas.registry import RecordDetail
 from athar_dataops.services.database import DatabaseService
 from athar_dataops.themes import DARK, LIGHT, is_dark_theme, themed_json
-from athar_dataops.ui.arabic import format_arabic, format_arabic_obj
+from athar_dataops.ui.arabic import describe_error, format_arabic, format_arabic_obj
 from athar_dataops.ui.widgets.badges import review_badge, review_chip
 
 
@@ -201,7 +201,7 @@ class InspectPane(Vertical):
                 self.query_one("#records-empty Label", Label).update(
                     "Could not load records"
                 )
-                self.query_one("#records-empty-message", Static).update(str(error))
+                self.query_one("#records-empty-message", Static).update(describe_error(error))
                 return
             self.query_one("#records-empty Label", Label).update("No records yet")
             self.query_one("#records-empty-message", Static).update(

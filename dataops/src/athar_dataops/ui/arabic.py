@@ -52,6 +52,15 @@ def sanitize_display(text: str) -> str:
     return _CONTROL_PATTERN.sub("", text)
 
 
+def describe_error(exc: BaseException) -> str:
+    """Exception text for a widget: literal, control-free, never markup.
+
+    Validation errors echo input values and stored text can carry anything,
+    so an error message is as untrusted as the data that produced it.
+    """
+    return sanitize_display(str(exc)) or exc.__class__.__name__
+
+
 def repair_mojibake(text: str) -> str:
     """Repair common UTF-8 byte sequences erroneously decoded as Latin-1/CP1252."""
     if "Ø" in text or "Ù" in text:
@@ -102,8 +111,9 @@ def format_arabic_obj(obj: Any) -> Any:
     if isinstance(obj, str):
         return format_arabic(obj)
     if isinstance(obj, dict):
+        # Keys are source data too: sanitize every string key, not only Arabic ones.
         return {
-            format_arabic(k) if isinstance(k, str) and has_arabic(k) else k: format_arabic_obj(v)
+            format_arabic(k) if isinstance(k, str) else k: format_arabic_obj(v)
             for k, v in obj.items()
         }
     if isinstance(obj, list):

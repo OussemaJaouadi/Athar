@@ -184,6 +184,32 @@ class LogsPaneTests(IsolatedAsyncioTestCase):
                 app.query_one("#filter-error", Button).label.plain.endswith("1")
             )
 
+    async def test_full_buffer_evicts_oldest_without_rebuilding_console(self):
+        app = LogsTestApp()
+        async with app.run_test() as pilot:
+            pane = app.query_one(LogsPane)
+            pane.clear_logs()
+            rebuilds = []
+            original = pane._rebuild_console
+            pane._rebuild_console = lambda: rebuilds.append(1) or original()
+            for index in range(LogsPane.MAX_ENTRIES + 150):
+                pane.log_entry(f"entry {index}", "error" if index % 2 else "info")
+            self.assertEqual(rebuilds, [], "a full buffer must not redraw the console per entry")
+            self.assertEqual(len(pane._entries), LogsPane.MAX_ENTRIES)
+            self.assertEqual(pane._entries[0].message, "entry 150")
+            self.assertTrue(
+                app.query_one("#filter-all", Button).label.plain.endswith(str(LogsPane.MAX_ENTRIES))
+            )
+            self.assertTrue(app.query_one("#filter-error", Button).label.plain.endswith("1000"))
+            self.assertTrue(app.query_one("#filter-info", Button).label.plain.endswith("1000"))
+            console = app.query_one("#logs-console", RichLog)
+            self.assertIn(f"(2000/{LogsPane.MAX_ENTRIES})", console.border_title)
+            # Filter changes still rebuild once and recount visible entries.
+            app.query_one("#filter-error", Button).press()
+            await pilot.pause()
+            self.assertEqual(len(rebuilds), 1)
+            self.assertIn("(1000/2000)", console.border_title)
+
     async def test_rail_arrows_cycle_focus(self):
         app = LogsTestApp()
         async with app.run_test() as pilot:

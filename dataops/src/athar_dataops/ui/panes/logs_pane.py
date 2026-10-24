@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter, deque
 from contextlib import suppress
 from typing import ClassVar
 
@@ -53,9 +54,15 @@ class LogsPane(Vertical):
     }
     """
 
+    MAX_ENTRIES = 2000
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self._entries: list[LogEntry] = []
+        # A bounded deque evicts the oldest entry in O(1); the console keeps its
+        # own matching line cap, so a full buffer never triggers a rebuild.
+        self._entries: deque[LogEntry] = deque(maxlen=self.MAX_ENTRIES)
+        self._level_counts: Counter[str] = Counter()
+        self._visible = 0
         self._current_filter: str = "all"
         self._search_query: str = ""
         self._auto_scroll: bool = True
@@ -88,7 +95,7 @@ class LogsPane(Vertical):
                 )
                 yield RichLog(
                     id="logs-console",
-                    max_lines=2000,
+                    max_lines=self.MAX_ENTRIES,
                     markup=True,
                     wrap=True,
                     auto_scroll=True,
@@ -148,16 +155,16 @@ class LogsPane(Vertical):
 
     def add_entry(self, entry: LogEntry) -> None:
         """Retain structured context when forwarding pipeline events."""
+        if len(self._entries) == self.MAX_ENTRIES:
+            evicted = self._entries[0]
+            self._level_counts[evicted.level] -= 1
+            if self._matches_current_filter(evicted):
+                self._visible -= 1
         self._entries.append(entry)
-        if len(self._entries) > 2000:
-            del self._entries[:-2000]
-            self._rebuild_console()
-            self._update_stats_bar()
-            return
-
+        self._level_counts[entry.level] += 1
         if self._matches_current_filter(entry):
+            self._visible += 1
             self._write_entry(entry)
-
         self._update_stats_bar()
 
     def _matches_current_filter(self, entry: LogEntry) -> bool:
@@ -183,29 +190,18 @@ class LogsPane(Vertical):
 
     def _update_stats_bar(self) -> None:
         total = len(self._entries)
-        stages = sum(1 for e in self._entries if e.level == "stage")
-        info = sum(1 for e in self._entries if e.level == "info")
-        warnings = sum(1 for e in self._entries if e.level == "warning")
-        errors = sum(1 for e in self._entries if e.level == "error")
+        counts = self._level_counts
 
         with suppress(NoMatches):
             palette = DARK if self._is_dark() else LIGHT
             self.query_one("#filter-all", Button).label = self._rail_label(
                 "all", total, palette
             )
-            self.query_one("#filter-stage", Button).label = self._rail_label(
-                "stage", stages, palette
-            )
-            self.query_one("#filter-info", Button).label = self._rail_label(
-                "info", info, palette
-            )
-            self.query_one("#filter-warning", Button).label = self._rail_label(
-                "warning", warnings, palette
-            )
-            self.query_one("#filter-error", Button).label = self._rail_label(
-                "error", errors, palette
-            )
-            visible = sum(1 for entry in self._entries if self._matches_current_filter(entry))
+            for level in ("stage", "info", "warning", "error"):
+                self.query_one(f"#filter-{level}", Button).label = self._rail_label(
+                    level, counts[level], palette
+                )
+            visible = self._visible
             console = self.query_one("#logs-console", RichLog)
             filter_label = (
                 self._current_filter.title() if self._current_filter != "all" else "All"
@@ -227,11 +223,14 @@ class LogsPane(Vertical):
         return label
 
     def _rebuild_console(self) -> None:
+        """Re-render after a filter, search, or theme change; never per entry."""
+        self._visible = 0
         with suppress(NoMatches):
             log_widget = self.query_one("#logs-console", RichLog)
             log_widget.clear()
             for entry in self._entries:
                 if self._matches_current_filter(entry):
+                    self._visible += 1
                     self._write_entry(entry)
 
     @on(Button.Pressed, "#filter-all")
@@ -254,6 +253,7 @@ class LogsPane(Vertical):
                     btn_id == event.button.id, "-active"
                 )
         self._rebuild_console()
+        self._update_stats_bar()
 
     @on(Input.Changed, "#logs-search")
     def on_search_changed(self, event: Input.Changed) -> None:
@@ -275,6 +275,8 @@ class LogsPane(Vertical):
     @on(Button.Pressed, "#clear-logs")
     def clear_logs(self) -> None:
         self._entries.clear()
+        self._level_counts.clear()
+        self._visible = 0
         with suppress(NoMatches):
             self.query_one("#logs-console", RichLog).clear()
             self._update_stats_bar()

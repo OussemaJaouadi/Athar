@@ -124,13 +124,20 @@ class _QuotaLedger:
             ),
         ).name
 
-    def retry_seconds(self) -> float:
+    def retry_seconds(self, hinted: set[str] | None = None) -> float:
+        """Shortest wait until some unspent profile with daily budget frees up."""
         now = monotonic()
         wait = 60.0
         for profile in self.profiles:
-            seconds = profile.cooled_until - now
-            if 0 < seconds < wait:
-                wait = seconds
+            if (hinted and profile.name in hinted) or not profile.daily_budget_left:
+                continue
+            if profile.cooled_until > now:
+                wait = min(wait, profile.cooled_until - now)
+                continue
+            profile._trim(now)
+            if profile.minute_limit and len(profile.minute_bucket) >= profile.minute_limit:
+                # The oldest request in the window leaves it after 60 seconds.
+                wait = min(wait, max(0.05, 60.0 - (now - profile.minute_bucket[0])))
         return wait
 
     def cool(self, name: str, seconds: float = 60.0) -> None:
@@ -147,6 +154,31 @@ class _QuotaLedger:
         for profile in self.profiles:
             if profile.name == name:
                 profile.record(tokens)
+
+
+class _CacheIndex:
+    """Stored preparations for the configured models, matched in memory.
+
+    A hit is either the exact cache key (same source rows, hash, model and
+    versions) or the same entity, hash, model and versions under other source
+    rows, mirroring the lookup ``DatabaseService.prepared_text`` performs.
+    """
+
+    def __init__(self, rows: list[dict[str, Any]]):
+        self.keys = {row["cache_key"] for row in rows}
+        self.signatures = {
+            (row["entity_id"], row["input_hash"], row["model"],
+             row["prompt_version"], row["schema_version"])
+            for row in rows
+        }
+
+    def hit(self, candidate: dict[str, Any], model: str) -> tuple[str, str] | None:
+        key, input_hash = preparation_key(candidate, model)
+        prompt_version, schema_version = candidate_versions(candidate)
+        signature = (candidate["entity_id"], input_hash, model, prompt_version, schema_version)
+        if key in self.keys or signature in self.signatures:
+            return key, input_hash
+        return None
 
 
 class PreparationService:
@@ -174,19 +206,18 @@ class PreparationService:
             for status in self.provider.profiles
         ]
 
-    async def _cached_candidate(
-        self, candidate: dict[str, Any]
-    ) -> tuple[ProfileStatus, str, str, dict[str, Any]] | None:
-        """Find reusable output under any currently configured model, without spending quota."""
+    async def _cache_index(self) -> _CacheIndex:
+        models = list(dict.fromkeys(status.model for status in self.provider.profiles))
+        return _CacheIndex(await self._db.cached_preparation_index(models))
+
+    def _cached_candidate(
+        self, candidate: dict[str, Any], index: _CacheIndex
+    ) -> tuple[ProfileStatus, str, str] | None:
+        """Reusable output under any configured model, without spending quota or a query."""
         for status in self.provider.profiles:
-            key, input_hash = preparation_key(candidate, status.model)
-            prompt_version, schema_version = candidate_versions(candidate)
-            output = await self._db.prepared_text(
-                key, candidate["entity_id"], input_hash, status.model,
-                prompt_version, schema_version,
-            )
-            if output is not None:
-                return status, key, input_hash, output
+            hit = index.hit(candidate, status.model)
+            if hit is not None:
+                return status, hit[0], hit[1]
         return None
 
     async def preview(self) -> PreparePreview:
@@ -208,10 +239,11 @@ class PreparationService:
             }
             for status in self.provider.profiles
         ]
-        cached = 0
-        for candidate in candidates:
-            if await self._cached_candidate(candidate) is not None:
-                cached += 1
+        index = await self._cache_index()
+        cached = sum(
+            1 for candidate in candidates
+            if self._cached_candidate(candidate, index) is not None
+        )
         return {
             "available": True,
             "profiles": profiles,
@@ -252,10 +284,21 @@ class PreparationService:
             await report("completed", f"{len(candidates)} eligible descriptions")
             stage = "prepare"
             await report("running", f"Groq {self.marker}")
+            # One index for the whole run: candidates are distinct entities, so a
+            # preparation saved during this run is never a hit for a later one.
+            index = await self._cache_index()
             for candidate in candidates:
-                existing = await self._cached_candidate(candidate)
+                existing = self._cached_candidate(candidate, index)
+                cached_output = None
                 if existing is not None:
-                    status, cache_key, input_hash, cached_output = existing
+                    status, cache_key, input_hash = existing
+                    prompt_version, schema_version = candidate_versions(candidate)
+                    cached_output = await self._db.prepared_text(
+                        cache_key, candidate["entity_id"], input_hash, status.model,
+                        prompt_version, schema_version,
+                    )
+                if cached_output is not None:
+                    # Reuse cached evidence with fresh provenance for this source row.
                     await self._db.save_preparation(
                         candidate, cache_key, input_hash, status.model,
                         status.name, cached_output,
@@ -271,20 +314,6 @@ class PreparationService:
                 while True:
                     profile = await self._reserve(ledger, hinted)
                     cache_key, input_hash = preparation_key(candidate, ledger.model_for(profile))
-                    prompt_version, schema_version = candidate_versions(candidate)
-                    cached_output = await self._db.prepared_text(
-                        cache_key, candidate["entity_id"], input_hash, ledger.model_for(profile),
-                        prompt_version, schema_version,
-                    )
-                    if cached_output is not None:
-                        # Reuse cached evidence with fresh provenance for this source row.
-                        await self._db.save_preparation(
-                            candidate, cache_key, input_hash, ledger.model_for(profile),
-                            profile, cached_output,
-                        )
-                        cached += 1
-                        processed += 1
-                        break
                     attempt_id = str(uuid4())
                     await self._db.start_preparation_usage(
                         attempt_id, run_id, candidate["source_row_id"],
@@ -376,7 +405,7 @@ class PreparationService:
                 if profile.name not in hinted and profile.daily_budget_left
             ]
             if fresh:
-                await asyncio.sleep(ledger.retry_seconds())
+                await asyncio.sleep(ledger.retry_seconds(hinted))
                 continue
             if any(profile.daily_budget_left for profile in ledger.profiles):
                 raise RuntimeError(_RATE_LIMITED)

@@ -204,6 +204,28 @@ class ProfileRotationTests(IsolatedAsyncioTestCase):
         self.assertFalse(GroqPreparationClient(self.http, empty).configured)
 
 
+class QuotaLedgerTests(IsolatedAsyncioTestCase):
+    def test_minute_limit_wait_follows_oldest_request_not_a_flat_minute(self):
+        from time import monotonic
+
+        from athar_dataops.services.preparation import _QuotaLedger
+
+        state = {
+            "name": "account-a", "provider": "groq", "model": "m", "fingerprint": "fp",
+            "disabled": False, "requests_today": 2, "tokens_today": 0.0, "requests_minute": 2,
+            "quotas": {"requests_per_minute": {"limit": 2, "period": "minute"}},
+        }
+        ledger = _QuotaLedger([state])
+        profile = ledger.profiles[0]
+        profile.minute_bucket.clear()
+        profile.minute_bucket.extend((monotonic() - 50, monotonic() - 20))
+        self.assertIsNone(ledger.pick(set()))
+        self.assertAlmostEqual(ledger.retry_seconds(set()), 10.0, delta=1.0)
+        self.assertEqual(ledger.retry_seconds({"account-a"}), 60.0)
+        ledger.cool("account-a", 5.0)
+        self.assertAlmostEqual(ledger.retry_seconds(set()), 5.0, delta=1.0)
+
+
 class ProfileTomlTests(IsolatedAsyncioTestCase):
     def test_parse_profiles_and_skip_invalid_entries(self):
         with tempfile.TemporaryDirectory() as directory:

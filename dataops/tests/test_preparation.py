@@ -196,6 +196,31 @@ class PreparationTests(IsolatedAsyncioTestCase):
         self.assertEqual(preview["cached"], 3)
         self.assertEqual(preview["uncached"], 1)
 
+    async def test_preview_query_count_does_not_grow_with_candidates(self):
+        def extra_rows(count):
+            return [
+                registry_row(name=f"Startup {i}", desc=f"Le meilleur service pour {i + 2} villes.",
+                             website=f"site-{i}.example")
+                for i in range(count)
+            ]
+        tally = {"queries": 0}
+        original = self.db._rows
+
+        async def counting_rows(sql, parameters=()):
+            tally["queries"] += 1
+            return await original(sql, parameters)
+
+        self.db._rows = counting_rows
+        counts = []
+        for size in (3, 12):
+            self.rows = extra_rows(size)
+            await self.pipeline.run_pipeline()
+            tally["queries"] = 0
+            preview = await self.preparation.preview()
+            self.assertEqual(preview["eligible"], size)
+            counts.append(tally["queries"])
+        self.assertEqual(counts[0], counts[1], f"preview queries grew with candidates: {counts}")
+
     async def test_preview_and_run_reuse_cache_before_selecting_another_model(self):
         await self.pipeline.run_preparation()
         self.assertEqual(self.calls, 1)

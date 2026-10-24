@@ -18,6 +18,7 @@ from athar_dataops.schemas.database import RecordPage, TablePage
 from athar_dataops.schemas.issues import RecordIssue, classify_issue
 from athar_dataops.schemas.pipeline import PipelineRunResult
 from athar_dataops.schemas.preparation import (
+    TARGET_LANGUAGE,
     ProfileOverview,
     ProfileQuotaState,
     QuotaLimit,
@@ -1143,13 +1144,27 @@ class DatabaseService:
             })
         return candidates
 
+    async def cached_preparation_index(self, models: list[str]) -> list[dict[str, Any]]:
+        """Keys and signatures of every stored preparation for these models, in one query.
+
+        Preview and run match candidates against this in memory instead of
+        issuing one lookup per candidate per configured profile.
+        """
+        if not models:
+            return []
+        slots = ",".join("?" for _ in models)
+        async with self._lock:
+            return await self._rows(
+                f"""SELECT cache_key, entity_id, input_hash, model, prompt_version, schema_version
+                FROM text_preparations
+                WHERE provider='groq' AND target_language=? AND model IN ({slots})""",
+                (TARGET_LANGUAGE, *models),
+            )
+
     async def prepared_text(
         self, cache_key: str, entity_id: str, input_hash: str, model: str,
         prompt_version: str, schema_version: str,
     ) -> dict[str, Any] | None:
-        from athar_dataops.schemas.preparation import (
-            TARGET_LANGUAGE,
-        )
         async with self._lock:
             rows = await self._rows(
                 """SELECT output_json FROM text_preparations WHERE cache_key=? OR
@@ -1162,7 +1177,6 @@ class DatabaseService:
     async def save_preparation(self, candidate: dict[str, Any], cache_key: str,
                                input_hash: str, model: str, profile: str,
                                output: dict[str, Any]) -> None:
-        from athar_dataops.schemas.preparation import TARGET_LANGUAGE
         from athar_dataops.services.preparation import candidate_versions
 
         prompt_version, schema_version = candidate_versions(candidate)

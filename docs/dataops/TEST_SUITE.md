@@ -65,6 +65,7 @@ uv run --project dataops python -m unittest discover -s dataops/tests
 ### `test_preparation.py`
 
 - Prepare lifecycle: single and combined descriptions in one call per entity, source provenance, cache invalidation, usage/marker tracking, key switching, issue classification, and confirmation before model calls.
+- Preview issues a fixed number of queries regardless of candidate count: cache hits come from one index query, not one lookup per candidate per profile.
 - Missing keys disable only preparation; authentication and rate limits stop without rotation or token guessing.
 
 ### `test_profiles.py`
@@ -72,11 +73,13 @@ uv run --project dataops python -m unittest discover -s dataops/tests
 - Groq rotation: least-loaded selection, 401/403 permanent disable, throttling and cooldown (one round per profile), "resume later"/"reset" stops, and unknown-usage outcomes.
 - Legacy single-key fallback, free-tier quota seeding per profile, quota-aware rotation, and loss of last eligible profile.
 - Provider faults (for example HTTP 400) stop the run after one call without cooling or disabling any profile; a rotated key clears a persisted `disabled` flag while an unchanged key keeps it.
+- The minute-rate wait follows the oldest request in the window (and any cooldown) instead of a flat 60 seconds.
 - TOML profiles loading, including a malformed or entry-less file yielding no profiles plus a visible reason that never echoes the file's values.
 
 ### `test_logs.py`
 
 - Entry formatting, severity filtering, and text search.
+- A full 2000-entry buffer evicts the oldest entry without redrawing the console; severity counts and the visible/total header stay correct, including right after a filter change.
 - Search focus, Escape behavior, clearing logs, and unintended shortcut prevention.
 - Retained entries when rebuilding for light mode; active sidebar label contrast and filtered states.
 

@@ -36,5 +36,6 @@ Checked items are available; unchecked items are planned.
 - `1–7`: Run · Records · History · Database · Logs · Probes · Settings.
 - `F1`: full help · `F6`: theme · `Ctrl+Q`: quit.
 
+- Tests: `uv run --project dataops dataops/tests/run.py unit` (fast) or `ui` (headless app). See [Tests](../docs/dataops/TEST_SUITE.md).
 - [Architecture](../docs/dataops/ARCHITECTURE.md) · [Tests](../docs/dataops/TEST_SUITE.md)
 - [Changes](CHANGELOG.md) · [Project overview](../README.md)

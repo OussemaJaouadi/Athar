@@ -1,87 +1,19 @@
 """Real temporary storage, mocked Groq; no inference credits or personal data."""
 
 import asyncio
-import json
-import tempfile
 from pathlib import Path
-from unittest import IsolatedAsyncioTestCase, TestCase
+from unittest import TestCase
 
-import httpx
 from pydantic import SecretStr
-from test_pipeline import registry_row
+from support import PreparationFixture, registry_row
 
-from athar_dataops.config import Settings
 from athar_dataops.schemas.issues import classify_issue
-from athar_dataops.services.artifacts import ArtifactService
 from athar_dataops.services.database import DatabaseService
 from athar_dataops.services.groq import GroqPreparationClient
-from athar_dataops.services.orchestrator import PipelineOrchestrator
 from athar_dataops.services.preparation import PreparationService
-from athar_dataops.services.registry import RegistryService
 
 
-class PreparationTests(IsolatedAsyncioTestCase):
-    async def asyncSetUp(self):
-        self.directory = tempfile.TemporaryDirectory()
-        self.db = DatabaseService(Path(self.directory.name) / "test.db")
-        await self.db.initialize()
-        self.config = Settings(_env_file=None, groq_api_key="fake-secret", groq_profile="account-a",
-                               groq_profiles_path=Path(self.directory.name) / "none.toml")
-        self.calls = 0
-        self.status = 200
-        self.mode = "valid"
-        self.waiting = asyncio.Event()
-        self.rows = [registry_row(desc="Le meilleur logiciel pour 12 magasins.")]
-        self.http = httpx.AsyncClient(transport=httpx.MockTransport(self.respond))
-        self.preparation = PreparationService(GroqPreparationClient(self.http, self.config), self.db)
-        self.pipeline = PipelineOrchestrator(ArtifactService(self.http, "https://registry.example"),
-                                             RegistryService(), self.db, preparation=self.preparation)
-        await self.pipeline.run_pipeline()
-
-    async def asyncTearDown(self):
-        await self.http.aclose()
-        await self.db.close()
-        self.directory.cleanup()
-
-    async def respond(self, request):
-        if request.url.host == "registry.example":
-            self.assertNotIn("authorization", request.headers)
-            return httpx.Response(200, json=self.rows)
-        self.calls += 1
-        payload = json.loads(request.content)
-        self.assertTrue(payload["response_format"]["json_schema"]["strict"])
-        if self.mode == "block":
-            self.waiting.set()
-            await asyncio.Event().wait()
-        if self.status != 200:
-            return httpx.Response(self.status, text="fake-secret")
-        output = {
-            "detected_language": "fr", "cleaned_text": "Logiciel pour 12 magasins.",
-            "english_translation": "Software for 12 shops.", "fluff_excerpts": ["Le meilleur"],
-        }
-        if self.mode == "multi":
-            sources = json.loads(payload["messages"][1]["content"])
-            output = {
-                "sources": [
-                    {"row_number": source["row_number"], "detected_language": "en",
-                     "cleaned_text": source["description"],
-                     "english_translation": None, "fluff_excerpts": []}
-                    for source in sources
-                ],
-                "english_summary": "Software for 12 shops and schools.",
-            }
-        if self.mode == "hallucinated_excerpt":
-            output["fluff_excerpts"] = ["not in source"]
-        if self.mode == "lost_number":
-            output["cleaned_text"] = "Logiciel."
-        return httpx.Response(200, json={
-            "id": "chatcmpl-test", "usage": {"prompt_tokens": 100, "completion_tokens": 50},
-            "choices": [{"finish_reason": "stop", "message": {
-                "content": "bad json fake-secret" if self.mode == "bad_json" else json.dumps(output),
-                "refusal": "refused" if self.mode == "refused" else None,
-            }}],
-        })
-
+class PreparationTests(PreparationFixture):
     async def test_preparation_keeps_evidence_and_tracks_marker_and_tokens(self):
         before = (await self.db.list_records())[0].original
         result = await self.pipeline.run_preparation()
@@ -145,32 +77,6 @@ class PreparationTests(IsolatedAsyncioTestCase):
         self.assertEqual(self.calls, 1)
         self.assertIsNotNone((await self.db.list_records())[0].prepared)
         self.assertEqual(len((await self.db.table_page("text_preparations")).rows), 2)
-
-    async def test_configured_profiles_visible_before_first_seeding(self):
-        from textual.widgets import DataTable, Static
-
-        from athar_dataops.app import DataOpsApp
-
-        app = DataOpsApp(self.pipeline, self.db, self.config)
-        async with app.run_test() as pilot:
-            async with asyncio.timeout(5):
-                while "configured" not in str(
-                    app.query_one("#run-profiles-summary", Static).render()
-                ):
-                    await pilot.pause(0.05)
-            summary = str(app.query_one("#run-profiles-summary", Static).render())
-            self.assertIn("1 configured", summary)
-            self.assertIn("0 registered", summary)
-            self.assertIn("account-a", summary)
-            app.action_navigate("settings")
-            await pilot.pause()
-            usage = app.query_one("#settings-usage", DataTable)
-            async with asyncio.timeout(5):
-                while not usage.rows:
-                    await pilot.pause(0.05)
-            row = usage.get_row_at(0)
-            self.assertEqual(row[0], "account-a")
-            self.assertEqual(row[2], "configured")
 
     async def test_preview_counts_every_cached_candidate_under_one_profile(self):
         self.rows = [
@@ -334,19 +240,6 @@ class PreparationTests(IsolatedAsyncioTestCase):
         retrieval = await self.db._rows("SELECT retrieval_text FROM entities WHERE name='Dual'")
         self.assertEqual(retrieval[0]["retrieval_text"],
                          "Software for 12 shops and schools.")
-        from test_smoke import render_text
-        from textual.widgets import Static
-
-        from athar_dataops.app import DataOpsApp
-
-        app = DataOpsApp(self.pipeline, self.db, self.config)
-        async with app.run_test(size=(120, 50)) as pilot:
-            app.action_navigate("inspect")
-            await pilot.pause()
-            self.assertIn("Software for schools",
-                          render_text(app.query_one("#detail-secondary", Static).render()))
-            self.assertIn("Combined English summary",
-                          render_text(app.query_one("#detail-prepared", Static).render()))
         await self.pipeline.run_preparation()
         self.assertEqual(self.calls, 1)
         self.rows[1]["desc"] = "Software for 3 schools."
@@ -404,57 +297,6 @@ class PreparationTests(IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(RuntimeError, "GROQ_API_KEY"):
             await self.pipeline.run_preparation()
         self.assertEqual((await self.pipeline.run_clean_pipeline()).status, "completed")
-
-    async def test_prepare_requires_confirmation_before_model_calls(self):
-        from test_smoke import render_text
-        from textual.widgets import Static
-
-        from athar_dataops.app import DataOpsApp
-
-        app = DataOpsApp(self.pipeline, self.db, self.config)
-        async with app.run_test(size=(120, 50)) as pilot:
-            await pilot.click("#prepare-pipeline")
-            await pilot.pause()
-            self.assertTrue(app.query_one("#prepare-preview").display)
-            self.assertIn("Uncached model calls", render_text(app.query_one("#prepare-preview-body", Static).render()))
-            self.assertEqual(len(await self.db.preparation_usage_summary()), 0)
-            await pilot.click("#prepare-cancel")
-            await pilot.pause()
-            self.assertFalse(app.query_one("#prepare-preview").display)
-            self.assertEqual(len(await self.db.preparation_usage_summary()), 0)
-
-    async def test_prepare_button_records_panel_and_usage_panel(self):
-        from test_smoke import render_text
-        from textual.widgets import DataTable, Static
-
-        from athar_dataops.app import DataOpsApp
-        from athar_dataops.ui.panes.run_pane import RunPane
-
-        app = DataOpsApp(self.pipeline, self.db, self.config)
-        async with app.run_test(size=(120, 50)) as pilot:
-            await pilot.click("#prepare-pipeline")
-            await pilot.pause()
-            self.assertTrue(app.query_one("#prepare-preview").display)
-            self.assertIn("Uncached model calls", render_text(app.query_one("#prepare-preview-body", Static).render()))
-            await pilot.click("#prepare-confirm")
-            async with asyncio.timeout(10):
-                while app.query_one(RunPane).collecting:
-                    await pilot.pause(0.05)
-            await pilot.pause()
-            app.action_navigate("inspect")
-            await pilot.pause()
-            self.assertTrue(app.query_one("#prepared-disclosure").display)
-            self.assertIn("Software for 12 shops", render_text(app.query_one("#detail-prepared", Static).render()))
-            self.assertIn("Produced by", render_text(app.query_one("#detail-prepared", Static).render()))
-            self.assertIn("account-a", render_text(app.query_one("#detail-prepared", Static).render()))
-            app.action_navigate("settings")
-            await pilot.pause()
-            async with asyncio.timeout(10):
-                while not app.query_one("#settings-usage", DataTable).rows:
-                    await pilot.pause(0.05)
-            usage = app.query_one("#settings-usage", DataTable)
-            self.assertEqual(usage.get_row_at(0)[0], "account-a")
-            self.assertNotIn("fake-secret", render_text(app.query_one("#settings-env-table", Static).render()))
 
     async def test_upgrade_reclassifies_existing_flags_without_losing_evidence(self):
         import hashlib

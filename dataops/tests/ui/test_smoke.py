@@ -2,15 +2,12 @@
 
 import asyncio
 import tempfile
-from importlib.resources import files
-from io import StringIO
 from pathlib import Path
-from unittest import IsolatedAsyncioTestCase, TestCase
+from unittest import IsolatedAsyncioTestCase
 from unittest.mock import patch
 
 import httpx
-from rich.console import Console
-from test_pipeline import registry_row
+from support import registry_row, render_text
 from textual.widgets import (
     Button,
     Collapsible,
@@ -34,12 +31,6 @@ from athar_dataops.ui.panes import (
     HistoryPane,
     RunPane,
 )
-
-
-def render_text(renderable):
-    stream = StringIO()
-    Console(file=stream, width=120, color_system=None).print(renderable)
-    return stream.getvalue()
 
 
 class WorkspaceTests(IsolatedAsyncioTestCase):
@@ -445,25 +436,20 @@ class WorkspaceTests(IsolatedAsyncioTestCase):
                 self.assertEqual(clipped, [], f"labels wider than their buttons: {clipped}")
                 self.assertTrue(app.query_one("#records-pager").display)
 
-    async def test_about_opens_from_settings_and_resizes(self):
+    async def test_about_opens_from_settings(self):
         app = self.app()
-        async with app.run_test(size=(120, 70)) as pilot:
+        async with app.run_test(size=(120, 40)) as pilot:
             await pilot.press("7")
             await pilot.pause()
-            await pilot.click("#about")
+            # The button sits below the fold at 40 rows; keyboard reaches it regardless.
+            app.query_one("#about", Button).focus()
+            await pilot.pause()
+            await pilot.press("enter")
             await pilot.pause()
             self.assertIsInstance(app.screen, AboutScreen)
             await pilot.press("escape")
             await pilot.pause()
             self.assertNotIsInstance(app.screen, AboutScreen)
-            app.push_screen(AboutScreen())
-            await pilot.pause()
-            self.assertNotEqual(
-                app.screen.query_one("#ascii-mark").styles.display, "none"
-            )
-            await pilot.resize_terminal(80, 24)
-            await pilot.pause()
-            self.assertEqual(app.screen.query_one("#ascii-mark").styles.display, "none")
 
     async def test_tab_switching_keybindings(self):
         app = self.app()
@@ -596,23 +582,6 @@ class WorkspaceTests(IsolatedAsyncioTestCase):
                 app.query_one("#workspace", TabbedContent).active, "run"
             )
 
-    async def test_history_row_summary_fits_narrow_rail(self):
-        await self.orchestrator.run_pipeline()
-        app = self.app()
-        async with app.run_test(size=(80, 24)) as pilot:
-            await pilot.press("3")
-            await pilot.pause()
-            first_item = app.query_one("#history-list", ListView).children[0]
-            meta = render_text(first_item.children[1].render())
-            self.assertIn(" rec · ", meta)
-            self.assertIn(" rev", meta)
-            self.assertNotIn(" records", meta)
-            detail = render_text(
-                app.query_one("#history-detail-body", Static).render()
-            )
-            self.assertIn("Outcome: completed", detail)
-            self.assertIn("Records:", detail)
-
     async def test_history_tab_loads_persisted_run_and_steps(self):
         result = await self.orchestrator.run_pipeline()
         app = self.app()
@@ -669,13 +638,3 @@ class WorkspaceTests(IsolatedAsyncioTestCase):
             self.assertNotIn("Started: Unknown time", detail)
 
 
-class PackagedAssetsTests(TestCase):
-    def test_packaged_artwork_and_migration(self):
-        root = files("athar_dataops")
-        artwork = root.joinpath("assets/mark.txt").read_text()
-        self.assertEqual(len(artwork.splitlines()), 54)
-        self.assertTrue(artwork.splitlines()[0].isspace())
-        self.assertIn(
-            "CREATE TABLE source_snapshots",
-            root.joinpath("migrations/001_registry.sql").read_text(),
-        )

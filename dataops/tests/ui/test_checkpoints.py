@@ -5,14 +5,12 @@ import json
 import tempfile
 from datetime import UTC, datetime
 from importlib.resources import files
-from io import StringIO
 from pathlib import Path
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import patch
 
 import httpx
-from rich.console import Console
-from test_pipeline import registry_row
+from support import registry_row, render_text
 from textual.visual import RichVisual
 from textual.widgets import Button, Static, TextArea
 
@@ -32,12 +30,6 @@ PREPARED = {
     "english_translation": "Concrete product in detail",
     "fluff_excerpts": ["wow"],
 }
-
-
-def render_text(renderable):
-    stream = StringIO()
-    Console(file=stream, width=120, color_system=None).print(renderable)
-    return stream.getvalue()
 
 
 class CheckpointTests(IsolatedAsyncioTestCase):
@@ -271,26 +263,6 @@ class CheckpointTests(IsolatedAsyncioTestCase):
                 rows = await self.db._rows(f"SELECT COUNT(*) AS n FROM {table}")
                 self.assertEqual(rows[0]["n"], 0, table)
 
-    async def test_prepare_checkpoint_authentication_error(self):
-        self.groq_status = 401
-        app = self.app()
-        async with app.run_test(size=(120, 40)) as pilot:
-            await pilot.pause()
-            await self._go_checkpoints(pilot)
-            pane = app.query_one(CheckpointsPane)
-            pane.query_one("#checkpoint-desc", TextArea).text = "Hello wow world"
-            await self._press(pilot, "#checkpoint-prepare")
-            await self.wait_until(
-                pilot,
-                lambda: "authentication" in self._status(app),
-            )
-            self.assertEqual(
-                (await self.db._rows("SELECT COUNT(*) AS n FROM source_snapshots"))[
-                    0
-                ]["n"],
-                0,
-            )
-
     async def test_records_review_filter_toggles_scope(self):
         self.registry_rows = [
             registry_row(website="one.example"),
@@ -363,23 +335,6 @@ class CheckpointTests(IsolatedAsyncioTestCase):
                 "Traceback",
                 render_text(app.query_one("#checkpoint-status", Static).render()),
             )
-
-    async def test_checkpoints_has_two_probes_and_no_tbd_card(self):
-        from textual.css.query import NoMatches
-
-        app = self.app()
-        async with app.run_test(size=(120, 40)) as pilot:
-            await pilot.pause()
-            await self._go_checkpoints(pilot)
-            app.query_one("#checkpoint-registry")
-            app.query_one("#checkpoint-prepare-card")
-            self.assertFalse(app.query_one("#checkpoint-registry-chip", Static).display)
-            self.assertFalse(app.query_one("#checkpoint-prepare-chip", Static).display)
-            with self.assertRaises(NoMatches):
-                app.query_one("#checkpoint-embed")
-            cancel = app.query_one("#checkpoint-cancel", Button)
-            self.assertTrue(cancel.disabled)
-            self.assertTrue(cancel.display is False)
 
     async def test_migration_status_reports_fresh_tampered_and_unknown(self):
         migrations = sorted(

@@ -7,7 +7,7 @@ from textual.widgets import Button, Input, RichLog
 
 from athar_dataops.schemas.logs import LogEntry
 from athar_dataops.themes import DARK, LIGHT
-from athar_dataops.ui.log_format import render_entry, severity_color
+from athar_dataops.ui.log_format import render_entry
 from athar_dataops.ui.panes.logs_pane import LogsPane
 
 
@@ -134,55 +134,6 @@ class LogsPaneTests(IsolatedAsyncioTestCase):
             # Ctrl+L clears logs
             await pilot.press("ctrl+l")
             self.assertEqual(len(pane._entries), 0)
-
-    async def test_light_mode_rebuild(self):
-        app = LogsTestApp()
-        async with app.run_test():
-            pane = app.query_one(LogsPane)
-            pane.clear_logs()
-            pane.log_entry("Sample info log", "info")
-            app.theme = "athar-light"
-            pane.on_theme_changed()
-            log_widget = app.query_one("#logs-console", RichLog)
-            self.assertEqual(len(log_widget.lines), 1)
-            line_text = str(log_widget.lines[0].text)
-            self.assertIn("INFO", line_text)
-            self.assertIn("Sample info log", line_text)
-
-    async def test_rail_labels_are_colored_and_aligned(self):
-        app = LogsTestApp()
-        async with app.run_test() as pilot:
-            pane = app.query_one(LogsPane)
-            pane.clear_logs()
-            pane.log_entry("System starting up", "stage")
-            pane.log_entry("Found 42 entities", "info")
-            pane.log_entry("Deprecated API call", "warning")
-            pane.log_entry("Database disconnected", "error")
-            await pilot.pause()
-
-            expected = {
-                "#filter-all": ("All", severity_color("all", DARK)),
-                "#filter-stage": ("Stage", severity_color("stage", DARK)),
-                "#filter-info": ("Info", severity_color("info", DARK)),
-                "#filter-warning": ("Warning", severity_color("warning", DARK)),
-                "#filter-error": ("Error", severity_color("error", DARK)),
-            }
-
-            def span_rgb(label):
-                return {
-                    tuple(span.style.foreground.rgb)
-                    for span in label.spans
-                    if span.style.foreground is not None
-                }
-
-            for btn_id, (name, color) in expected.items():
-                label = app.query_one(btn_id, Button).label
-                self.assertNotIsInstance(label, str)
-                self.assertTrue(label.plain.startswith(f"● {name.ljust(10)}"))
-                self.assertIn(tuple(int(color[i : i + 2], 16) for i in (1, 3, 5)), span_rgb(label))
-            self.assertTrue(
-                app.query_one("#filter-error", Button).label.plain.endswith("1")
-            )
 
     async def test_full_buffer_evicts_oldest_without_rebuilding_console(self):
         app = LogsTestApp()

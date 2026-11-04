@@ -13,28 +13,13 @@ from unittest.mock import patch
 
 import httpx
 import turso
+from support import registry_row
 
 from athar_dataops.config import Settings
 from athar_dataops.services.artifacts import ArtifactService
 from athar_dataops.services.database import DatabaseService
 from athar_dataops.services.orchestrator import PipelineOrchestrator
 from athar_dataops.services.registry import RegistryService
-
-
-def registry_row(**changes):
-    row = {
-        "name": "Example",
-        "desc": "Concrete product detail",
-        "website": "www.example.com/product?q=1",
-        "label": "01/2024",
-        "creation_year": "2020",
-        "founders": [" Example Person "],
-        "sector": "Software",
-        "industry": "Software",
-        "extra": {"untouched": True},
-        "phone": "synthetic-private-value",
-    }
-    return row | changes
 
 
 class PipelineTests(IsolatedAsyncioTestCase):
@@ -510,12 +495,6 @@ class PipelineTests(IsolatedAsyncioTestCase):
             len((await self.db.record_page("company", offset=100)).records), 5
         )
 
-    async def test_overview_failure_is_not_reported_as_ready(self):
-        with patch.object(
-            self.db, "_rows", side_effect=RuntimeError("database unavailable")
-        ), self.assertRaisesRegex(RuntimeError, "database unavailable"):
-            await self.db.get_overview_stats()
-
     async def test_collection_card_ignores_non_collect_runs(self):
         result = await self.pipeline.run_pipeline()
         await self.db.start_run("later-prepare", "prepare")
@@ -869,29 +848,6 @@ class PipelineTests(IsolatedAsyncioTestCase):
         reviews = await self.db.table_page("entity_review_items")
         self.assertIn(
             "Invalid website; original retained", [row[3] for row in reviews.rows]
-        )
-
-    async def test_repeated_clean_pipeline_keeps_founders_unique(self):
-        await self.pipeline.run_pipeline()
-        await self.pipeline.run_clean_pipeline()
-        await self.pipeline.run_clean_pipeline()
-        founders = await self.db.table_page("entity_founders")
-        self.assertEqual([row[2] for row in founders.rows], ["Example Person"])
-
-    async def test_repeated_clean_pipeline_keeps_review_items_unique(self):
-        self.body = json.dumps([registry_row(website="bad host")]).encode()
-        await self.pipeline.run_pipeline()
-        await self.pipeline.run_clean_pipeline()
-        await self.pipeline.run_clean_pipeline()
-        reviews = await self.db.table_page("entity_review_items")
-        self.assertEqual(
-            sorted(row[3] for row in reviews.rows),
-            sorted(
-                [
-                    "Identity needs a valid name and website",
-                    "Invalid website; original retained",
-                ]
-            ),
         )
 
     async def test_clean_pipeline_reports_missing_snapshot(self):

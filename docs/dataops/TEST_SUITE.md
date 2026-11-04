@@ -1,116 +1,105 @@
 # DataOps test suite
 
+Two layers, chosen by cost. Every test pins a documented invariant or a bug that once shipped; a test that only shows "something rendered" does not belong here.
+
+| Layer | What it exercises | Tests | Time |
+| --- | --- | --- | --- |
+| `tests/unit` | Services and data rules against a real temporary Turso database with mocked HTTP. No Textual app, except the small Logs pane harness. | 95 | under a minute |
+| `tests/ui` | The headless Textual app: layout, focus, keybindings, literal rendering, and the operator flows that touch the database. | 38 | a few minutes |
+
 ## Commands
 
-From `dataops/`:
+From the repository root:
 
 ```sh
-uvx ruff check src tests --no-cache                # lint, one line per error
-uvx ruff check src tests --no-cache --statistics   # counts per rule
-uvx ruff check src tests --no-cache --fix          # auto-fix what is fixable
-uv run python -m unittest discover -s tests        # full suite
-uv run python -m unittest discover -s tests -p 'test_checkpoints.py'   # one file
-uv run python -m unittest discover -s tests -p 'test_checkpoints.py' -k wipe_ui   # one test
-```
-
-From the repo root:
-
-```sh
+uv run --project dataops dataops/tests/run.py unit          # every change
+uv run --project dataops dataops/tests/run.py ui            # before a commit
+uv run --project dataops dataops/tests/run.py all
+uv run --project dataops dataops/tests/run.py unit -k reconcile   # select by name
 uvx ruff check dataops/src dataops/tests --no-cache
-uv run --project dataops python -m unittest discover -s dataops/tests
 ```
 
-- Uses standard-library `unittest`; asynchronous cases use isolated event loops.
-- Pipeline/workspace tests use temporary Turso databases and mocked HTTP responses.
-- No live registry or model calls; fixtures close clients/connections and remove temporary files.
+One file, with the layer directory as the start and `tests` as the top level:
 
-## Coverage
+```sh
+uv run --project dataops python -m unittest discover -s dataops/tests/unit -t dataops/tests -p 'test_pipeline.py'
+```
+
+- Standard-library `unittest`; asynchronous cases use isolated event loops.
+- `tests/support.py` holds the shared pieces: `registry_row` (a synthetic registry record), `render_text` (plain-text rendering of a Rich renderable), and `PreparationFixture` (one collected record plus a steerable fake Groq). It also silences asyncio's slow-callback log, which Textual mounts trip constantly.
+- No live registry or model calls; fixtures close clients and connections and remove temporary files.
+
+## Unit layer
 
 ### `test_pipeline.py`
 
-- Collection, preserved bytes/source rows, normalized records, and run history.
-- Stable identity across reimports; distinct hosted pages and websites; malformed records.
-- Invalid JSON, unexpected payloads, HTTP failures, timeout, and cancellation.
-- Transaction rollback, foreign keys, migrations, reopening, retained legacy migration 003 checksums, and refusal of unknown schemas.
-- Upgrading a 001-era database with existing evidence through migrations 002, 003, and 004.
-- Upgrading an 008-era usage ledger to retain accounting after a registry reset.
-- Offline "Clean data" over stored evidence: entity, founder, and review-item writes, idempotent re-runs, and refusal when only failed collection snapshots exist.
-- Corpus reconcile: content-equivalent duplicate suppression, distinct descriptions under one entity, founder evidence status, related but separate startups, legacy backfill, idempotence, and `run_steps` timing.
-- Unified review counts/filter, nonblocking source gaps, same-entity description coverage, unambiguous website extraction, and migration 010 offline reprocessing/backfill.
-- Scoped registry reset: graph deletion, Groq profile/quota/usage retention, rollback, idempotence, and fresh Collect/Clean.
-- Bounded queries, Unicode search across pages, overview failures, and absolute-path validation.
-- Committed terminal steps survive reporting failure; failed startup does not create orphan steps.
-
-### `test_smoke.py`
-
-- Headless Textual interactions: collection, records, evidence, database previews, and tab shortcuts; literal rendering of hostile registry text in Records.
-- A source row whose JSON key carries a C1 control renders without it in the evidence view; a failing record load shows its error without terminal controls.
-- Empty states, search beyond the first page, and stale-detail clearing.
-- Source gaps appear in the In review filter with a nonblocking badge.
-- Responsive cancellation, failure recovery, and cancellation before shutdown.
-- Narrow-terminal row inspection, keyboard open/close, and resizing.
-- Primary-button contrast in both themes and honest status when database reads fail.
-- Every visible button label fits inside its box on every primary tab at 80×24 and 120×40, including the Records pager with more than one page.
-- The About dialog opens from Settings; the Records evidence disclosure stays open while stepping between records and collapses only when the listing reloads.
-- About dialog resizing and packaged artwork/migration availability.
-- Live step filtering, preserved tab shortcuts, sampler stop, History isolation, and older runs without step details.
-- First-class History: persisted run metadata, operation, outcome, filter/refresh, and step-summary inspection.
-- Normal Logs and Probes tabs, filtered log counts, no-match states, probe result separation, bounded probe output areas, and probe busy-state input locking.
-- Tab keybindings: number keys and `]`/`[` cycling switch all primary panes.
-
-### `test_checkpoints.py`
-
-- Run reset confirmation and 80×24 layout; registry graph clearing with Groq state retained; existing full wipe remains separate.
-- Normal Probes tab reflects read-only record and prepare probes, validates results, confirms no database writes, and renders hostile registry text literally.
-- Probe inputs are disabled during requests; result labels and clear actions are available; completion requires profiles.
-- Record probe runs with no Groq profiles configured (default install) without crashing; prepare stays disabled.
+- Collection preserves exact bytes and source rows, normalizes records, and records run history and per-step timing.
+- Committed terminal steps survive a later reporting failure; a failed start writes no orphan step.
+- Identity is stable across reimports; a different website, a different hosted page path, or a distinct description under the same name and site each resolve as documented; related startups with shared founders stay separate and linked.
+- Only content-equivalent rows are duplicates; JSON key order and null placeholders do not count.
+- Malformed rows, mixed URL fields, and competing URLs land in review without blocking; a same-entity description covers only its own row's gap.
+- The review filter, the stats' review count, and pagination use one ledger.
+- Invalid JSON, a non-array payload, an oversized body, too many rows, and an HTTP failure each fail visibly while preserving whatever was already stored.
+- A failed derived write rolls back entities and records; cancellation during the derived transaction rolls back; cancellation before it keeps the preserved source; a timeout is a persisted failure.
+- Bounded table pages, Unicode-aware search across pages, and refusal of a table name that is not in the schema.
+- Reopening keeps data and migration history; foreign keys reject orphan rows; an unknown legacy database is refused without touching it.
+- Upgrades from the 001, 002, and 008 schemas keep evidence, review items, and usage; migration 010 backfills coverage without trusting a legacy false entity group; the superseded 003 checksum stays visible as `legacy`.
+- Clean is offline, requires a completed collection, refuses a failed collection's snapshot, keeps source gaps in review without blocking, reconciles a pre-004 corpus, and is idempotent.
+- Normalization rejects invalid dates, years, websites, and overlong fields while leaving the source value untouched; a relative database path is refused.
 
 ### `test_preparation.py`
 
-- Prepare lifecycle: single and combined descriptions in one call per entity, source provenance, cache invalidation, usage/marker tracking, key switching, issue classification, and confirmation before model calls.
-- Preview issues a fixed number of queries regardless of candidate count: cache hits come from one index query, not one lookup per candidate per profile.
-- Missing keys disable only preparation; authentication and rate limits stop without rotation or token guessing.
+- One call per entity for single and combined descriptions; cached output is reused with fresh provenance; a changed description invalidates it.
+- The preview counts every cached candidate under any configured model and issues a fixed number of queries regardless of corpus size; preview and run agree.
+- Unknown token counts consume the same estimate after a restart; a removed profile never joins a later run; a duplicate cannot hide the canonical description.
+- Malformed, refused, unanchored, and detail-losing replies are retryable and accounted; 401, 403, and 429 stop without token guessing; cancellation records unknown consumption and the next run resumes.
+- A missing key disables only preparation; the migration that classified old findings keeps evidence; source gaps enter nonblocking review and duplicates do not.
 
 ### `test_profiles.py`
 
-- Groq rotation: least-loaded selection, 401/403 permanent disable, throttling and cooldown (one round per profile), "resume later"/"reset" stops, and unknown-usage outcomes.
-- Legacy single-key fallback, free-tier quota seeding per profile, quota-aware rotation, and loss of last eligible profile.
-- Provider faults (for example HTTP 400) stop the run after one call without cooling or disabling any profile; a rotated key clears a persisted `disabled` flag while an unchanged key keeps it.
-- The minute-rate wait follows the oldest request in the window (and any cooldown) instead of a flat 60 seconds.
-- TOML profiles loading, including a malformed or entry-less file yielding no profiles plus a visible reason that never echoes the file's values.
+- Rotation picks the least-loaded profile, cools a rate-limited one for a single round, disables an unauthenticated one, and stops visibly when every profile is spent or no daily budget remains.
+- A provider fault such as HTTP 400 stops after one call without cooling or disabling anything; a rotated key clears a persisted `disabled` flag and an unchanged key keeps it.
+- Free-tier quota rows are seeded per profile; the minute-rate wait follows the oldest request, not a flat minute.
+- The profiles TOML loads, skips invalid entries, and reports a malformed or entry-less file without echoing its values; a lone legacy key becomes an implicit profile; credential file modes are warned about.
 
 ### `test_logs.py`
 
-- Entry formatting, severity filtering, and text search.
-- A full 2000-entry buffer evicts the oldest entry without redrawing the console; severity counts and the visible/total header stay correct, including right after a filter change.
-- Search focus, Escape behavior, clearing logs, and unintended shortcut prevention; arrow keys inside the search box never move focus to the rail.
-- Retained entries when rebuilding for light mode; active sidebar label contrast and filtered states.
+- Entry formatting keeps fixed metadata columns and never interprets messages as markup.
+- Severity filter and search; slash focuses search; Escape clears then refocuses; bare letters do nothing; Ctrl+L clears.
+- A full 2000-entry buffer evicts the oldest entry without redrawing; counts and the visible/total header stay right after a filter change.
+- Rail arrows cycle the sidebar and never move focus out of the search box.
 
-### `test_arabic.py`
+### `test_metrics.py`, `test_arabic.py`
 
-- Arabic detection, escaped Unicode decoding, and mojibake repair.
-- Every string key of a source object is sanitized, not only Arabic ones; exception text shown in a widget is control-free and never empty.
-- Reshaping/reordering mixed and multiline text, including nested objects.
+- Time-weighted CPU averages and sampled peaks; missing samples and denied access are not invented zeroes; status colors per theme with literal messages.
+- Arabic detection, escape decoding, mojibake repair, reshaping; every string value and key is stripped of terminal controls; exception text shown in a widget is control-free and never empty.
 
-### `test_metrics.py`
+## UI layer
 
-- Time-weighted process CPU averages, sampled peak RSS, missing samples, and access failures.
-- Literal messages and status/severity colors in both themes.
+### `test_smoke.py`
 
-## Run
+- Collect from the Run tab at 80×24 and 120×40, then inspect records, history, and table previews; number keys, brackets, and Alt arrows switch every tab.
+- Cancellation stays responsive, an HTTP failure restores the controls, and Ctrl+Q cancels before services close.
+- Records: readable details with the evidence on demand, the disclosure persisting across records and collapsing on reload, source gaps badged without a decision, hostile registry text and JSON keys rendered literally, a failing load showing its error without controls, search beyond the first page, honest no-match and empty states.
+- Narrow database inspection keeps the selected row; the compact layout stacks Run and Probes at 80×24 with the primary controls on screen.
+- Primary buttons meet 4.5:1 in both themes; every visible button label fits its box on every tab at both sizes; the collection card says Unknown when the read fails.
+- Live step selection filters the run log and keeps tab keys; the About dialog opens from Settings.
+- History loads persisted runs and steps, refreshes to the first run, and shows an older run without step details honestly.
 
-From `dataops/`:
+### `test_checkpoints.py`
 
-```sh
-uv run python -m unittest discover -s tests -v
-```
+- The record probe fetches, normalizes, and renders one row with no database writes; its labels and table cells are literal and control-free; an out-of-range row is reported.
+- The prepare probe validates one reply with no cache, quota, or database writes, and is disabled without profiles while the record probe still works.
+- The Records review filter toggles scope; migration status reports fresh, tampered, and unknown rows.
+- Wipe clears every row but the migration ledger and the database reopens cleanly; the wipe dialog confirms and refreshes.
+- Registry reset clears the graph, keeps Groq profiles, quotas, and usage, rolls back on failure, and the Run tab confirms it and stays ready to collect.
 
-One file:
+### `test_prepare_ui.py`
 
-```sh
-uv run python -m unittest discover -s tests -p 'test_pipeline.py' -v
-```
+- Configured profiles appear before first seeding; Prepare shows its preview and makes no call until confirmed; after a run the Records and Settings panes show the prepared text and usage without the key; combined descriptions show the secondary text and summary; the Settings usage table caps long profile lists.
 
-- Add coverage beside the behavior it protects; run the affected file first.
-- Headless checks cover behavior and selected styling assertions, not complete visual validation.
+## Working rules
+
+- Add a test beside the behavior it protects, in the cheapest layer that can observe it. If a service can prove it, do not boot the app.
+- A UI test earns its seconds by checking a state the user can hit: focus, layout at a real size, a literal render of hostile text, or a flow that writes to the database.
 - Update this inventory when coverage changes.

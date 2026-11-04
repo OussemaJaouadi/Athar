@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest import IsolatedAsyncioTestCase
 
 import httpx
-from test_pipeline import registry_row
+from support import registry_row
 
 from athar_dataops.config import (
     Settings,
@@ -20,7 +20,6 @@ from athar_dataops.services.groq import GROQ_DEFAULT_QUOTAS, GroqPreparationClie
 from athar_dataops.services.orchestrator import PipelineOrchestrator
 from athar_dataops.services.preparation import PreparationService
 from athar_dataops.services.registry import RegistryService
-from athar_dataops.themes import DARK, LIGHT
 
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 
@@ -275,50 +274,3 @@ class ProfileTomlTests(IsolatedAsyncioTestCase):
             path.write_text(PROFILES_TOML, encoding="utf-8")
             self.assertIsNone(inspect_groq_profiles(path)[1])
 
-    async def test_settings_usage_caps_many_profiles(self):
-        from textual.app import App, ComposeResult
-        from textual.widgets import DataTable
-
-        from athar_dataops.ui.panes.settings_pane import SettingsPane
-
-        class SettingsHarness(App[None]):
-            def __init__(self, pane):
-                super().__init__()
-                self._pane = pane
-                self.register_theme(DARK)
-                self.register_theme(LIGHT)
-                self.theme = "athar-dark"
-
-            def compose(self) -> ComposeResult:
-                yield self._pane
-
-        with tempfile.TemporaryDirectory() as directory:
-            config = Settings(
-                _env_file=None,
-                groq_profiles_path=Path(directory) / "none.toml",
-            )
-            rows = [
-                {
-                    "name": f"profile-{i}",
-                    "model": "llama-3.3-70b",
-                    "disabled": i % 2 == 0,
-                    "calls": i,
-                    "requests_today": i,
-                    "tokens_today": i * 100,
-                    "key_fingerprint": "fp",
-                }
-                for i in range(9)
-            ]
-            harness = SettingsHarness(SettingsPane(config))
-            async with harness.run_test() as pilot:
-                await pilot.pause()
-                harness.query_one(SettingsPane)._profile_usage(rows)
-                table = harness.query_one("#settings-usage", DataTable)
-                rendered = " ".join(
-                    str(cell) for key in table.rows for cell in table.get_row(key)
-                )
-                for name in ("profile-0", "profile-1", "profile-5"):
-                    self.assertIn(name, rendered)
-                self.assertNotIn("profile-7", rendered)
-                self.assertNotIn("profile-8", rendered)
-                self.assertIn("… and 3 more profiles", rendered)

@@ -26,7 +26,7 @@ Paths below are relative to `src/athar_dataops/`.
 | `assets/` | Packaged terminal artwork. |
 
 - Package configuration and lockfile: `pyproject.toml`, `uv.lock`.
-- Test coverage and commands: [TEST_SUITE.md](TEST_SUITE.md).
+- Test layers, coverage, and commands: [TEST_SUITE.md](TEST_SUITE.md). `tests/unit` proves service and data rules; `tests/ui` boots the headless app.
 
 ## Dependency injection and lifetime
 

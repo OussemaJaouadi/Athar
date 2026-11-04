@@ -95,9 +95,11 @@ class LogsPaneTests(IsolatedAsyncioTestCase):
             await pilot.click("#filter-all")
             self.assertEqual(len(log_widget.lines), 3)
 
-            # Search query
+            # Search query, applied once typing pauses
             search_input = app.query_one("#logs-search", Input)
             search_input.value = "timeout"
+            await pilot.pause()
+            await app.workers.wait_for_complete()
             await pilot.pause()
             self.assertEqual(len(log_widget.lines), 1)
 
@@ -126,6 +128,7 @@ class LogsPaneTests(IsolatedAsyncioTestCase):
             # Escape when search has text should clear search
             await pilot.press("escape")
             self.assertEqual(search_input.value, "")
+            await app.workers.wait_for_complete()
 
             # Escape when search is empty should refocus console
             await pilot.press("escape")
@@ -160,6 +163,27 @@ class LogsPaneTests(IsolatedAsyncioTestCase):
             await pilot.pause()
             self.assertEqual(len(rebuilds), 1)
             self.assertIn("(1000/2000)", console.border_title)
+
+    async def test_search_rebuild_is_one_batched_write_of_the_newest_matches(self):
+        app = LogsTestApp()
+        async with app.run_test() as pilot:
+            pane = app.query_one(LogsPane)
+            pane.clear_logs()
+            for index in range(1200):
+                pane.log_entry(f"entry {index}", "info")
+            console = app.query_one("#logs-console", RichLog)
+            writes = []
+            original = console.write
+            console.write = lambda content, *a, **k: writes.append(content) or original(content, *a, **k)
+            app.query_one("#logs-search", Input).value = "entry"
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+            self.assertEqual(len(writes), 1, "a rebuild must be one write, not one per entry")
+            self.assertEqual(len(console.lines), LogsPane.REBUILD_LIMIT + 1)
+            self.assertIn("700 earlier matching entries", str(console.lines[0].text))
+            self.assertIn("entry 1199", str(console.lines[-1].text))
+            self.assertIn("(1200/1200)", console.border_title)
 
     async def test_rail_arrows_cycle_focus(self):
         app = LogsTestApp()

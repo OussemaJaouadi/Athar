@@ -196,6 +196,8 @@
 - Uppercase is reserved for section headers, card titles, and status badges. Inline field labels such as the prepared-text card's language or producer use sentence case.
 - Actions that spend provider quota (Prepare all and its confirmation) use the information blue pair, dark `#9BC7F2` / ink, light `#275E91` / white. Amber is reserved for destructive actions: Reset registry data and the wipe confirmation.
 - The light-mode override block in `app.tcss` is deliberate: a white terminal changes color density enough that generated tints are wrong, so light states are specified explicitly per widget. Extend it when adding a widget rather than consolidating it.
+- A button draws one cell of padding each side of its label; size pager and action buttons to label length plus four, and judge clipping by the rendered cells, not the box.
+- Under 100 columns the masthead keeps one status row above its border.
 - Disabled buttons in both themes keep full opacity and use muted ink plus italic text; no theme fades controls.
 - The About dialog, which carries the ASCII mark, opens from the Settings identity card.
 - Opening a record's source evidence persists while stepping between records; a reload of the listing starts collapsed.

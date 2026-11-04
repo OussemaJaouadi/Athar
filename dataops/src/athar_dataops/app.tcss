@@ -137,10 +137,11 @@ TabPane {
     margin-bottom: 0;
 }
 
+/* Size to the label plus the button's own padding; a fixed 18 wrapped "Collect registry". */
 #run-primary-actions Button,
 #run-impact-actions Button {
-    width: 18;
-    min-width: 18;
+    width: auto;
+    min-width: 14;
 }
 
 #run-reset {
@@ -512,9 +513,10 @@ Button:disabled {
     margin-top: 1;
 }
 
+/* A button has one cell of padding each side: 12 fits an 8-character label. */
 .pager Button {
-    min-width: 10;
-    width: 10;
+    min-width: 12;
+    width: 12;
     margin-right: 1;
 }
 
@@ -1247,7 +1249,7 @@ Static, Label {
 .compact #checkpoint-grid { layout: vertical; height: auto; }
 .compact #checkpoint-grid .probe-card { width: 1fr; height: auto; min-height: 22; margin-right: 0; margin-bottom: 1; }
 .compact #history-rail { width: 34; }
-.compact #masthead { height: 1; padding: 0 1; }
+.compact #masthead { height: 2; padding: 0 1; }  /* one row of status above the border */
 .compact #settings-config-card { width: 1fr; margin-right: 0; }
 .compact #settings-about-card { display: none; }
 .compact #db-rail { width: 16; margin-right: 1; }

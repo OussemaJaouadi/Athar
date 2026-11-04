@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections import Counter, deque
 from contextlib import suppress
 from typing import ClassVar
@@ -55,6 +56,9 @@ class LogsPane(Vertical):
     """
 
     MAX_ENTRIES = 2000
+    # A rebuild renders at most this many matching entries; older matches are
+    # summarized in one line. Rendering 2000 lines per keystroke was 700 ms.
+    REBUILD_LIMIT = 500
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -223,15 +227,28 @@ class LogsPane(Vertical):
         return label
 
     def _rebuild_console(self) -> None:
-        """Re-render after a filter, search, or theme change; never per entry."""
-        self._visible = 0
+        """Re-render after a filter, search, or theme change; never per entry.
+
+        One batched write of the newest matches instead of one write per entry.
+        """
+        matching = [entry for entry in self._entries if self._matches_current_filter(entry)]
+        self._visible = len(matching)
         with suppress(NoMatches):
             log_widget = self.query_one("#logs-console", RichLog)
             log_widget.clear()
-            for entry in self._entries:
-                if self._matches_current_filter(entry):
-                    self._visible += 1
-                    self._write_entry(entry)
+            tail = matching[-self.REBUILD_LIMIT:]
+            if not tail:
+                return
+            dark = self._is_dark()
+            lines = [render_entry(entry, dark) for entry in tail]
+            hidden = len(matching) - len(tail)
+            if hidden:
+                palette = DARK if dark else LIGHT
+                lines.insert(0, Text(
+                    f"… {hidden} earlier matching entries not shown; narrow the filter",
+                    style=palette.variables["muted"],
+                ))
+            log_widget.write(Text("\n").join(lines))
 
     @on(Button.Pressed, "#filter-all")
     @on(Button.Pressed, "#filter-stage")
@@ -258,6 +275,11 @@ class LogsPane(Vertical):
     @on(Input.Changed, "#logs-search")
     def on_search_changed(self, event: Input.Changed) -> None:
         self._search_query = event.value.strip().lower()
+        # Rebuild once typing pauses, the same way Records searches.
+        self.run_worker(self._rebuild_after_pause(), group="logs-search", exclusive=True)
+
+    async def _rebuild_after_pause(self) -> None:
+        await asyncio.sleep(0.15)
         self._rebuild_console()
         self._update_stats_bar()
 

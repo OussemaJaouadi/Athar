@@ -1,6 +1,7 @@
 """Own every service for exactly one event loop and one application session."""
 
 import asyncio
+import gc
 import os
 import sys
 
@@ -59,6 +60,12 @@ async def run() -> None:
                 registry=registry,
                 groq=groq_client,
             )
+            # Everything allocated so far is permanent (imports, services, the
+            # app). Freezing it and raising the gen-0 threshold removes the
+            # 80-130 ms gen-2 pauses that landed on every ~30th keystroke.
+            gc.collect()
+            gc.freeze()
+            gc.set_threshold(100_000, 50, 100)
             await app.run_async()
     finally:
         await database.close()

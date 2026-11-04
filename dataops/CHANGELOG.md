@@ -45,6 +45,8 @@
 - The database file, its journal, and its directory are private to the owner; startup warns when they are not. Wipe, table previews, and the schema tree see only DataOps' product tables, never the application's account tables.
 - Profile names in the TOML file must use letters, digits, `_`, `.`, or `-`; others are skipped with a visible reason.
 - Kept record browsing bounded in memory and reduced search work. On the 923-record local corpus, browse time fell from about 30 ms to 14 ms.
+- Logs search waits for typing to pause and redraws as one write of the newest 500 matches (700 ms per keystroke before). Records paging and search update the existing rows instead of remounting 100 widgets (250 to 500 ms before). Startup freezes the permanent heap so garbage collection no longer pauses the screen for 80 to 130 ms every few dozen keystrokes.
+- The Records and Database pagers are wide enough to draw their key hints, and the compact masthead draws its status row again under 100 columns.
 - Logs no longer redraw the whole console for every entry once the 2000-entry buffer is full, so long Prepare sessions stay responsive. The Prepare preview loads cache state in one query instead of one per description per profile, and the minute-rate wait is as short as the oldest request allows.
 - Improved Run and Probes on 80×24 terminals: controls stay visible, content stacks and scrolls, and status and log labels stay readable.
 - Fixed empty-profile startup, misleading collection status, probe cancellation, and several error and focus cases found during manual testing.

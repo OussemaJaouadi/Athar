@@ -167,6 +167,8 @@ Records reads open findings from `entity_review_items`; its review filter, badge
 ## UI boundaries and working rules
 
 - Panes own interaction and view state; widgets own reusable presentation; dialogs own focused overlays.
+- Records keeps its 100 list rows and updates their labels in place on paging and search; Logs rebuilds its console as one batched write of at most the newest 500 matches after a 150 ms typing pause. Neither view remounts widgets per keystroke.
+- `main.run()` freezes the heap and raises the gen-0 GC threshold once services and the app exist; nothing allocated before that point is scanned again.
 - `RunTimeline` is a focusable linked-circle pipeline; arrows stay local, while number keys keep their tab navigation role.
 - Run samples CPU/RSS every second and at step boundaries; per-step CPU uses cumulative CPU-time deltas, memory peaks are sampled, and timers stop on completion/cancellation.
 - Resource metrics and full logs are session-only. The History tab shows persisted run outcomes, operation identity, errors, and stored step summaries/timings/counts; it never invents missing resource samples.

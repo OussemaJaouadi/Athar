@@ -172,7 +172,6 @@ class InspectPane(Vertical):
             if generation != self._search_generation:
                 return
             listing = self.query_one("#records-list", ListView)
-            await listing.clear()
             self._records = page.records if page else []
             self.query_one("#retry-records").display = error is not None
             self.query_one("#go-collect").display = error is None
@@ -207,9 +206,7 @@ class InspectPane(Vertical):
             self.query_one("#records-empty-message", Static).update(
                 "Collect the registry to get started."
             )
-            await listing.extend(
-                [self._record_item(detail) for detail in self._records]
-            )
+            await self._sync_listing(listing)
             self.query_one("#source-disclosure", Collapsible).collapsed = True
             if self._records:
                 listing.index = 0
@@ -241,11 +238,31 @@ class InspectPane(Vertical):
             self.query_one("#records-next", Button).disabled = not has_more
             self.query_one("#records-pager").display = self._offset > 0 or has_more
 
-    def _record_item(self, detail: RecordDetail) -> ListItem:
+    def _record_label(self, detail: RecordDetail) -> str:
         label = escape(format_arabic(detail.normalized.name or "Unnamed row"))
         if detail.needs_review:
             label += f"  {review_chip(dark=self._is_dark(), decision=detail.needs_decision)}"
-        return ListItem(Label(label, markup=True))
+        return label
+
+    def _record_item(self, detail: RecordDetail) -> ListItem:
+        return ListItem(Label(self._record_label(detail), markup=True))
+
+    async def _sync_listing(self, listing: ListView) -> None:
+        """Update existing rows in place; mount or remove only the difference.
+
+        Clearing and remounting 100 rows cost 250 to 500 ms per page; a label
+        update costs almost nothing.
+        """
+        items = list(listing.children)
+        for index, detail in enumerate(self._records):
+            if index < len(items):
+                items[index].query_one(Label).update(self._record_label(detail))
+        if len(self._records) > len(items):
+            await listing.extend(
+                [self._record_item(detail) for detail in self._records[len(items):]]
+            )
+        elif len(items) > len(self._records):
+            await listing.remove_items(range(len(self._records), len(items)))
 
     @on(Input.Submitted, "#records-search")
     def on_search_submitted(self) -> None:
@@ -302,10 +319,7 @@ class InspectPane(Vertical):
     def on_theme_changed(self) -> None:
         listing = self.query_one("#records-list", ListView)
         for item, detail in zip(listing.children, self._records):
-            text = escape(format_arabic(detail.normalized.name or "Unnamed row"))
-            if detail.needs_review:
-                text += f"  {review_chip(dark=self._is_dark(), decision=detail.needs_decision)}"
-            item.query_one(Label).update(text)
+            item.query_one(Label).update(self._record_label(detail))
         index = listing.index
         if index is not None and index < len(self._records):
             disclosure = self.query_one("#source-disclosure", Collapsible)

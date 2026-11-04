@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 import httpx
 from support import registry_row, render_text
+from textual.geometry import Region
 from textual.widgets import (
     Button,
     Collapsible,
@@ -337,10 +338,13 @@ class WorkspaceTests(IsolatedAsyncioTestCase):
             await pilot.pause()
             await app.workers.wait_for_complete()
             await pilot.pause()
+            first_rows = list(app.query_one("#records-list", ListView).children)[:5]
             self.assertTrue(await pilot.click("#records-next"))
             await pilot.pause()
             self.assertEqual(search.value, "Company")
-            self.assertEqual(len(app.query_one("#records-list", ListView).children), 5)
+            rows = list(app.query_one("#records-list", ListView).children)
+            self.assertEqual(len(rows), 5)
+            self.assertEqual(rows, first_rows, "paging must reuse rows, not remount them")
             self.assertIn(
                 "101–105 of 105",
                 render_text(app.query_one("#records-count", Static).render()),
@@ -434,8 +438,15 @@ class WorkspaceTests(IsolatedAsyncioTestCase):
                             continue
                         label = button.label
                         text = label.plain if hasattr(label, "plain") else str(label)
-                        if len(text) > button.content_size.width:
-                            clipped.append((size, pane, button.id, text, button.content_size.width))
+                        # Judge the drawn cells, not the box: a button wraps its
+                        # label inside its own padding, so a label can "fit" and
+                        # still render on two rows with the second one clipped.
+                        lines = button.render_lines(
+                            Region(0, 0, button.region.width, button.region.height)
+                        )
+                        drawn = "\n".join("".join(seg.text for seg in line) for line in lines)
+                        if text not in drawn:
+                            clipped.append((size, pane, button.id, text, drawn))
                 self.assertEqual(clipped, [], f"labels wider than their buttons: {clipped}")
                 self.assertTrue(app.query_one("#records-pager").display)
 
@@ -558,6 +569,9 @@ class WorkspaceTests(IsolatedAsyncioTestCase):
         async with app.run_test(size=(80, 24)) as pilot:
             await pilot.pause()
             self.assertTrue(app.has_class("compact"))
+            masthead = app.query_one("#masthead-status", Static)
+            self.assertGreaterEqual(masthead.region.height, 1, "compact masthead must draw a row")
+            self.assertIn("Ready", render_text(masthead.render()))
             operations = app.query_one("#run-operations").region
             context = app.query_one("#run-context").region
             self.assertEqual(operations.x, context.x)

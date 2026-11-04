@@ -29,9 +29,10 @@ from athar_dataops.services.registry import RegistryService
 from athar_dataops.ui.dialogs import AboutScreen, HelpScreen
 from athar_dataops.ui.panes import (
     DatabasePane,
-    HistoryPane,
+    LogsPane,
     RunPane,
 )
+from athar_dataops.ui.widgets.run_timeline import RunTimeline
 
 
 class WorkspaceTests(IsolatedAsyncioTestCase):
@@ -91,7 +92,7 @@ class WorkspaceTests(IsolatedAsyncioTestCase):
                     await pilot.press("ctrl+2")
                     await pilot.pause()
                     self.assertEqual(
-                        app.query_one("#workspace", TabbedContent).active, "inspect"
+                        app.query_one("#workspace", TabbedContent).active, "review"
                     )
                     self.assertEqual(
                         len(app.query_one("#records-list", ListView).children), 1
@@ -106,11 +107,6 @@ class WorkspaceTests(IsolatedAsyncioTestCase):
                     )
                     await pilot.press("ctrl+3")
                     await pilot.pause()
-                    self.assertEqual(
-                        app.query_one("#workspace", TabbedContent).active, "history"
-                    )
-                    await pilot.press("ctrl+4")
-                    await pilot.pause()
                     pane = app.query_one(DatabasePane)
                     pane._table = "source_rows"
                     await pane._show_table()
@@ -119,7 +115,7 @@ class WorkspaceTests(IsolatedAsyncioTestCase):
                     )
                     self.assertFalse(app.query("#sql-editor"))
                     self.assertFalse(app.query("#run-query"))
-                    await pilot.press("ctrl+5", "f6")
+                    await pilot.press("ctrl+4", "f6")
                     self.assertEqual(app.theme, "athar-light")
                     await pilot.press("f6", "f1")
                     self.assertIsInstance(app.screen, HelpScreen)
@@ -132,9 +128,9 @@ class WorkspaceTests(IsolatedAsyncioTestCase):
         async with app.run_test(size=(80, 24)) as pilot:
             await pilot.click("#run-pipeline")
             await asyncio.wait_for(self.fetch_started.wait(), 5)
-            await pilot.press("ctrl+7")
+            await pilot.press("ctrl+4")
             self.assertEqual(
-                app.query_one("#workspace", TabbedContent).active, "settings"
+                app.query_one("#workspace", TabbedContent).active, "tools"
             )
             await pilot.press("ctrl+1")
             await pilot.click("#cancel-pipeline")
@@ -265,7 +261,6 @@ class WorkspaceTests(IsolatedAsyncioTestCase):
     async def test_empty_records_offer_collection_and_activity_starts_hidden(self):
         app = self.app()
         async with app.run_test(size=(80, 24)) as pilot:
-            self.assertFalse(app.query_one("#run-activity").display)
             self.assertFalse(app.query_one("#cancel-pipeline").display)
             await pilot.press("ctrl+2")
             await pilot.pause()
@@ -273,7 +268,7 @@ class WorkspaceTests(IsolatedAsyncioTestCase):
             self.assertFalse(app.query_one("#records-content").display)
             await pilot.click("#go-collect")
             await pilot.pause()
-            self.assertEqual(app.query_one("#workspace", TabbedContent).active, "run")
+            self.assertEqual(app.query_one("#workspace", TabbedContent).active, "pipeline")
             self.assertTrue(app.query_one("#run-pipeline", Button).has_focus)
 
     async def test_quit_cancels_before_services_close(self):
@@ -314,7 +309,7 @@ class WorkspaceTests(IsolatedAsyncioTestCase):
             await pilot.press("ctrl+2")
             await pilot.pause()
             self.assertEqual(
-                app.query_one("#workspace", TabbedContent).active, "inspect"
+                app.query_one("#workspace", TabbedContent).active, "review"
             )
             search = app.query_one("#records-search", Input)
             search.focus()
@@ -355,7 +350,7 @@ class WorkspaceTests(IsolatedAsyncioTestCase):
         await self.orchestrator.run_pipeline()
         app = self.app()
         async with app.run_test(size=(80, 24)) as pilot:
-            await pilot.press("ctrl+4")
+            await pilot.press("ctrl+3")
             pane = app.query_one(DatabasePane)
             pane._table = "entities"
             await pane._show_table()
@@ -454,7 +449,8 @@ class WorkspaceTests(IsolatedAsyncioTestCase):
     async def test_about_opens_from_settings(self):
         app = self.app()
         async with app.run_test(size=(120, 40)) as pilot:
-            await pilot.press("7")
+            app.action_navigate("settings")
+            await pilot.pause()
             await pilot.pause()
             # The button sits below the fold at 40 rows; keyboard reaches it regardless.
             app.query_one("#about", Button).focus()
@@ -470,54 +466,23 @@ class WorkspaceTests(IsolatedAsyncioTestCase):
         app = self.app()
         async with app.run_test() as pilot:
             ws = app.query_one("#workspace", TabbedContent)
-            self.assertEqual(ws.active, "run")
-
-            # Test direct numbers
-            await pilot.press("2")
+            self.assertEqual(ws.active, "pipeline")
+            for key, expected in (("2", "review"), ("3", "data"), ("4", "tools"), ("1", "pipeline")):
+                await pilot.press(key)
+                await pilot.pause()
+                self.assertEqual(ws.active, expected)
+            for key, expected in (("]", "review"), ("[", "pipeline"), ("alt+right", "review"), ("alt+left", "pipeline")):
+                await pilot.press(key)
+                await pilot.pause()
+                self.assertEqual(ws.active, expected)
+            # Old names keep working for callers, and the tools views are reachable by name.
+            app.action_navigate("settings")
             await pilot.pause()
-            self.assertEqual(ws.active, "inspect")
-
-            await pilot.press("3")
+            self.assertEqual(ws.active, "tools")
+            self.assertTrue(app.query_one("#settings-pane").display)
+            app.action_navigate("probes")
             await pilot.pause()
-            self.assertEqual(ws.active, "history")
-
-            await pilot.press("4")
-            await pilot.pause()
-            self.assertEqual(ws.active, "database")
-
-            await pilot.press("5")
-            await pilot.pause()
-            self.assertEqual(ws.active, "logs")
-
-            await pilot.press("6")
-            await pilot.pause()
-            self.assertEqual(ws.active, "probes")
-
-            await pilot.press("7")
-            await pilot.pause()
-            self.assertEqual(ws.active, "settings")
-
-            await pilot.press("1")
-            await pilot.pause()
-            self.assertEqual(ws.active, "run")
-
-            # Test bracket cycling
-            await pilot.press("]")
-            await pilot.pause()
-            self.assertEqual(ws.active, "inspect")
-
-            await pilot.press("[")
-            await pilot.pause()
-            self.assertEqual(ws.active, "run")
-
-            # Test Alt+Left / Alt+Right
-            await pilot.press("alt+right")
-            await pilot.pause()
-            self.assertEqual(ws.active, "inspect")
-
-            await pilot.press("alt+left")
-            await pilot.pause()
-            self.assertEqual(ws.active, "run")
+            self.assertTrue(app.query_one("#checkpoints-pane").display)
 
     async def test_step_selection_filters_live_logs_and_preserves_tab_keys(self):
         from unittest.mock import Mock
@@ -526,7 +491,6 @@ class WorkspaceTests(IsolatedAsyncioTestCase):
 
         from athar_dataops.schemas.pipeline import StageProgress
         from athar_dataops.services.metrics import ProcessSample
-        from athar_dataops.ui.widgets.log_view import LogView
         from athar_dataops.ui.widgets.run_timeline import RunTimeline
 
         self.block = True
@@ -542,12 +506,12 @@ class WorkspaceTests(IsolatedAsyncioTestCase):
             timeline.focus()
             await pilot.press("down", "down")
             self.assertEqual(timeline.selected, "preserve")
-            log = pane.query_one(LogView).query_one(RichLog)
-            self.assertEqual(len(log.lines), 0)
+            log = app.query_one(LogsPane).query_one("#logs-console", RichLog)
+            before = len(log.lines)
             pane._progress(
                 StageProgress("fetch", "running", "fetch-only message", run_id="demo")
             )
-            self.assertEqual(len(log.lines), 0)
+            self.assertEqual(len(log.lines), before, "a fetch event stays hidden while preserve is selected")
             pane._tick()
             self.assertIn(
                 "CPU avg",
@@ -555,7 +519,7 @@ class WorkspaceTests(IsolatedAsyncioTestCase):
             )
             await pilot.press("2")
             self.assertEqual(
-                app.query_one("#workspace", TabbedContent).active, "inspect"
+                app.query_one("#workspace", TabbedContent).active, "review"
             )
             pane.cancel_collection()
             await self.wait_for_collection(app, pilot)
@@ -586,73 +550,54 @@ class WorkspaceTests(IsolatedAsyncioTestCase):
             await pilot.click("#cancel-pipeline")
             await self.wait_for_collection(app, pilot)
             self.assertFalse(app.query_one(RunPane).collecting)
-            await pilot.press("6")
+            await pilot.press("4")
             await pilot.pause()
             registry = app.query_one("#checkpoint-registry").region
             prepare = app.query_one("#checkpoint-prepare-card").region
             self.assertEqual(registry.x, prepare.x)
-            self.assertGreaterEqual(registry.width, 70)
+            # The Tools menu takes 11 columns at 80 wide; the card has the rest.
+            self.assertGreaterEqual(registry.width, 60)
             fetch = app.query_one("#checkpoint-fetch").region
             self.assertTrue(fetch.y >= 0 and fetch.y + fetch.height <= 24)
             await pilot.press("1")
             await pilot.pause()
             self.assertEqual(
-                app.query_one("#workspace", TabbedContent).active, "run"
+                app.query_one("#workspace", TabbedContent).active, "pipeline"
             )
 
-    async def test_history_tab_loads_persisted_run_and_steps(self):
+    async def test_saved_run_shows_on_the_timeline_with_its_events(self):
         result = await self.orchestrator.run_pipeline()
         app = self.app()
         async with app.run_test(size=(120, 40)) as pilot:
-            await pilot.press("3")
-            await pilot.pause()
-            self.assertEqual(app.query_one("#workspace", TabbedContent).active, "history")
-            self.assertGreaterEqual(len(app.query_one("#history-list", ListView).children), 1)
-            history_list = app.query_one("#history-list", ListView)
-            first_item = history_list.children[0]
-            self.assertTrue(first_item.has_class("history-completed"))
-            self.assertEqual(len(first_item.children), 2)
-            self.assertIn("Collect", render_text(first_item.children[0].render()))
-            await app.query_one(HistoryPane).select_run(
-                ListView.Selected(history_list, history_list.children[0], 0)
-            )
-            await pilot.pause()
-            detail = render_text(app.query_one("#history-detail-body", Static).render())
-            self.assertIn("Outcome: completed", detail)
-            self.assertIn("Started: ", detail)
-            self.assertNotIn("Started: Unknown time", detail)
-            self.assertIn("Completed: ", detail)
-            self.assertNotIn("Completed: Unknown time", detail)
-            self.assertIn("Run " + result.run_id[:8], render_text(app.query_one("#history-detail-title", Label).render()))
-            self.assertIn("Steps", detail)
-
-    async def test_history_refresh_loads_first_run_detail(self):
-        await self.orchestrator.run_pipeline()
-        app = self.app()
-        async with app.run_test(size=(120, 40)) as pilot:
-            await pilot.press("3")
-            await pilot.pause()
-            await pilot.click("#history-refresh")
             await pilot.pause()
             await app.workers.wait_for_complete()
             await pilot.pause()
-            detail = render_text(app.query_one("#history-detail-body", Static).render())
-            self.assertIn("Outcome: completed", detail)
-            self.assertIn("Steps", detail)
+            runs = app.query_one("#history-list", ListView)
+            self.assertGreaterEqual(len(runs.children), 1)
+            first = runs.children[0]
+            self.assertTrue(first.has_class("history-completed"))
+            self.assertIn("Collect", render_text(first.children[0].render()))
+            self.assertIn("150 records" if False else "records", render_text(first.children[1].render()))
+            await app.query_one(RunPane).show_saved_run(result.run_id)
+            await pilot.pause()
+            self.assertIn("Run " + result.run_id[:8], render_text(app.query_one("#run-heading", Label).render()))
+            status = render_text(app.query_one("#run-status", Static).render())
+            self.assertIn("COMPLETED", status)
+            self.assertIn("in review", status)
+            self.assertIn("Took", render_text(app.query_one("#run-elapsed", Static).render()))
+            self.assertEqual(app.query_one(RunTimeline).option_count, 5)
+            self.assertIn("run " + result.run_id[:8], str(app.query_one("#logs-title", Static).render()))
 
         await self.db.start_run("legacy")
         await self.db.finish_failed_run("legacy", "failed", "Legacy error")
         app = self.app()
         async with app.run_test(size=(120, 40)) as pilot:
-            await pilot.press("3")
             await pilot.pause()
-            history = app.query_one(HistoryPane)
-            await history._show_run("legacy")
-            detail = render_text(app.query_one("#history-detail-body", Static).render())
-            self.assertIn("Outcome: failed", detail)
-            self.assertIn("Legacy error", detail)
-            self.assertIn("No step details were saved", detail)
-            self.assertIn("Started: ", detail)
-            self.assertNotIn("Started: Unknown time", detail)
+            await app.query_one(RunPane).show_saved_run("legacy")
+            await pilot.pause()
+            status = render_text(app.query_one("#run-status", Static).render())
+            self.assertIn("FAILED", status)
+            self.assertIn("Legacy error", status)
+            self.assertEqual(app.query_one(RunTimeline).option_count, 1)
 
 

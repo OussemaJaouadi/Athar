@@ -250,8 +250,7 @@ The terminal keeps the web roles and the two brand anchors, with values tuned fo
 - Information is never a fill: the Prepare actions are outlined in it so the primary action stays the one filled candy blue control.
 - Amber means attention. Destructive actions are red. Running is the accent. A card never carries a colored stripe for decoration.
 - No pane or widget holds a color literal; the themes module is the only source, and the shared theme helper picks the palette.
-- Keep the accepted seven-tab primary layout, bordered panels, and terminal typography.
-- Keep Logs and Probes as normal primary tabs with consistent focus, empty, error, and loading states.
+- Four tabs mapped to jobs: Pipeline (run and watch), Review (judge records), Data (inspect tables), Tools (probes, settings, about). The event log lives under the Pipeline timeline, not in its own tab.
 - Keep the masthead operational: show active operation state, completion, cancellation, or failure before the user opens a detail view.
 - Rich JSON, tables, stage progress, and logs read theme colors explicitly; secondary text avoids ANSI dimming.
 - JSON keys render in the accent, strings in the text color, numbers and booleans in violet, null in muted italic, in both themes.

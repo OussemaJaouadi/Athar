@@ -194,7 +194,7 @@ class LogsPaneTests(IsolatedAsyncioTestCase):
             search = app.query_one("#logs-search", Input)
             search.focus()
             await pilot.pause()
-            await pilot.press("down")
+            await pilot.press("right")
             await pilot.pause()
             self.assertIs(app.focused, search, "arrows in the search box must not move focus")
 
@@ -211,9 +211,9 @@ class LogsPaneTests(IsolatedAsyncioTestCase):
                 "clear-logs",
                 "filter-all",
             ):
-                await pilot.press("down")
+                await pilot.press("right")
                 self.assertEqual(app.focused.id, button_id)
 
-            await pilot.press("up")
+            await pilot.press("left")
             self.assertEqual(app.focused.id, "clear-logs")
 

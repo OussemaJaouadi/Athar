@@ -16,11 +16,11 @@ Paths below are relative to `src/athar_dataops/`.
 | `services/database/` | `DatabaseService` composed from one store per responsibility: `core` (connection, transactions, migrations, schema previews), `registry` (evidence, identity, findings, reset), `runs` (run and step bookkeeping), `retrieval` (Records pages), `preparation` (prepare cache, usage, quotas). |
 | `schemas/` | Shared records, progress events, prepared output, issue classification, and query results. |
 | `migrations/` | Numbered SQL migrations with recorded checksums. |
-| `app.py` | Application shell, seven primary tabs, navigation, refresh events, and quit handling. |
-| `ui/panes/` | Run, Records, History, Database, Logs, Probes (`checkpoints_pane.py`), and Settings. |
+| `app.py` | Application shell, four tabs (Pipeline, Review, Data, Tools), old-name aliases, Escape delegation, refresh events, and quit handling. |
+| `ui/panes/` | `run_pane.py` (Pipeline: operations, saved runs, the live or selected run, and the embedded event log), `logs_pane.py` (the event log strip and stream), `inspect_pane.py` (Review), `database_pane.py` (Data), `tools_pane.py` (menu over `checkpoints_pane.py` and `settings_pane.py`, plus About). |
 | `ui/widgets/keyvalue.py` | `key_value` and `plain_table`: the only way panes lay out labels and values. No box, no edge padding. |
 | `ui/dialogs/prepare.py` | `PrepareConfirmScreen`: the quota-spending confirmation, a modal like the wipe dialog. |
-| `ui/widgets/` | Artwork, the run timeline, the run log view, review badges, and the unboxed table helpers. The timeline receives `StepMetrics` values, not formatted labels. |
+| `ui/widgets/` | Artwork, the run timeline, review badges, and the unboxed table helpers. The timeline receives `StepMetrics` values, not formatted labels, and shows a saved run from its stored steps the same way it shows a live one. |
 | `services/groq.py` | HTTP transport for Groq preparation; never touches the database or UI. |
 | `services/preparation.py` | Prepare run loop: candidates, caching, usage accounting, run history. |
 | `ui/dialogs/` | Help and About dialogs. |
@@ -48,7 +48,7 @@ flowchart TD
     ORCH["PipelineOrchestrator<br/>run flow & timeouts"]
     
     APP["DataOpsApp (Textual)"]
-     PANES["Panes: Run · Records · History · Database · Logs · Probes · Settings"]
+     PANES["Panes: Pipeline · Review · Data · Tools"]
      CONTEXT["Context panels: none"]
 
 
@@ -89,8 +89,8 @@ flowchart TD
 - `DataOpsApp` receives the orchestrator, database, and settings; panes borrow those dependencies.
 - Store mixins never open their own connection; every method goes through `ConnectionCore._rows`, `_execute`, `_lock`, and `_transaction`. Add a method to the store that owns its tables, not to the facade.
 - The workspace is a `TabbedContent` subclass whose `TabPane.Focused` handling ignores hidden panes: programmatic tab switches survive Textual's focus restoration into the pane being left.
-- The workspace exposes seven primary tabs: Run, Records, History, Database, Logs, Probes, and Settings.
-- The History pane reads persisted run metadata and step summaries. Refresh and filtering automatically load the first or preserved run detail. The Probes pane is a read-only, single-stage test surface with bounded result areas and no database writes.
+- The workspace exposes four tabs. Pipeline holds the operations, the saved runs list, and one run on the right: the live one while it runs, otherwise the run picked from the list, rebuilt on the same timeline from its stored steps, with the session event log narrowed to it. Review is the records view. Data is the database browser. Tools is a menu over Probes, Settings, and About; the Probes view is a read-only, single-step test surface with no database writes.
+- `action_navigate` accepts the old pane names (run, inspect, history, logs, database, probes, settings) so callers keep working. Escape asks the active pane's `handle_escape()` to back out one level before the tab bar takes focus.
 - One app session shares one database connection and HTTP client; Groq calls use their own client. `RegistryService` is stateless.
 - Constructors make dependencies explicit; there is no DI container or service locator.
 - `main.run()` also injects a `ProcessSampler` through the app into Run; samples cover the app process, not individual functions or the whole host.
@@ -132,7 +132,7 @@ flowchart LR
     end
     
     TURSO[("Turso DB<br/>athar.db")]
-     UI["Textual Panes<br/>Run · Records · History · Database · Logs · Probes"]
+     UI["Textual Panes<br/>Pipeline · Review · Data · Tools"]
 
 
     EXT --> S1
@@ -156,7 +156,7 @@ flowchart LR
 1. Run pane starts a worker; the orchestrator records a run and fetches the registry.
 2. Original bytes are saved, read back, parsed, and preserved as source rows.
 3. Normalization produces records and review reasons; identity resolution and derived writes commit together.
-4. Progress callbacks update Run and the global operational masthead; completion refreshes Records, History, and Database.
+4. Progress callbacks update the Pipeline run view and the masthead; completion refreshes Review, Data, and the saved runs list.
 5. Inspection calls database query methods; widgets render records, evidence, and JSON.
 
 Records reads open findings from `entity_review_items`; its review filter, badges, and detail list share that ledger. Cleaning can resolve a missing description from another row of the same confirmed entity, with the evidence row in the resolution note. The stored source row and its normalized description are not rewritten.

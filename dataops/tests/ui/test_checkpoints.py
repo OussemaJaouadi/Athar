@@ -122,10 +122,10 @@ class CheckpointTests(IsolatedAsyncioTestCase):
         return not app.query_one("#checkpoint-fetch", Button).disabled
 
     async def _go_checkpoints(self, pilot):
-        await pilot.press("6")
+        await pilot.press("4")
         await pilot.pause()
         self.assertEqual(
-            pilot.app.query_one("#workspace").active, "probes"
+            pilot.app.query_one("#workspace").active, "tools"
         )
         self.assertTrue(pilot.app.query_one(CheckpointsPane).display)
 

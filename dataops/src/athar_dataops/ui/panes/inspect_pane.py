@@ -303,6 +303,24 @@ class InspectPane(Vertical):
         event.button.set_class(self._review_only, "in-review")
         await self.refresh_records()
 
+    @on(ListView.Selected, "#records-list")
+    def open_record(self) -> None:
+        """Enter on a record moves into the detail so arrows scroll it."""
+        self.query_one("#records-detail", VerticalScroll).focus()
+
+    def handle_escape(self) -> bool:
+        """Back out one level: close evidence, leave the detail, leave the search."""
+        focused = self.app.focused
+        with suppress(NoMatches):
+            disclosure = self.query_one("#source-disclosure", Collapsible)
+            if focused is not None and focused.id == "records-detail" and not disclosure.collapsed:
+                disclosure.collapsed = True
+                return True
+        if focused is not None and focused.id in ("records-detail", "records-search", "records-prev", "records-next", "records-review-filter"):
+            self.query_one("#records-list", ListView).focus()
+            return True
+        return False
+
     @on(ListView.Highlighted, "#records-list")
     def highlight_record(self, event: ListView.Highlighted) -> None:
         index = event.list_view.index

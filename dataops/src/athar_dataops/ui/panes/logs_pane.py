@@ -1,4 +1,8 @@
-"""Operational logs console with real-time search, severity filtering, and activity tracking."""
+"""Session event log: one strip of filters and search above the stream.
+
+Embedded in the Pipeline tab under the timeline. A step selected on the
+timeline and a saved run picked from the runs list narrow the stream further.
+"""
 
 from __future__ import annotations
 
@@ -13,7 +17,7 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.css.query import NoMatches
-from textual.widgets import Button, Input, Label, RichLog, Static
+from textual.widgets import Button, Input, RichLog, Static
 
 from athar_dataops.schemas.logs import LogEntry
 from athar_dataops.themes import DARK, LIGHT, is_dark_theme
@@ -21,7 +25,7 @@ from athar_dataops.ui.log_format import render_entry, severity_color
 
 
 class LogsPane(Vertical):
-    """Dedicated system logs console with live keyword search and severity filtering."""
+    """Severity filters, text search, and the stream, in one block."""
 
     RAIL_BUTTONS = (
         "filter-all",
@@ -37,23 +41,9 @@ class LogsPane(Vertical):
         Binding("slash", "focus_search", "Search Logs", show=False),
         Binding("ctrl+f", "focus_search", "Search Logs", show=False),
         Binding("ctrl+l", "clear_console", "Clear", show=False),
-        Binding("up", "rail_previous", "Previous sidebar item", show=False),
-        Binding("down", "rail_next", "Next sidebar item", show=False),
+        Binding("left", "rail_previous", "Previous filter", show=False),
+        Binding("right", "rail_next", "Next filter", show=False),
     ]
-
-    DEFAULT_CSS = """
-    LogsPane {
-        height: 1fr;
-    }
-
-    #clear-logs:hover {
-        color: $error;
-    }
-
-    .compact #logs-rail {
-        width: 24;
-    }
-    """
 
     MAX_ENTRIES = 2000
     # A rebuild renders at most this many matching entries; older matches are
@@ -69,42 +59,34 @@ class LogsPane(Vertical):
         self._visible = 0
         self._current_filter: str = "all"
         self._search_query: str = ""
+        self._step_filter: str | None = None
+        self._run_filter: str | None = None
         self._auto_scroll: bool = True
 
     def compose(self) -> ComposeResult:
-        with Horizontal(id="logs-split"):
-            with Vertical(id="logs-rail"):
-                yield Label("LOGS", id="logs-rail-title")
-                yield Static("Events from this session", id="logs-rail-subtitle")
-
-                yield Label("SEVERITY", classes="rail-section")
-                yield Button("● All (0)", id="filter-all", classes="-active")
-                yield Button("● Stages (0)", id="filter-stage")
-                yield Button("● Info (0)", id="filter-info")
-                yield Button("● Warnings (0)", id="filter-warning")
-                yield Button("● Errors (0)", id="filter-error")
-
-                yield Label("ACTIONS", classes="rail-section")
-                yield Button("Auto-scroll: ON", id="toggle-scroll")
-                yield Button("Clear log", id="clear-logs")
-
-            with Vertical(id="logs-stream"):
-                yield Input(
-                    placeholder="Search logs… (/ or Ctrl+F to focus)", id="logs-search"
-                )
-                yield Static("Events", id="logs-title", classes="muted", markup=False)
-                yield Static(
-                    "No matching log entries. Clear the search or choose another filter.",
-                    id="logs-empty",
-                    classes="muted",
-                )
-                yield RichLog(
-                    id="logs-console",
-                    max_lines=self.MAX_ENTRIES,
-                    markup=True,
-                    wrap=True,
-                    auto_scroll=True,
-                )
+        with Horizontal(id="logs-rail"):
+            yield Button("● All (0)", id="filter-all", classes="-active")
+            yield Button("● Stages (0)", id="filter-stage")
+            yield Button("● Info (0)", id="filter-info")
+            yield Button("● Warnings (0)", id="filter-warning")
+            yield Button("● Errors (0)", id="filter-error")
+            yield Input(placeholder="Search events… (/)", id="logs-search")
+            yield Button("Auto-scroll: ON", id="toggle-scroll")
+            yield Button("Clear log", id="clear-logs")
+        with Vertical(id="logs-stream"):
+            yield Static("Events", id="logs-title", classes="muted", markup=False)
+            yield Static(
+                "No matching events. Clear the search or choose another filter.",
+                id="logs-empty",
+                classes="muted",
+            )
+            yield RichLog(
+                id="logs-console",
+                max_lines=self.MAX_ENTRIES,
+                markup=True,
+                wrap=True,
+                auto_scroll=True,
+            )
 
     def on_mount(self) -> None:
         self.log_entry("Athar DataOps started", "info")
@@ -132,7 +114,7 @@ class LogsPane(Vertical):
 
     def _move_rail_focus(self, delta: int) -> None:
         if isinstance(self.app.focused, Input):
-            # Arrow keys inside the search box must not yank focus to the rail.
+            # Arrow keys inside the search box must not yank focus to the strip.
             return
         index = self._rail_index(self.app.focused)
         if index < 0:
@@ -158,6 +140,26 @@ class LogsPane(Vertical):
     def on_search_submitted(self) -> None:
         self.query_one("#logs-console", RichLog).focus()
 
+    # ---- narrowing from the timeline and the runs list ----
+
+    def set_step_filter(self, step: str | None) -> None:
+        """Show only one pipeline step's events; None shows every step."""
+        if step == self._step_filter:
+            return
+        self._step_filter = step
+        self._rebuild_console()
+        self._update_stats_bar()
+
+    def set_run_filter(self, run_id: str | None) -> None:
+        """Show only one run's events; None shows the whole session."""
+        if run_id == self._run_filter:
+            return
+        self._run_filter = run_id
+        self._rebuild_console()
+        self._update_stats_bar()
+
+    # ---- entries ----
+
     def log_entry(self, message: str, level: str = "info") -> None:
         self.add_entry(LogEntry.create(message, level))
 
@@ -177,6 +179,10 @@ class LogsPane(Vertical):
 
     def _matches_current_filter(self, entry: LogEntry) -> bool:
         if self._current_filter != "all" and entry.level != self._current_filter:
+            return False
+        if self._step_filter and entry.step != self._step_filter:
+            return False
+        if self._run_filter and entry.run_id != self._run_filter:
             return False
         searchable = f"{entry.message} {entry.step or ''} {entry.run_id or ''} {entry.status or ''}"
         return not (self._search_query and self._search_query not in searchable.lower())
@@ -207,15 +213,24 @@ class LogsPane(Vertical):
                     level, counts[level], palette
                 )
             visible = self._visible
-            self.query_one("#logs-console", RichLog)
             filter_label = (
                 self._current_filter.title() if self._current_filter != "all" else "All"
             )
-            self.query_one("#logs-title", Static).update(f"Events · {filter_label} · {visible} of {total}")
+            scope = []
+            if self._run_filter:
+                scope.append(f"run {self._run_filter[:8]}")
+            if self._step_filter:
+                scope.append(f"step {self._step_filter}")
+            title = f"Events · {filter_label} · {visible} of {total}"
+            if scope:
+                title += " · " + " · ".join(scope)
+            self.query_one("#logs-title", Static).update(title)
             empty = self.query_one("#logs-empty", Static)
             empty.display = visible == 0
             empty.update(
-                "No log entries yet." if not total else "No matching log entries. Clear the search or choose another filter."
+                "No events yet."
+                if not total
+                else "No matching events. Clear the search or choose another filter."
             )
 
     def _rail_label(self, level: str, count: int, palette) -> Text:
@@ -223,8 +238,7 @@ class LogsPane(Vertical):
         name = "All" if level == "all" else level.title()
         label = Text()
         label.append("● ", style=f"bold {severity_color(level, palette)}")
-        label.append(name.ljust(10), style="")
-        label.append(str(count), style="")
+        label.append(f"{name} {count}", style="")
         return label
 
     def _rebuild_console(self) -> None:

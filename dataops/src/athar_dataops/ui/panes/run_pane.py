@@ -1,16 +1,24 @@
-"""Operations on the left, the current run on the right: status, timeline, log."""
+"""The Pipeline tab: operations and saved runs on the left, the run on the right.
+
+The right column shows one run at a time: the live one while it runs, or a
+saved one picked from the list. Its status line, timeline, and the session
+event log are the same widgets in both cases.
+"""
 
 import asyncio
 from contextlib import suppress
+from datetime import datetime
 from time import monotonic
+from typing import Any
 
 import httpx
 import turso
+from rich.markup import escape
 from textual import on
 from textual.containers import Horizontal, Vertical
 from textual.css.query import NoMatches
 from textual.message import Message
-from textual.widgets import Button, Label, Static
+from textual.widgets import Button, Input, Label, ListItem, ListView, Static
 from textual.worker import Worker, WorkerCancelled
 
 from athar_dataops.schemas.logs import LogEntry
@@ -22,7 +30,6 @@ from athar_dataops.ui.arabic import describe_error, sanitize_display
 from athar_dataops.ui.dialogs.prepare import PrepareConfirmScreen
 from athar_dataops.ui.dialogs.wipe import WipeConfirmScreen
 from athar_dataops.ui.panes.logs_pane import LogsPane
-from athar_dataops.ui.widgets.log_view import LogView
 from athar_dataops.ui.widgets.run_timeline import RunTimeline, format_elapsed
 
 # Step titles are what the operator pressed for, not the function that runs.
@@ -46,17 +53,24 @@ _STATUS_WORDS = {
     "failed": "FAILED",
     "cancelled": "CANCELLED",
 }
+_OPERATION_NAMES = {"collect": "Collect", "clean": "Clean", "prepare": "Prepare"}
 
 
-def _build_step_titles() -> dict[str, str]:
-    """Fallback titles; operation-specific titles live on the active step list."""
-    titles: dict[str, str] = {}
-    for name, title in (*COLLECT_STEPS, *CLEAN_STEPS, *PREPARE_STEPS):
-        titles.setdefault(name, title)
-    return titles
+def _timestamp(value: str | None) -> datetime | None:
+    try:
+        return datetime.fromisoformat(value) if value else None
+    except ValueError:
+        return None
 
 
-_STEP_TITLES = _build_step_titles()
+def _short_time(value: str | None) -> str:
+    parsed = _timestamp(value)
+    return parsed.strftime("%Y-%m-%d %H:%M") if parsed else "unknown time"
+
+
+def _duration(started: str | None, completed: str | None) -> float | None:
+    start, end = _timestamp(started), _timestamp(completed)
+    return (end - start).total_seconds() if start and end else None
 
 
 class RunPane(Vertical):
@@ -86,7 +100,6 @@ class RunPane(Vertical):
         self._collection_worker: Worker | None = None
         self.collecting = False
         self._resetting = False
-        self._stage_logs: dict[str, list[LogEntry]] = {"all": []}
         self._stage_starts: dict[str, float] = {}
         self._metrics: dict[str, StepMetrics] = {}
         self._running_stage: str | None = None
@@ -94,11 +107,16 @@ class RunPane(Vertical):
         self._run_id: str | None = None
         self._terminal_status: str | None = None
         self._terminal_text: str | None = None
-        self._active_step_titles: dict[str, str] = dict(COLLECT_STEPS)
         self._mode = "Collect"
+        self._runs: list[dict[str, Any]] = []
+        self._runs_query = ""
+        self._shown_run: str | None = None
 
     def _timeline(self) -> RunTimeline:
         return self.query_one(RunTimeline)
+
+    def _logs(self) -> LogsPane:
+        return self.query_one(LogsPane)
 
     def compose(self):
         with Horizontal(id="run-workspace"):
@@ -119,26 +137,29 @@ class RunPane(Vertical):
                 yield Label("Last run: unknown", id="stat-status-val", classes="muted")
                 yield Label("Groq", classes="section-label")
                 yield Static("Loading…", id="run-profiles-summary", classes="muted", markup=False)
+                yield Label("Runs", classes="section-label")
+                yield Input(placeholder="Filter runs…", id="history-search")
+                yield ListView(id="history-list")
             with Vertical(id="run-context"):
                 with Horizontal(id="run-context-header"):
                     yield Label("Run", classes="heading", id="run-heading")
-                    yield Button("Open Records", id="view-records")
-                    yield Button("Open History", id="view-history")
+                    yield Button("Open Review", id="view-records")
                 with Horizontal(classes="run-statusbar"):
                     yield Static("Ready", id="run-status", markup=False)
                     yield Static("", id="run-elapsed", classes="muted", markup=False)
                 yield Static("", id="run-resources", classes="muted", markup=False)
                 yield RunTimeline(id="run-timeline")
                 with Vertical(id="run-activity"):
-                    yield Static("All steps", id="run-log-title", classes="muted", markup=False)
-                    yield LogView(id="run-log")
+                    yield LogsPane()
 
     def on_mount(self) -> None:
         self.query_one("#cancel-pipeline").display = False
-        self.query_one("#run-activity").display = False
         self._timer = self.set_interval(1, self._tick, pause=True)
         self.run_worker(self._update_stats(), exit_on_error=False)
         self.run_worker(self._load_profile_summary(), exit_on_error=False)
+        self.run_worker(self.refresh_runs(), exit_on_error=False)
+
+    # ---- left column: summaries ----
 
     async def _load_profile_summary(self) -> None:
         try:
@@ -185,6 +206,113 @@ class RunPane(Vertical):
                 f"Could not load collection summary: {exc}", "error"
             )
 
+    # ---- left column: saved runs ----
+
+    async def refresh_runs(self) -> None:
+        """Reload the saved runs; keep the selection when it is still listed."""
+        if self._database is None:
+            return
+        try:
+            runs = await self._database.list_recent_runs(limit=50)
+        except (turso.Error, RuntimeError) as exc:
+            self.app.log_workspace_event(f"Could not load saved runs: {describe_error(exc)}", "error")
+            return
+        self._runs = [run for run in runs if self._run_matches(run)]
+        listing = self.query_one("#history-list", ListView)
+        await listing.clear()
+        items = []
+        for run in self._runs:
+            status = str(run.get("status") or "unknown").lower()
+            operation = _OPERATION_NAMES.get(str(run.get("operation") or ""), "Unknown")
+            item = ListItem(
+                Label(escape(f"{operation} · {status.upper()}"), classes="history-item-title"),
+                Label(
+                    escape(
+                        f"{_short_time(run.get('started_at'))} · "
+                        f"{run.get('records_processed', 0)} records · "
+                        f"{run.get('review_count', 0)} in review"
+                    ),
+                    classes="history-item-meta",
+                ),
+            )
+            item.data = run["id"]
+            item.add_class(f"history-{status}")
+            items.append(item)
+        if items:
+            await listing.extend(items)
+        if self._shown_run and not self.collecting:
+            index = next((i for i, run in enumerate(self._runs) if run["id"] == self._shown_run), None)
+            if index is not None:
+                listing.index = index
+
+    def _run_matches(self, run: dict[str, Any]) -> bool:
+        if not self._runs_query:
+            return True
+        haystack = " ".join(
+            str(run.get(key) or "") for key in ("operation", "status", "started_at", "error")
+        ).lower()
+        return self._runs_query in haystack
+
+    @on(Input.Changed, "#history-search")
+    def filter_runs(self, event: Input.Changed) -> None:
+        self._runs_query = event.value.strip().lower()
+        self.run_worker(self.refresh_runs(), exclusive=True, group="runs", exit_on_error=False)
+
+    @on(ListView.Highlighted, "#history-list")
+    async def highlight_run(self, event: ListView.Highlighted) -> None:
+        run_id = getattr(event.item, "data", None)
+        if run_id and run_id != self._shown_run and not self.collecting:
+            await self.show_saved_run(run_id)
+
+    async def show_saved_run(self, run_id: str) -> None:
+        """Put a saved run on the right: header, outcome line, timeline, its events."""
+        if self._database is None:
+            return
+        try:
+            run = await self._database.get_run_row(run_id)
+            steps = await self._database.get_run_steps(run_id)
+        except (turso.Error, RuntimeError) as exc:
+            self._set_status(f"Could not load run {run_id[:8]}: {describe_error(exc)}", "error")
+            return
+        if run is None:
+            self._set_status(f"Run {run_id[:8]} was not found.", "error")
+            return
+        self._shown_run = run_id
+        operation = _OPERATION_NAMES.get(str(run.get("operation") or ""), "Unknown")
+        status = str(run.get("status") or "unknown")
+        self.query_one("#run-heading", Label).update(f"Run {run_id[:8]} · {operation}")
+        tone = {"completed": "success", "failed": "error", "cancelled": "warning"}.get(status, "")
+        line = (
+            f"{status.upper()} · {run.get('records_processed', 0)} records · "
+            f"{run.get('review_count', 0)} in review · started {_short_time(run.get('started_at'))}"
+        )
+        error = run.get("error")
+        if error:
+            line += f" · {sanitize_display(str(error))}"
+        self._set_status(line, tone)
+        seconds = _duration(run.get("started_at"), run.get("completed_at"))
+        self.query_one("#run-elapsed", Static).update(
+            f"Took {format_elapsed(seconds)}" if seconds is not None else ""
+        )
+        self.query_one("#run-resources", Static).update("")
+        timeline = self._timeline()
+        timeline.set_steps([(step["step_name"], step["step_name"]) for step in steps])
+        for step in steps:
+            timeline.update(
+                StageProgress(
+                    step["step_name"],
+                    step["status"] if step["status"] in ("running", "completed", "failed", "cancelled") else "running",
+                    step.get("message") or "",
+                    step.get("items_processed") or 0,
+                    run_id,
+                ),
+                _duration(step.get("started_at"), step.get("completed_at")),
+            )
+        self._logs().set_step_filter(None)
+        self._logs().set_run_filter(run_id)
+
+    # ---- operations ----
+
     @on(Button.Pressed, "#run-pipeline")
     def start_collection(self) -> None:
         self._begin_flow(False)
@@ -227,14 +355,14 @@ class RunPane(Vertical):
             return
         self._terminal_status = None
         self._terminal_text = None
-        self._stage_logs = {"all": []}
         self._stage_starts.clear()
         self._metrics.clear()
         self._running_stage = None
         self._run_id = None
+        self._shown_run = None
         self._timeline().set_steps([])
-        self._render_log("all")
-        self.query_one("#run-activity").display = False
+        self._logs().set_run_filter(None)
+        self._logs().set_step_filter(None)
         self.query_one("#run-heading", Label).update("Run")
         for selector in ("#run-elapsed", "#run-resources"):
             self.query_one(selector, Static).update("")
@@ -244,6 +372,7 @@ class RunPane(Vertical):
         )
         self.app.set_workspace_status("Registry data reset · ready to collect", "success")
         self.post_message(self.RegistryReset(deleted))
+        await self.refresh_runs()
         self.query_one("#run-pipeline", Button).focus()
 
     @on(Button.Pressed, "#prepare-pipeline")
@@ -278,9 +407,8 @@ class RunPane(Vertical):
         self._terminal_text = None
         self._mode = "Prepare" if preparing else "Clean" if cleaning else "Collect"
         self._set_running(True)
-        self.query_one("#run-activity").display = True
+        self._shown_run = None
         self.query_one("#run-heading", Label).update(f"Run · {self._mode}")
-        self._stage_logs = {"all": []}
         self._stage_starts.clear()
         self._metrics.clear()
         self._running_stage = None
@@ -289,9 +417,9 @@ class RunPane(Vertical):
         steps = (
             PREPARE_STEPS if preparing else CLEAN_STEPS if cleaning else COLLECT_STEPS
         )
-        self._active_step_titles = dict(steps)
         self._timeline().set_steps(steps)
-        self._render_log("all")
+        self._logs().set_run_filter(None)
+        self._logs().set_step_filter(None)
         self.query_one("#run-resources", Static).update("")
         self._set_status("Loading stored rows…" if cleaning else "Connecting…")
         self.app.set_workspace_status(f"RUNNING · {self._mode}", "warning")
@@ -311,15 +439,11 @@ class RunPane(Vertical):
 
     @on(Button.Pressed, "#view-records")
     def view_records(self) -> None:
-        self.app.action_navigate("inspect")
-
-    @on(Button.Pressed, "#view-history")
-    def view_history(self) -> None:
-        self.app.action_navigate("history")
+        self.app.action_navigate("review")
 
     @on(RunTimeline.StepSelected)
     def _step_selected(self, event: RunTimeline.StepSelected) -> None:
-        self._render_log(event.step_name)
+        self._logs().set_step_filter(None if event.step_name == "all" else event.step_name)
 
     async def stop_collection(self) -> None:
         """Await the worker's cancellation cleanup before services are closed."""
@@ -364,27 +488,12 @@ class RunPane(Vertical):
         status.update(text)
         status.set_classes(state)
 
-    def _render_log(self, step_name: str) -> None:
-        if step_name == "all":
-            title = "All steps"
-        else:
-            title = self._active_step_titles.get(
-                step_name, _STEP_TITLES.get(step_name, step_name)
-            )
-        self.query_one("#run-log-title", Static).update(title)
-        self.query_one(LogView).render_log(self._stage_logs.get(step_name, []))
-
     def on_theme_changed(self) -> None:
         self._timeline().on_theme_changed()
-        self._render_log(self._timeline().selected)
+        self._logs().on_theme_changed()
 
     def _append(self, entry: LogEntry) -> None:
-        self._stage_logs["all"].append(entry)
-        if entry.step:
-            self._stage_logs.setdefault(entry.step, []).append(entry)
-        if self._timeline().selected in ("all", entry.step):
-            self.query_one(LogView).write_entry(entry)
-        self.app.query_one(LogsPane).add_entry(entry)
+        self._logs().add_entry(entry)
 
     def _sample(self):
         return self._sampler.sample() if self._sampler else None
@@ -441,15 +550,7 @@ class RunPane(Vertical):
         self._set_status(f"{mode} failed: {sanitize_display(error)}", "error")
         self._terminal_text = f"FAILED · {mode}"
         self.app.set_workspace_status(f"FAILED · {mode}", "error")
-        if (
-            not self._stage_logs["all"]
-            or self._stage_logs["all"][-1].status != "failed"
-        ):
-            self._append(
-                LogEntry.create(
-                    error, "failed", run_id=self._run_id, step=self._running_stage
-                )
-            )
+        self._append(LogEntry.create(error, "failed", run_id=self._run_id, step=self._running_stage))
 
     async def _collect(self, cleaning: bool, preparing: bool = False) -> None:
         if preparing:
@@ -500,8 +601,10 @@ class RunPane(Vertical):
                         self.query_one(target, Button).focus()
                 except NoMatches:
                     pass
+                self._shown_run = self._run_id
                 await self._update_stats()
                 await self._load_profile_summary()
+                await self.refresh_runs()
 
     async def refresh_overview(self) -> None:
         """Re-read overview stats after external data changes."""

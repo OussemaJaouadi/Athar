@@ -123,11 +123,16 @@ class DatabasePane(Vertical):
         self._sync_layout()
         self.query_one("#results-table", DataTable).focus()
 
-    def on_key(self, event) -> None:
-        if event.key == "escape" and self.app.size.width < 120 and self._inspecting:
-            event.prevent_default()
-            event.stop()
+    def handle_escape(self) -> bool:
+        """Back out one level: the row drawer, then the table, then the tree."""
+        focused = self.app.focused
+        if self._inspecting and self.app.size.width < 120:
             self.back_to_table()
+            return True
+        if focused is not None and focused.id in ("results-table", "db-drawer", "inspect-row", "table-prev", "table-next", "db-wipe"):
+            self.query_one("#schema-tree").focus()
+            return True
+        return False
 
     async def refresh_schema(self) -> None:
         tree = self.query_one("#schema-tree", Tree)

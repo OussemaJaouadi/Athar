@@ -68,7 +68,7 @@ uv run --project dataops python -m unittest discover -s dataops/tests/unit -t da
 - Entry formatting keeps fixed metadata columns and never interprets messages as markup.
 - Severity filter and search; slash focuses search; Escape clears then refocuses; bare letters do nothing; Ctrl+L clears.
 - A search rebuild is one batched console write of the newest 500 matches with a one-line summary of the rest; a full 2000-entry buffer evicts the oldest entry without redrawing; counts and the visible/total header stay right after a filter change.
-- Rail arrows cycle the sidebar and never move focus out of the search box.
+- Left and right arrows cycle the filter strip and never move focus out of the search box.
 
 ### `test_themes.py`
 
@@ -83,13 +83,13 @@ uv run --project dataops python -m unittest discover -s dataops/tests/unit -t da
 
 ### `test_smoke.py`
 
-- Collect from the Run tab at 80×24 and 120×40, then inspect records, history, and table previews; number keys, brackets, and Alt arrows switch every tab.
+- Collect from the Pipeline tab at 80×24 and 120×40, then inspect records and table previews; number keys, brackets, and Alt arrows switch the four tabs, and the old pane names still navigate.
 - Cancellation stays responsive, an HTTP failure restores the controls, and Ctrl+Q cancels before services close.
 - Records: readable details with the evidence on demand, the disclosure persisting across records and collapsing on reload, source gaps badged without a decision, hostile registry text and JSON keys rendered literally, a failing load showing its error without controls, search beyond the first page, honest no-match and empty states.
 - Narrow database inspection keeps the selected row; the compact layout stacks Run and Probes at 80×24 with the primary controls on screen.
 - Primary buttons meet 4.5:1 in both themes; every visible button label is fully drawn on every tab at both sizes; the compact masthead draws its status row; paging the Records list reuses its rows; the collection card says Unknown when the read fails.
-- Live step selection filters the run log and keeps tab keys; the About dialog opens from Settings.
-- History loads persisted runs and steps, refreshes to the first run, and shows an older run without step details honestly.
+- Live step selection narrows the event log and keeps tab keys; the About dialog opens from Settings inside Tools.
+- A saved run picked from the Pipeline list shows its outcome, duration, and stored steps on the timeline with the event log narrowed to it; a run without steps shows an empty timeline and its error.
 
 ### `test_checkpoints.py`
 

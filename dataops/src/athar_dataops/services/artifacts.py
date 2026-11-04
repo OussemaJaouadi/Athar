@@ -44,6 +44,12 @@ class ArtifactService:
         # Hash the exact JSON payload bytes, before parsing or character decoding.
         # The snapshot is stored whole, so the bounded body stays in memory.
         async with self._client.stream("GET", self.source_url) as response:
+            if response.is_redirect:
+                target = response.headers.get("location", "unknown")
+                raise ValueError(
+                    f"Registry redirected to {target!r}; redirects are not followed so the"
+                    " snapshot cannot claim bytes from another address"
+                )
             response.raise_for_status()
             async for chunk in response.aiter_bytes():
                 if len(artifact) + len(chunk) > self.max_bytes:

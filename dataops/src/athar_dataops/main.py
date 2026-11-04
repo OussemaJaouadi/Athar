@@ -1,6 +1,7 @@
 """Own every service for exactly one event loop and one application session."""
 
 import asyncio
+import os
 import sys
 
 import httpx
@@ -18,8 +19,12 @@ from athar_dataops.services.registry import RegistryService
 
 
 async def run() -> None:
+    # Every file this process creates (database, WAL) is private to the account.
+    os.umask(0o077)
     config = Settings()
-    for warning in credential_file_warnings((_ENV_FILE, config.groq_profiles_path)):
+    for warning in credential_file_warnings(
+        (_ENV_FILE, config.groq_profiles_path, config.db_path, config.db_path.with_name(config.db_path.name + "-wal"))
+    ):
         print(warning, file=sys.stderr)
     if config.groq_profiles_warning:
         print(f"warning: {config.groq_profiles_warning}", file=sys.stderr)
@@ -29,7 +34,9 @@ async def run() -> None:
         async with httpx.AsyncClient(
             headers={"User-Agent": config.registry_user_agent},
             timeout=30,
-            follow_redirects=True,
+            # A redirect would change where the bytes came from while the snapshot
+            # still names the configured URL; refuse and report instead.
+            follow_redirects=False,
         ) as client, httpx.AsyncClient(timeout=60, follow_redirects=False) as groq_http:
             registry = RegistryService()
             collector = ArtifactService(

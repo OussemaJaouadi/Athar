@@ -32,6 +32,7 @@ flowchart TD
 
 ### Operation 1: Run Clean from Start
 * **Trigger:** "Collect registry" button or scheduled ingest.
+* **Redirects:** the registry client never follows one. A 3xx response fails the run with the target address in the error, because a snapshot that names the configured URL must hold bytes from that URL.
 * **Flow:** Network fetch $\rightarrow$ SHA-256 check $\rightarrow$ store raw evidence in `source_rows` $\rightarrow$ clean & deduplicate $\rightarrow$ write canonical `entities`.
 * **Within-run duplicates:** only content-equivalent rows are flagged `is_duplicate=1`; JSON key order and absent-versus-null placeholders do not count as differences. Every source row remains stored.
 

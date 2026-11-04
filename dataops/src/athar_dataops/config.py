@@ -1,5 +1,6 @@
 """Read configuration once at startup, never as an import side effect."""
 
+import re
 import stat
 import tomllib
 from collections.abc import Iterable
@@ -15,6 +16,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # sits two directories up. Loading it keeps settings available regardless of CWD.
 _ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
 _PROFILES_FILE = Path(__file__).resolve().parents[2] / ".env.profiles.toml"
+_PROFILE_NAME = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 
 
 @dataclass(frozen=True)
@@ -53,6 +55,9 @@ def inspect_groq_profiles(path: Path) -> tuple[tuple[GroqProfile, ...], str | No
         model = entry.get("model")
         if not (isinstance(name, str) and name.strip() and isinstance(key, str) and key.strip()):
             continue
+        if not _PROFILE_NAME.fullmatch(name.strip()):
+            # Names reach widget labels; keep them to the same safe set as GROQ_PROFILE.
+            continue
         profiles.append(
             GroqProfile(
                 name=name.strip(),
@@ -61,7 +66,8 @@ def inspect_groq_profiles(path: Path) -> tuple[tuple[GroqProfile, ...], str | No
             )
         )
     if entries and not profiles:
-        return (), f"{path.name} has no [[profile]] entry with both a name and an api_key"
+        return (), (f"{path.name} has no usable [[profile]] entry: each needs a name of letters,"
+                    " digits, '_', '.', '-' (1-64 characters) and an api_key")
     if not entries:
         return (), f"{path.name} has no [[profile]] entries"
     return tuple(profiles), None

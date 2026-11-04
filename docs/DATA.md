@@ -303,7 +303,9 @@ erDiagram
    * `PRAGMA foreign_keys = ON;` (enforce relational integrity on every connection).
    * `PRAGMA journal_mode = WAL;` (non-blocking reads while DataOps writes).
    * `PRAGMA busy_timeout = 5000;` (queue instead of throwing busy errors).
-2. **Connection Lifecycles:**
+2. **File Permissions:** DataOps runs with umask `077`, creates the database directory `0700`, and tightens an existing `athar.db`, `-wal`, or `-shm` to `0600` at startup, because raw rows hold real phone numbers and emails. Startup warns when any of these files is readable by other accounts.
+3. **Table Ownership in Code:** DataOps lists, pages, and wipes only the product tables named in `PRODUCT_TABLES`; account tables in the same file are never shown or touched.
+4. **Connection Lifecycles:**
    * DataOps writes are batch-scoped (`BEGIN IMMEDIATE`), keeping write locks minimal.
    * Go Backend product reads execute as read-only queries.
 

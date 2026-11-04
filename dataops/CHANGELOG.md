@@ -40,6 +40,10 @@
 
 - Bounded registry downloads and fields, made untrusted text display literally without terminal controls, and warned when local credential files are readable by others.
 - Closed the remaining display gaps: JSON object keys from source rows and error messages shown in any pane are now stripped of terminal controls too.
+- Database and Settings tables render every cell literally; a registry value such as `[/]` no longer crashes the Database tab or restyles evidence. Unicode bidi overrides and line separators are stripped like other controls.
+- The registry client refuses redirects and reports the target instead of recording another address's bytes under the configured URL.
+- The database file, its journal, and its directory are private to the owner; startup warns when they are not. Wipe, table previews, and the schema tree see only DataOps' product tables, never the application's account tables.
+- Profile names in the TOML file must use letters, digits, `_`, `.`, or `-`; others are skipped with a visible reason.
 - Kept record browsing bounded in memory and reduced search work. On the 923-record local corpus, browse time fell from about 30 ms to 14 ms.
 - Logs no longer redraw the whole console for every entry once the 2000-entry buffer is full, so long Prepare sessions stay responsive. The Prepare preview loads cache state in one query instead of one per description per profile, and the minute-rate wait is as short as the oldest request allows.
 - Improved Run and Probes on 80×24 terminals: controls stay visible, content stacks and scrolls, and status and log labels stay readable.

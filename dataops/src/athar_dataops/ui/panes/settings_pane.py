@@ -4,6 +4,7 @@ from contextlib import suppress
 
 from rich import box
 from rich.table import Table
+from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import Horizontal, VerticalScroll
 from textual.css.query import NoMatches
@@ -121,7 +122,7 @@ class SettingsPane(VerticalScroll):
 
     def _set_table_message(self, table: DataTable, message: str) -> None:
         self._clear_table(table)
-        table.add_row(message, *["" for _ in range(len(table.columns) - 1)])
+        table.add_row(Text(message), *["" for _ in range(len(table.columns) - 1)])
 
     def _profile_usage(self, rows: list[ProfileOverview]) -> None:
         table = self.query_one("#settings-usage", DataTable)
@@ -138,8 +139,8 @@ class SettingsPane(VerticalScroll):
                 state = "active"
             tokens_today = entry.get("tokens_today")
             table.add_row(
-                str(entry.get("name", "—")),
-                str(entry.get("model", "—")),
+                Text(str(entry.get("name", "—"))),
+                Text(str(entry.get("model", "—"))),
                 state,
                 str(entry.get("calls", 0)),
                 str(entry.get("requests_today", 0)),
@@ -160,7 +161,7 @@ class SettingsPane(VerticalScroll):
             quotas = entry.get("quotas", {})
             estimate = quotas.get("estimate_tokens_per_record", {}).get("limit", "—")
             table.add_row(
-                str(entry.get("name", "—")),
+                Text(str(entry.get("name", "—"))),
                 str(quotas.get("records_per_day", {}).get("limit", "—")),
                 str(quotas.get("requests_per_minute", {}).get("limit", "—")),
                 str(quotas.get("tokens_per_day", {}).get("limit", "—")),

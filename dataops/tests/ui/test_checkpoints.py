@@ -38,6 +38,7 @@ class CheckpointTests(IsolatedAsyncioTestCase):
         profiles = Path(self.directory.name) / "profiles.toml"
         profiles.write_text('[[profile]]\nname = "check"\napi_key = "sk-test"\n')
         self.config = Settings(
+            _env_file=None,
             db_path=Path(self.directory.name) / "ui.db",
             groq_profiles_path=profiles,
             theme="dark",
@@ -263,6 +264,32 @@ class CheckpointTests(IsolatedAsyncioTestCase):
                 rows = await self.db._rows(f"SELECT COUNT(*) AS n FROM {table}")
                 self.assertEqual(rows[0]["n"], 0, table)
 
+    async def test_database_tab_renders_markup_like_values_literally(self):
+        self.registry_rows = [
+            registry_row(name="[/]", website="one.example"),
+            registry_row(name="[bold red]hidden[/]", desc="[link=x]d[/]", website="two.example"),
+        ]
+        result = await self.pipeline.run_pipeline()
+        self.assertEqual(result.status, "completed")
+        app = self.app()
+        async with app.run_test(size=(120, 40)) as pilot:
+            await pilot.pause()
+            await pilot.press("4")
+            await pilot.pause()
+            from textual.widgets import DataTable
+
+            from athar_dataops.ui.panes import DatabasePane
+            pane = app.query_one(DatabasePane)
+            pane._table = "entities"
+            await pane._show_table()
+            await pilot.pause()
+            table = app.query_one("#results-table", DataTable)
+            cells = [str(cell) for key in table.rows for cell in table.get_row(key)]
+            joined = " ".join(cells)
+            self.assertIn("[/]", joined)
+            self.assertIn("[bold red]hidden[/]", joined)
+            self.assertTrue(app.is_running)
+
     async def test_records_review_filter_toggles_scope(self):
         self.registry_rows = [
             registry_row(website="one.example"),
@@ -310,6 +337,7 @@ class CheckpointTests(IsolatedAsyncioTestCase):
 
     async def test_prepare_checkpoint_disabled_without_profiles(self):
         bare = Settings(
+            _env_file=None,
             db_path=Path(self.directory.name) / "ui.db",
             groq_profiles_path=Path(self.directory.name) / "none.toml",
             theme="dark",

@@ -256,6 +256,16 @@ class ProfileTomlTests(IsolatedAsyncioTestCase):
                 credential_file_warnings([Path(directory) / "missing.env"]), []
             )
 
+    def test_profile_names_with_markup_or_spaces_are_skipped(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "profiles.toml"
+            path.write_text('[[profile]]\nname = "[/]"\napi_key = "x"\n[[profile]]\nname = "team a"\napi_key = "y"\n')
+            profiles, reason = inspect_groq_profiles(path)
+            self.assertEqual(profiles, ())
+            self.assertIn("letters, digits", reason)
+            path.write_text(PROFILES_TOML + '[[profile]]\nname = "[bold]x"\napi_key = "z"\n', encoding="utf-8")
+            self.assertEqual([p.name for p in load_groq_profiles(path)], ["account-a", "account-b"])
+
     def test_malformed_file_yields_no_profiles_and_a_visible_reason(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "profiles.toml"
@@ -269,7 +279,7 @@ class ProfileTomlTests(IsolatedAsyncioTestCase):
             self.assertEqual(config.groq_profiles, ())
             self.assertIn("could not be parsed", config.groq_profiles_warning)
             path.write_text('[[profile]]\nname = "only-name"\n')
-            self.assertIn("name and an api_key", inspect_groq_profiles(path)[1])
+            self.assertIn("and an api_key", inspect_groq_profiles(path)[1])
             self.assertIsNone(inspect_groq_profiles(Path(directory) / "absent.toml")[1])
             path.write_text(PROFILES_TOML, encoding="utf-8")
             self.assertIsNone(inspect_groq_profiles(path)[1])

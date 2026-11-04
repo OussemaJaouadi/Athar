@@ -392,7 +392,7 @@ class DatabasePane(Vertical):
                     if not is_last
                     else f" {col_name:<{w - 1}}"
                 )
-                table.add_column(header_text, width=w)
+                table.add_column(Text(header_text), width=w)
 
             for row in page.rows:
                 formatted_cells = []
@@ -403,7 +403,8 @@ class DatabasePane(Vertical):
                         f" {pv:<{w - 3}} │" if not is_last else f" {pv:<{w - 1}}"
                     )
                     formatted_cells.append(cell_text)
-                table.add_row(*formatted_cells)
+                # DataTable parses str cells as markup; Text() keeps them literal.
+                table.add_row(*(Text(cell) for cell in formatted_cells))
 
             table.border_title = f" {self._table} "
             table.border_subtitle = (

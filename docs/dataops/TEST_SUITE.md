@@ -42,6 +42,7 @@ uv run --project dataops python -m unittest discover -s dataops/tests/unit -t da
 - Invalid JSON, a non-array payload, an oversized body, too many rows, and an HTTP failure each fail visibly while preserving whatever was already stored.
 - A failed derived write rolls back entities and records; cancellation during the derived transaction rolls back; cancellation before it keeps the preserved source; a timeout is a persisted failure.
 - Bounded table pages, Unicode-aware search across pages, and refusal of a table name that is not in the schema.
+- A redirect from the registry fails the run with the target in the error and stores no snapshot; account tables in the same file are invisible to the schema, paging, and wipe; the database and its journal are owner-only.
 - Reopening keeps data and migration history; foreign keys reject orphan rows; an unknown legacy database is refused without touching it.
 - Upgrades from the 001, 002, and 008 schemas keep evidence, review items, and usage; migration 010 backfills coverage without trusting a legacy false entity group; the superseded 003 checksum stays visible as `legacy`.
 - Clean is offline, requires a completed collection, refuses a failed collection's snapshot, keeps source gaps in review without blocking, reconciles a pre-004 corpus, and is idempotent.
@@ -60,7 +61,7 @@ uv run --project dataops python -m unittest discover -s dataops/tests/unit -t da
 - Rotation picks the least-loaded profile, cools a rate-limited one for a single round, disables an unauthenticated one, and stops visibly when every profile is spent or no daily budget remains.
 - A provider fault such as HTTP 400 stops after one call without cooling or disabling anything; a rotated key clears a persisted `disabled` flag and an unchanged key keeps it.
 - Free-tier quota rows are seeded per profile; the minute-rate wait follows the oldest request, not a flat minute.
-- The profiles TOML loads, skips invalid entries, and reports a malformed or entry-less file without echoing its values; a lone legacy key becomes an implicit profile; credential file modes are warned about.
+- The profiles TOML loads, skips invalid entries and names outside the safe character set, and reports a malformed or entry-less file without echoing its values; a lone legacy key becomes an implicit profile; credential file modes are warned about.
 
 ### `test_logs.py`
 
@@ -72,7 +73,7 @@ uv run --project dataops python -m unittest discover -s dataops/tests/unit -t da
 ### `test_metrics.py`, `test_arabic.py`
 
 - Time-weighted CPU averages and sampled peaks; missing samples and denied access are not invented zeroes; status colors per theme with literal messages.
-- Arabic detection, escape decoding, mojibake repair, reshaping; every string value and key is stripped of terminal controls; exception text shown in a widget is control-free and never empty.
+- Arabic detection, escape decoding, mojibake repair, reshaping; every string value and key is stripped of terminal controls, bidi overrides, and line separators; exception text shown in a widget is control-free and never empty.
 
 ## UI layer
 
@@ -90,7 +91,7 @@ uv run --project dataops python -m unittest discover -s dataops/tests/unit -t da
 
 - The record probe fetches, normalizes, and renders one row with no database writes; its labels and table cells are literal and control-free; an out-of-range row is reported.
 - The prepare probe validates one reply with no cache, quota, or database writes, and is disabled without profiles while the record probe still works.
-- The Records review filter toggles scope; migration status reports fresh, tampered, and unknown rows.
+- The Database tab renders markup-like registry values such as `[/]` literally without crashing; the Records review filter toggles scope; migration status reports fresh, tampered, and unknown rows.
 - Wipe clears every row but the migration ledger and the database reopens cleanly; the wipe dialog confirms and refreshes.
 - Registry reset clears the graph, keeps Groq profiles, quotas, and usage, rolls back on failure, and the Run tab confirms it and stays ready to collect.
 

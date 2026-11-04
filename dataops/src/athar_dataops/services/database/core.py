@@ -2,6 +2,8 @@
 
 import asyncio
 import hashlib
+import os
+import stat
 from contextlib import asynccontextmanager
 from importlib.resources import files
 from pathlib import Path
@@ -13,6 +15,30 @@ from athar_dataops.schemas.database import TablePage
 from athar_dataops.schemas.registry import (
     utc_now,
 )
+
+# The product table group DataOps owns. The same file will hold the Go
+# backend's private account tables; those are never listed, paged, or wiped here.
+PRODUCT_TABLES: frozenset[str] = frozenset({
+    "schema_migrations", "source_snapshots", "source_rows", "normalized_records",
+    "entities", "entity_founders", "entity_relations", "entity_review_items",
+    "entity_embeddings", "pipeline_runs", "run_steps", "text_preparations",
+    "text_preparation_sources", "preparation_usage", "profiles", "dataops_quotas",
+})
+
+
+def restrict_file_permissions(path: Path) -> None:
+    """Make the database and its journal readable by the owner only.
+
+    Raw registry rows hold real phone numbers and emails; the file must not be
+    group- or world-readable. Missing files and foreign filesystems are ignored.
+    """
+    for candidate in (path, path.with_name(path.name + "-wal"), path.with_name(path.name + "-shm")):
+        try:
+            if candidate.exists() and stat.S_IMODE(candidate.stat().st_mode) & 0o077:
+                os.chmod(candidate, 0o600)
+        except OSError:
+            continue
+
 
 LEGACY_MIGRATION_CHECKSUMS: dict[int, set[str]] = {
     3: {"c4e73296518f62ee66d42af311f970a30ec3d139d88ec21fbfe2694a206de6ff"},
@@ -67,8 +93,9 @@ class ConnectionCore:
 
     async def initialize(self) -> None:
         self._schema_cache = None
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         self._conn = await turso.aio.connect(str(self.path), isolation_level=None)
+        restrict_file_permissions(self.path)
         try:
             existing = await self._rows(
                 "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
@@ -155,6 +182,9 @@ class ConnectionCore:
             result = {}
             for table in tables:
                 name = table["name"]
+                if name not in PRODUCT_TABLES:
+                    # Account tables belong to the application; DataOps has zero access.
+                    continue
                 quoted = name.replace('"', '""')
                 columns = await self._rows(f'PRAGMA table_info("{quoted}")')
                 result[name] = [row["name"] for row in columns]

@@ -78,3 +78,7 @@ class DisplayBoundaryTests(unittest.TestCase):
         self.assertEqual(format_arabic_obj(hostile), {"name": {"in[2Jner": ["value"]}, 7: "ok"})
         self.assertEqual(describe_error(ValueError("bad\x1b[2J value")), "bad[2J value")
         self.assertEqual(describe_error(RuntimeError("")), "RuntimeError")
+
+    def test_bidi_overrides_and_line_separators_are_stripped(self):
+        self.assertEqual(sanitize_display("abc\u202edef\u2066g\u2069\u2028h"), "abcdefgh")
+        self.assertEqual(format_arabic("x\u202ey"), "xy")

@@ -375,6 +375,43 @@ class PipelineTests(IsolatedAsyncioTestCase):
         self.assertEqual(detail.snapshot_id, first.snapshot_id)
         self.assertEqual((await self.db.get_run(result.run_id)).status, "failed")
 
+    async def test_redirect_is_refused_and_recorded_without_a_snapshot(self):
+        async def redirect(request):
+            return httpx.Response(302, headers={"location": "http://169.254.169.254/latest/"})
+
+        client = httpx.AsyncClient(transport=httpx.MockTransport(redirect), follow_redirects=False)
+        pipeline = PipelineOrchestrator(
+            ArtifactService(client, "https://registry.example"), RegistryService(), self.db
+        )
+        try:
+            result = await pipeline.run_pipeline()
+        finally:
+            await client.aclose()
+        self.assertEqual(result.status, "failed")
+        self.assertIn("redirected to 'http://169.254.169.254/latest/'", result.error)
+        self.assertEqual((await self.db.table_page("source_snapshots")).rows, [])
+
+    async def test_account_tables_are_invisible_to_schema_paging_and_wipe(self):
+        await self.pipeline.run_pipeline()
+        await self.db._execute("CREATE TABLE user_history (id TEXT PRIMARY KEY, input_text TEXT)")
+        await self.db._execute("INSERT INTO user_history VALUES ('h1', 'private idea')")
+        self.db._schema_cache = None
+        self.assertNotIn("user_history", await self.db.schema())
+        with self.assertRaises(ValueError):
+            await self.db.table_page("user_history")
+        await self.db.wipe_data()
+        kept = await self.db._rows("SELECT input_text FROM user_history")
+        self.assertEqual(kept, [{"input_text": "private idea"}])
+        self.assertEqual((await self.db.table_page("source_rows")).rows, [])
+
+    async def test_database_files_are_private_to_the_owner(self):
+        import stat
+
+        await self.pipeline.run_pipeline()
+        for candidate in (self.path, self.path.with_name(self.path.name + "-wal")):
+            if candidate.exists():
+                self.assertEqual(stat.S_IMODE(candidate.stat().st_mode) & 0o077, 0, candidate)
+
     async def test_http_failure_does_not_create_snapshot(self):
         self.status_code = 503
         result = await self.pipeline.run_pipeline()

@@ -12,9 +12,12 @@ _ARABIC_CHAR_PATTERN = re.compile(
     r"[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]"
 )
 _UNICODE_ESCAPE_PATTERN = re.compile(r"\\u([0-9a-fA-F]{4})")
-# C0 controls except tab/newline, plus DEL and C1 controls. These can never be
-# legitimate content and can rewrite the terminal if emitted raw.
-_CONTROL_PATTERN = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
+# C0 (bar tab/newline), DEL, C1, Unicode bidi embedding/override/isolate controls,
+# and the line/paragraph separators: none is legitimate content and each can
+# rewrite or visually reorder what the terminal shows.
+_CONTROL_PATTERN = re.compile(
+    r"[\x00-\x08\x0b-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069\u2028\u2029]"
+)
 
 _reshaper = arabic_reshaper.ArabicReshaper(
     {

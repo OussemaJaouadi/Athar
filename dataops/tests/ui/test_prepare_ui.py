@@ -35,7 +35,7 @@ class PrepareWorkspaceTests(PreparationFixture):
                 while not usage.rows:
                     await pilot.pause(0.05)
             row = usage.get_row_at(0)
-            self.assertEqual(row[0], "account-a")
+            self.assertEqual(str(row[0]), "account-a")
             self.assertEqual(row[2], "configured")
 
     async def test_prepare_requires_confirmation_before_model_calls(self):
@@ -75,7 +75,7 @@ class PrepareWorkspaceTests(PreparationFixture):
                 while not app.query_one("#settings-usage", DataTable).rows:
                     await pilot.pause(0.05)
             usage = app.query_one("#settings-usage", DataTable)
-            self.assertEqual(usage.get_row_at(0)[0], "account-a")
+            self.assertEqual(str(usage.get_row_at(0)[0]), "account-a")
             self.assertNotIn("fake-secret", render_text(app.query_one("#settings-env-table", Static).render()))
 
     async def test_combined_descriptions_show_secondary_text_and_summary(self):

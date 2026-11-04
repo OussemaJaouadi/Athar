@@ -37,7 +37,10 @@ class WorkspaceTests(IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.config = Settings(
-            db_path=Path(self.directory.name) / "ui.db", theme="dark"
+            _env_file=None,
+            db_path=Path(self.directory.name) / "ui.db",
+            groq_profiles_path=Path(self.directory.name) / "none.toml",
+            theme="dark",
         )
         self.db = DatabaseService(self.config.db_path)
         await self.db.initialize()

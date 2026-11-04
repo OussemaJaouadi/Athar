@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest import IsolatedAsyncioTestCase
 
 from support import PreparationFixture, registry_row, render_text
-from textual.widgets import DataTable, Static
+from textual.widgets import Static
 
 from athar_dataops.app import DataOpsApp
 from athar_dataops.config import Settings
@@ -31,13 +31,11 @@ class PrepareWorkspaceTests(PreparationFixture):
             self.assertIn("account-a", summary)
             app.action_navigate("settings")
             await pilot.pause()
-            usage = app.query_one("#settings-usage", DataTable)
             async with asyncio.timeout(5):
-                while not usage.rows:
+                while "Loading" in render_text(app.query_one("#settings-usage", Static).render()):
                     await pilot.pause(0.05)
-            row = usage.get_row_at(0)
-            self.assertEqual(str(row[0]), "account-a")
-            self.assertEqual(str(row[1]), "Not used yet")
+            usage = render_text(app.query_one("#settings-usage", Static).render())
+            self.assertRegex(usage, r"account-a\s+Not used yet")
 
     async def test_prepare_requires_confirmation_before_model_calls(self):
         app = DataOpsApp(self.pipeline, self.db, self.config)
@@ -75,10 +73,10 @@ class PrepareWorkspaceTests(PreparationFixture):
             app.action_navigate("settings")
             await pilot.pause()
             async with asyncio.timeout(10):
-                while not app.query_one("#settings-usage", DataTable).rows:
+                while "Loading" in render_text(app.query_one("#settings-usage", Static).render()):
                     await pilot.pause(0.05)
-            usage = app.query_one("#settings-usage", DataTable)
-            self.assertEqual(str(usage.get_row_at(0)[0]), "account-a")
+            usage = render_text(app.query_one("#settings-usage", Static).render())
+            self.assertIn("account-a", usage.splitlines()[2])
             self.assertNotIn("fake-secret", render_text(app.query_one("#settings-env-table", Static).render()))
 
     async def test_combined_descriptions_show_secondary_text_and_summary(self):
@@ -125,8 +123,7 @@ class SettingsUsageTests(IsolatedAsyncioTestCase):
             async with harness.run_test() as pilot:
                 await pilot.pause()
                 harness.query_one(SettingsPane)._profile_usage(rows)
-                table = harness.query_one("#settings-usage", DataTable)
-                rendered = " ".join(str(cell) for key in table.rows for cell in table.get_row(key))
+                rendered = render_text(harness.query_one("#settings-usage", Static).render())
                 for name in ("profile-0", "profile-1", "profile-5"):
                     self.assertIn(name, rendered)
                 self.assertNotIn("profile-7", rendered)

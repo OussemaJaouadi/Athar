@@ -9,7 +9,6 @@ from textual.binding import Binding
 from textual.containers import Horizontal
 from textual.css.query import NoMatches
 from textual.widgets import (
-    Button,
     Footer,
     Input,
     Label,
@@ -289,7 +288,3 @@ class DataOpsApp(App[None]):
         await self.query_one(InspectPane).refresh_records()
         await self.query_one(RunPane).refresh_overview()
         await self.query_one(RunPane).refresh_runs()
-
-    @on(Button.Pressed, "#about")
-    def show_about(self) -> None:
-        self.push_screen(AboutScreen())

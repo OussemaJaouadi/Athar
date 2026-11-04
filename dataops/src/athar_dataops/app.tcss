@@ -286,9 +286,10 @@ ListView:focus > ListItem.-highlight {
 }
 
 DataTable { background: transparent; }
-DataTable > .datatable--header { background: $panel; color: $muted; text-style: bold; }
+/* Header in the link color on the panel tint; alternate rows carry a faint tint so rows read apart. */
+DataTable > .datatable--header { background: $panel; color: $link-ink; text-style: bold; }
 DataTable > .datatable--even-row { background: transparent; }
-DataTable > .datatable--odd-row { background: transparent; }
+DataTable > .datatable--odd-row { background: $panel 55%; }
 DataTable > .datatable--cursor { background: $selection; color: $link-ink; text-style: bold; }
 DataTable:focus { background-tint: transparent; }
 DataTable:focus > .datatable--cursor { text-style: bold underline; }
@@ -493,14 +494,10 @@ DatabasePane.narrow #inspect-row { display: block; }
 
 /* ---------- Settings ---------- */
 
-#settings-split { height: 1fr; }
-#settings-config-card { width: 2fr; height: 1fr; margin-right: 2; }
-#settings-about-card { width: 1fr; height: 1fr; border-left: solid $line; padding-left: 2; }
 #settings-env-heading { margin-top: 1; }
 #settings-env-table { margin-bottom: 1; }
-#settings-usage, #settings-limits { height: auto; max-height: 10; margin-bottom: 1; }
+#settings-usage, #settings-limits { height: auto; margin-bottom: 1; max-width: 90; }
 #theme-picker { width: 100%; margin-bottom: 1; }
-#about { margin-top: 1; }
 
 /* ---------- dialogs ---------- */
 
@@ -551,8 +548,6 @@ HelpScreen, AboutScreen, WipeConfirmScreen, PrepareConfirmScreen {
 .compact #checkpoint-grid { layout: vertical; height: auto; }
 .compact #checkpoint-grid .probe-card { width: 1fr; height: auto; min-height: 14; margin-right: 0; margin-bottom: 1; }
 .compact #checkpoint-prepare-card { border-left: none; padding-left: 0; }
-.compact #settings-config-card { width: 1fr; margin-right: 0; }
-.compact #settings-about-card { display: none; }
 .compact #db-rail { width: 16; margin-right: 1; }
 .compact #db-drawer { width: 36; margin-left: 1; }
 

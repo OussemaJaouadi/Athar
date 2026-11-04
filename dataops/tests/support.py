@@ -41,6 +41,8 @@ def registry_row(**changes):
 
 
 def render_text(renderable):
+    # Textual 8 wraps a Static's content in a RichVisual; print what it wraps.
+    renderable = getattr(renderable, "_renderable", renderable)
     stream = StringIO()
     Console(file=stream, width=120, color_system=None).print(renderable)
     return stream.getvalue()

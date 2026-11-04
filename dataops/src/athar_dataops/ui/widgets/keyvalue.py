@@ -1,4 +1,4 @@
-"""Unboxed tables: one way to lay out labels and values, no frames.
+"""Unboxed tables: one way to lay out labels and values, no frames, one rule under a header.
 
 Every bordered Rich table in the panes used to sit inside a bordered Static
 inside a bordered column. These helpers draw nothing but the text and let the
@@ -7,16 +7,23 @@ surrounding whitespace do the grouping.
 
 from collections.abc import Iterable
 
+from rich import box
 from rich.table import Table
 from rich.text import Text
 from textual.theme import Theme
 
 
 def plain_table(palette: Theme, **kwargs) -> Table:
-    """A Rich table with no box, no edge padding, and a muted bold header."""
-    kwargs.setdefault("header_style", f"bold {palette.variables['muted']}")
+    """A Rich table with no outer box: a bold header in the link color over one rule.
+
+    Headerless tables draw nothing but text; whitespace groups them.
+    """
+    variables = palette.variables
+    kwargs.setdefault("header_style", f"bold {variables['link-ink']}")
+    kwargs.setdefault("border_style", variables["line"])
     kwargs.setdefault("expand", True)
-    return Table(box=None, pad_edge=False, show_edge=False, **kwargs)
+    frame = box.SIMPLE_HEAD if kwargs.get("show_header", True) else None
+    return Table(box=frame, pad_edge=False, show_edge=False, **kwargs)
 
 
 def key_value(

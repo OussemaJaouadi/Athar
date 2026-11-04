@@ -63,6 +63,7 @@ class DatabasePane(Vertical):
         self._migration_rows: list[dict] = []
         self._wiping = False
         self._loaded = False
+        self._migrations_checked = False
         self._schema_lock = asyncio.Lock()
 
     def compose(self) -> ComposeResult:
@@ -79,7 +80,7 @@ class DatabasePane(Vertical):
                 yield Tree("Tables", id="schema-tree")
             with Vertical(classes="detail database-detail", id="db-detail"):
                 yield Label("Choose a table", id="results-label", markup=False)
-                yield DataTable(id="results-table", cursor_type="row", zebra_stripes=False)
+                yield DataTable(id="results-table", cursor_type="row", zebra_stripes=True)
                 yield Button("Inspect row (Enter)", id="inspect-row", disabled=True)
                 with Horizontal(classes="pager", id="table-pager"):
                     yield Button("Prev (p)", id="table-prev", disabled=True)
@@ -93,10 +94,11 @@ class DatabasePane(Vertical):
         self._sync_layout()
 
     async def on_show(self) -> None:
-        if self._loaded:
-            return
-        await self.refresh_schema()
-        await self.refresh_migrations()
+        # A run finishing earlier refreshes the schema but not the migrations; check each on its own.
+        if not self._migrations_checked:
+            await self.refresh_migrations()
+        if not self._loaded:
+            await self.refresh_schema()
 
     def on_resize(self) -> None:
         self._sync_layout()
@@ -160,6 +162,7 @@ class DatabasePane(Vertical):
                 )
 
     async def refresh_migrations(self) -> None:
+        self._migrations_checked = True
         summary = self.query_one("#db-migrations-summary", Static)
         try:
             rows = await self._db.migration_status()

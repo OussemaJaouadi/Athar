@@ -26,6 +26,8 @@
 
 ### Workspace and review
 
+- Settings is one column; the About card it carried is the About dialog under Tools, nothing else.
+- Tables read as tables again: a bold header in the link color over one rule, numbers right-aligned, and the Data grid striped so rows read apart. The Settings usage and limits tables fold to the column instead of scrolling sideways.
 - Review and Data load on first view instead of before the first paint, so the app appears about a fifth sooner on a 150-record database.
 - The Data table pages at the height it can show instead of 100 rows, with native columns instead of hand-drawn separators.
 - Four tabs instead of seven: Pipeline (operations, saved runs, the live run, and the event log in one place), Review, Data, and Tools (probes, settings, about behind a small menu). Picking a saved run shows it on the same timeline the live run uses, with the event log narrowed to that run. Escape backs out one level everywhere; Enter on a record opens its detail; single-letter keys act only inside the pane that owns them.

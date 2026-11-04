@@ -446,16 +446,10 @@ class WorkspaceTests(IsolatedAsyncioTestCase):
                 self.assertEqual(clipped, [], f"labels wider than their buttons: {clipped}")
                 self.assertTrue(app.query_one("#records-pager").display)
 
-    async def test_about_opens_from_settings(self):
+    async def test_about_opens_from_the_tools_menu(self):
         app = self.app()
         async with app.run_test(size=(120, 40)) as pilot:
-            app.action_navigate("settings")
-            await pilot.pause()
-            await pilot.pause()
-            # The button sits below the fold at 40 rows; keyboard reaches it regardless.
-            app.query_one("#about", Button).focus()
-            await pilot.pause()
-            await pilot.press("enter")
+            app.action_navigate("about")
             await pilot.pause()
             self.assertIsInstance(app.screen, AboutScreen)
             await pilot.press("escape")

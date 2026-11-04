@@ -329,7 +329,7 @@ VerticalScroll, ListView, DataTable, RichLog, Tree, TextArea {
 .pager { height: 1; margin-top: 1; }
 .pager Button { margin-right: 1; }
 
-/* ---------- Run ---------- */
+/* ---------- Pipeline: operations, runs list, live run ---------- */
 
 #run-workspace { height: 1fr; }
 
@@ -378,9 +378,8 @@ RunTimeline:focus { background: $panel; border: none; }
 
 #run-activity { height: 1fr; min-height: 6; }
 #run-activity LogsPane { height: 1fr; }
-#logs-console { overflow-x: hidden; }
 
-/* ---------- Records ---------- */
+/* ---------- Review ---------- */
 
 #records-rail { width: 38; }
 #records-search { margin-bottom: 1; }
@@ -404,7 +403,7 @@ RunTimeline:focus { background: $panel; border: none; }
 #records-no-match { width: 1fr; padding: 1 2; }
 #clear-record-search { margin-top: 1; }
 
-/* ---------- Database ---------- */
+/* ---------- Data ---------- */
 
 #db-toolbar { height: 1; margin-bottom: 1; }
 #db-toolbar #db-migrations-summary { width: 1fr; margin: 0 2; }
@@ -431,7 +430,7 @@ DatabasePane.narrow.inspecting #db-drawer {
 DatabasePane.narrow #drawer-back { display: block; }
 DatabasePane.narrow #inspect-row { display: block; }
 
-/* ---------- Runs list (Pipeline) ---------- */
+/* ---------- Pipeline: runs list ---------- */
 
 #history-list > ListItem { min-height: 2; padding: 0 1; }
 #history-list > ListItem > Label { width: 1fr; height: 1; }
@@ -467,7 +466,7 @@ DatabasePane.narrow #inspect-row { display: block; }
 #logs-search { width: 1fr; margin-right: 1; }
 #logs-empty { display: none; padding: 0 1; color: $muted; margin-bottom: 1; }
 #logs-title { height: 1; color: $muted; margin-bottom: 0; }
-#logs-console { height: 1fr; }
+#logs-console { height: 1fr; overflow-x: hidden; }
 
 /* ---------- Probes ---------- */
 

@@ -1,5 +1,6 @@
 """Actual schema, bounded table previews, and live right-drawer row inspection."""
 
+import asyncio
 import json
 from contextlib import suppress
 from typing import ClassVar
@@ -61,6 +62,8 @@ class DatabasePane(Vertical):
         self._inspecting = False
         self._migration_rows: list[dict] = []
         self._wiping = False
+        self._loaded = False
+        self._schema_lock = asyncio.Lock()
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="db-toolbar"):
@@ -86,8 +89,12 @@ class DatabasePane(Vertical):
                 yield Label("Row", id="drawer-title", classes="heading")
                 yield Static("Select a row to inspect fields.", id="drawer-content")
 
-    async def on_mount(self) -> None:
+    def on_mount(self) -> None:
         self._sync_layout()
+
+    async def on_show(self) -> None:
+        if self._loaded:
+            return
         await self.refresh_schema()
         await self.refresh_migrations()
 
@@ -131,23 +138,26 @@ class DatabasePane(Vertical):
         return False
 
     async def refresh_schema(self) -> None:
-        tree = self.query_one("#schema-tree", Tree)
-        tree.clear()
-        try:
-            schema = await self._db.schema()
-            for name, columns in schema.items():
-                node = tree.root.add(name, data=name)
-                for column in columns:
-                    node.add_leaf(column)
-            tree.root.expand()
-            if self._table not in schema:
-                self._table = next(iter(schema), None)
-            if self._table:
-                await self._show_table()
-        except (turso.Error, RuntimeError, ValueError, LookupError) as exc:
-            self.query_one("#results-label", Label).update(
-                f"Could not load schema: {describe_error(exc)}"
-            )
+        # A run finishing while the tab is first shown must not rebuild the tree twice at once.
+        async with self._schema_lock:
+            self._loaded = True
+            tree = self.query_one("#schema-tree", Tree)
+            tree.clear()
+            try:
+                schema = await self._db.schema()
+                for name, columns in schema.items():
+                    node = tree.root.add(name, data=name)
+                    for column in columns:
+                        node.add_leaf(column)
+                tree.root.expand()
+                if self._table not in schema:
+                    self._table = next(iter(schema), None)
+                if self._table:
+                    await self._show_table()
+            except (turso.Error, RuntimeError, ValueError, LookupError) as exc:
+                self.query_one("#results-label", Label).update(
+                    f"Could not load schema: {describe_error(exc)}"
+                )
 
     async def refresh_migrations(self) -> None:
         summary = self.query_one("#db-migrations-summary", Static)

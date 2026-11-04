@@ -171,11 +171,12 @@ Records reads open findings from `entity_review_items`; its review filter, badge
 
 - Panes own interaction and view state; widgets own reusable presentation; dialogs own focused overlays.
 - Layout rules in `app.tcss`: at most one frame per column, and that frame is a single left rule; regions separate by whitespace and section labels; buttons are one row; every Rich table goes through `key_value` or `plain_table`; status is a one-row chip; the Prepare preview is a modal.
-- Records keeps its 100 list rows and updates their labels in place on paging and search; Logs rebuilds its console as one batched write of at most the newest 500 matches after a 150 ms typing pause. Neither view remounts widgets per keystroke.
+- Review keeps its 100 list rows and updates their labels in place on paging and search; the event log rebuilds its console as one batched write of at most the newest 500 matches after a 150 ms typing pause. Neither view remounts widgets per keystroke.
+- Review and Data read nothing at mount. Each loads on its first `Show`, so startup paints after the Pipeline tab alone; a run finishing before that first view refreshes them as usual and counts as the first load.
 - `main.run()` freezes the heap and raises the gen-0 GC threshold once services and the app exist; nothing allocated before that point is scanned again.
 - `RunTimeline` is a focusable linked-circle pipeline; arrows stay local, while number keys keep their tab navigation role.
 - Run samples CPU/RSS every second and at step boundaries; per-step CPU uses cumulative CPU-time deltas, memory peaks are sampled, and timers stop on completion/cancellation.
-- Resource metrics and full logs are session-only. The History tab shows persisted run outcomes, operation identity, errors, and stored step summaries/timings/counts; it never invents missing resource samples.
+- Resource metrics and full logs are session-only. The runs list on Pipeline shows persisted run outcomes, operation identity, errors, and stored step summaries/timings/counts; it never invents missing resource samples.
 - Resolve/reconcile include the actual commit. Their terminal step status commits with the data, before optional UI reporting.
 - Keep HTTP, normalization, identity rules, and SQL inside services.
 - Use shared theme roles and JSON rendering helpers; pane-local CSS still exists alongside `app.tcss`.

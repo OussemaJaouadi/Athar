@@ -53,6 +53,7 @@ class InspectPane(Vertical):
         self._search_generation = 0
         self._review_only = False
         self._render_lock = asyncio.Lock()
+        self._loaded = False
         self._offset = 0
 
     def action_focus_search(self) -> None:
@@ -138,8 +139,16 @@ class InspectPane(Vertical):
                     yield Label("Original source row", classes="section-label")
                     yield Static("", id="detail-original", markup=False)
 
-    async def on_mount(self) -> None:
+    def on_mount(self) -> None:
+        # Nothing is read until the tab is first shown; both states stay hidden until then.
+        self.query_one("#records-empty").display = False
+        self.query_one("#records-content").display = False
+
+    async def on_show(self) -> None:
+        if self._loaded:
+            return
         await self.refresh_records()
+        self.app.call_after_refresh(self.app.focus_pane)
 
     @on(Button.Pressed, "#go-collect")
     def go_collect(self) -> None:
@@ -150,6 +159,7 @@ class InspectPane(Vertical):
         await self.refresh_records()
 
     async def refresh_records(self, reset: bool = True) -> None:
+        self._loaded = True
         if reset:
             self._offset = 0
         self._search_generation += 1

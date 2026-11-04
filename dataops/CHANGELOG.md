@@ -26,6 +26,7 @@
 
 ### Workspace and review
 
+- Review and Data load on first view instead of before the first paint, so the app appears about a fifth sooner on a 150-record database.
 - The Data table pages at the height it can show instead of 100 rows, with native columns instead of hand-drawn separators.
 - Four tabs instead of seven: Pipeline (operations, saved runs, the live run, and the event log in one place), Review, Data, and Tools (probes, settings, about behind a small menu). Picking a saved run shows it on the same timeline the live run uses, with the event log narrowed to that run. Escape backs out one level everywhere; Enter on a record opens its detail; single-letter keys act only inside the pane that owns them.
 - Rebuilt the terminal layout on one component set: no frames inside frames, one-row buttons and inputs, unboxed key-value tables, a single status chip style, and a modal for the Prepare confirmation. The Run tab shows operations as a menu with the run's status, timeline, and log beside it; the Records detail leads with findings and a one-line summary; the metric cards are gone. Under 100 columns the operations become a button row so the timeline and log stay on screen.

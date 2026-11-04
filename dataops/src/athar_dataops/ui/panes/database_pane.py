@@ -5,11 +5,9 @@ from contextlib import suppress
 from typing import ClassVar
 
 import turso
-from rich import box
 from rich.console import Group
 from rich.padding import Padding
 from rich.rule import Rule
-from rich.table import Table
 from rich.text import Text
 from textual import on
 from textual.app import ComposeResult
@@ -22,9 +20,10 @@ from textual.widgets import Button, Collapsible, DataTable, Input, Label, Static
 from athar_dataops.schemas.database import TablePage
 from athar_dataops.services.database import DatabaseService
 from athar_dataops.services.orchestrator import PipelineOrchestrator
-from athar_dataops.themes import DARK, LIGHT, is_dark_theme, themed_json
+from athar_dataops.themes import DARK, LIGHT, is_dark_theme, palette_for, themed_json
 from athar_dataops.ui.arabic import describe_error, format_arabic, format_arabic_obj
 from athar_dataops.ui.dialogs.wipe import WipeConfirmScreen
+from athar_dataops.ui.widgets.keyvalue import plain_table
 
 
 class DatabasePane(Vertical):
@@ -185,12 +184,8 @@ class DatabasePane(Vertical):
     def _render_migrations_table(self) -> None:
         is_dark = self._is_dark()
         pri = (DARK if is_dark else LIGHT).primary
-        table = Table(
-            box=box.ROUNDED,
-            expand=True,
-            show_header=True,
-            header_style=f"bold {pri}",
-        )
+        table = plain_table(palette_for(self.app), show_header=True,
+            header_style=f"bold {pri}")
         table.add_column("Version", style=f"bold {pri}", width=10)
         table.add_column("File", style="bold")
         table.add_column("Status")

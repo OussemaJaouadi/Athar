@@ -256,10 +256,11 @@ class WorkspaceTests(IsolatedAsyncioTestCase):
             rendered = render_text(
                 app.query_one("#detail-normalized", Static).render()._renderable
             )
+            summary = str(app.query_one("#detail-summary", Static).render())
             self.assertIn("[red]OK[/]", rendered)
-            self.assertIn("[blue]date[/]", rendered)
+            self.assertIn("[blue]date[/]", summary)
             self.assertNotIn("\x1b[2J", rendered)
-            self.assertNotIn("\x1b]0;title", rendered)
+            self.assertNotIn("\x1b]0;title", summary)
 
     async def test_empty_records_offer_collection_and_activity_starts_hidden(self):
         app = self.app()

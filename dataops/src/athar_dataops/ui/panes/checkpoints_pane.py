@@ -4,10 +4,8 @@ import asyncio
 from typing import Any
 
 import httpx
-from rich import box
 from rich.console import Group
 from rich.rule import Rule
-from rich.table import Table
 from rich.text import Text
 from textual import on
 from textual.app import ComposeResult
@@ -21,8 +19,9 @@ from athar_dataops.schemas.preparation import PreparationReply
 from athar_dataops.services.artifacts import ArtifactService, parse_registry_payload
 from athar_dataops.services.groq import GroqPreparationClient
 from athar_dataops.services.registry import RegistryService
-from athar_dataops.themes import DARK, LIGHT, is_dark_theme, themed_json
+from athar_dataops.themes import DARK, LIGHT, is_dark_theme, palette_for, themed_json
 from athar_dataops.ui.arabic import describe_error, format_arabic, format_arabic_obj
+from athar_dataops.ui.widgets.keyvalue import plain_table
 
 
 class CheckpointsPane(VerticalScroll):
@@ -258,7 +257,7 @@ class CheckpointsPane(VerticalScroll):
         pri = pal.primary
         record = result["record"]
 
-        summary = Table(box=box.ROUNDED, expand=True, show_header=False)
+        summary = plain_table(palette_for(self.app), show_header=False)
         summary.add_column("Property", style=f"bold {pri}", width=18)
         summary.add_column("Value", overflow="fold")
         summary.add_row("Source", Text(format_arabic(result["url"])))
@@ -266,12 +265,8 @@ class CheckpointsPane(VerticalScroll):
         summary.add_row("Total rows", str(result["total_rows"]))
         summary.add_row("Requested row", str(result["requested"]))
 
-        fields = Table(
-            box=box.ROUNDED,
-            expand=True,
-            show_header=True,
-            header_style=f"bold {pri}",
-        )
+        fields = plain_table(palette_for(self.app), show_header=True,
+            header_style=f"bold {pri}")
         fields.add_column("Field", style=f"bold {pri}", width=18)
         fields.add_column("Value", overflow="fold")
         fields.add_row("Name", Text(format_arabic(record.name or "Unnamed")))
@@ -289,12 +284,8 @@ class CheckpointsPane(VerticalScroll):
             "Description", Text(format_arabic(record.description or "Not provided"))
         )
 
-        findings = Table(
-            box=box.ROUNDED,
-            expand=True,
-            show_header=True,
-            header_style=f"bold {pri}",
-        )
+        findings = plain_table(palette_for(self.app), show_header=True,
+            header_style=f"bold {pri}")
         findings.add_column("Category", style=f"bold {pri}", width=14)
         findings.add_column("Code")
         findings.add_column("Message", overflow="fold")
@@ -372,7 +363,7 @@ class CheckpointsPane(VerticalScroll):
         pri = pal.primary
         status = self._groq.status_for(reply.profile or "") if self._groq else None
 
-        meta = Table(box=box.ROUNDED, expand=True, show_header=False)
+        meta = plain_table(palette_for(self.app), show_header=False)
         meta.add_column("Property", style=f"bold {pri}", width=18)
         meta.add_column("Value", overflow="fold")
         meta.add_row("Profile", reply.profile or "—")
@@ -385,7 +376,7 @@ class CheckpointsPane(VerticalScroll):
 
         rule = Rule(style=pal.variables["control-line"])
         if reply.error:
-            detail = Table(box=box.ROUNDED, expand=True, show_header=False)
+            detail = plain_table(palette_for(self.app), show_header=False)
             detail.add_column("Property", style=f"bold {pri}", width=18)
             detail.add_column("Value", overflow="fold")
             detail.add_row("Error", reply.error)
@@ -405,12 +396,8 @@ class CheckpointsPane(VerticalScroll):
             return
 
         output = reply.output
-        result = Table(
-            box=box.ROUNDED,
-            expand=True,
-            show_header=True,
-            header_style=f"bold {pri}",
-        )
+        result = plain_table(palette_for(self.app), show_header=True,
+            header_style=f"bold {pri}")
         result.add_column("Field", style=f"bold {pri}", width=18)
         result.add_column("Value", overflow="fold")
         result.add_row("Detected language", Text(format_arabic(output.detected_language)))

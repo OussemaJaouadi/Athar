@@ -1,4 +1,4 @@
-"""Collect/clean controls, step inspection, session metrics, and stored summaries."""
+"""Operations on the left, the current run on the right: status, timeline, log."""
 
 import asyncio
 from contextlib import suppress
@@ -7,23 +7,22 @@ from time import monotonic
 import httpx
 import turso
 from textual import on
-from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.containers import Horizontal, Vertical
 from textual.css.query import NoMatches
 from textual.message import Message
-from textual.widgets import Button, Collapsible, Label, Static
+from textual.widgets import Button, Label, Static
 from textual.worker import Worker, WorkerCancelled
 
 from athar_dataops.schemas.logs import LogEntry
 from athar_dataops.schemas.pipeline import StageProgress
-from athar_dataops.schemas.preparation import PreparePreview
 from athar_dataops.services.database import DatabaseService
 from athar_dataops.services.metrics import ProcessSampler, StepMetrics
 from athar_dataops.services.orchestrator import PipelineOrchestrator
 from athar_dataops.ui.arabic import describe_error, sanitize_display
+from athar_dataops.ui.dialogs.prepare import PrepareConfirmScreen
 from athar_dataops.ui.dialogs.wipe import WipeConfirmScreen
 from athar_dataops.ui.panes.logs_pane import LogsPane
 from athar_dataops.ui.widgets.log_view import LogView
-from athar_dataops.ui.widgets.metric_card import MetricCard
 from athar_dataops.ui.widgets.run_timeline import RunTimeline, format_elapsed
 
 # Step titles are what the operator pressed for, not the function that runs.
@@ -40,6 +39,14 @@ CLEAN_STEPS = [
 ]
 PREPARE_STEPS = [("load", "Find descriptions"), ("prepare", "Prepare text")]
 
+_STATUS_WORDS = {
+    "idle": "not run yet",
+    "running": "RUNNING",
+    "completed": "COMPLETED",
+    "failed": "FAILED",
+    "cancelled": "CANCELLED",
+}
+
 
 def _build_step_titles() -> dict[str, str]:
     """Fallback titles; operation-specific titles live on the active step list."""
@@ -52,7 +59,7 @@ def _build_step_titles() -> dict[str, str]:
 _STEP_TITLES = _build_step_titles()
 
 
-class RunPane(VerticalScroll):
+class RunPane(Vertical):
     class CollectionFinished(Message):
         """Refresh inspection after committed collection or cleaning."""
 
@@ -87,60 +94,48 @@ class RunPane(VerticalScroll):
         self._run_id: str | None = None
         self._terminal_status: str | None = None
         self._terminal_text: str | None = None
-        self._prepare_preview: PreparePreview | None = None
         self._active_step_titles: dict[str, str] = dict(COLLECT_STEPS)
+        self._mode = "Collect"
 
     def _timeline(self) -> RunTimeline:
         return self.query_one(RunTimeline)
 
     def compose(self):
-        with Horizontal(id="run-metrics"):
-            yield MetricCard("Startups", "—", "matched from records", card_id="stat-entities")
-            yield MetricCard("Snapshots", "—", "registry downloads", card_id="stat-snapshots")
-            yield MetricCard("Last run", "—", "Collect", card_id="stat-status")
         with Horizontal(id="run-workspace"):
-            with VerticalScroll(id="run-operations"):
-                yield Label("Operations", classes="heading")
-                yield Static("Choose an operation; its progress shows on the right.", classes="muted")
-                with Horizontal(classes="actions", id="run-primary-actions"):
-                    yield Button("Collect registry", id="run-pipeline", variant="primary")
-                    yield Button("Clean data", id="clean-pipeline")
-                with Horizontal(classes="actions", id="run-impact-actions"):
-                    yield Button("Prepare all", id="prepare-pipeline", classes="impact", disabled=not self._orchestrator.preparation_available)
-                    yield Button("Cancel", id="cancel-pipeline", disabled=True)
-                yield Label("Data management", classes="section-label")
-                with Horizontal(classes="actions", id="run-reset-actions"):
-                    yield Button("Reset registry data", id="run-reset")
-                yield Label("Groq provider", classes="section-label")
-                yield Static("Loading profile information…", id="run-profiles-summary", classes="muted")
-            with VerticalScroll(id="run-context"):
+            with Vertical(id="run-operations"):
+                yield Label("Operations", classes="section-label first")
+                yield Button("Collect registry", id="run-pipeline", variant="primary")
+                yield Button("Clean data", id="clean-pipeline")
+                yield Button(
+                    "Prepare all",
+                    id="prepare-pipeline",
+                    classes="impact",
+                    disabled=not self._orchestrator.preparation_available,
+                )
+                yield Button("Cancel", id="cancel-pipeline", disabled=True)
+                yield Button("Reset registry data", id="run-reset")
+                yield Label("Data", classes="section-label")
+                yield Label("— startups", id="stat-entities-val", classes="muted")
+                yield Label("Last run: unknown", id="stat-status-val", classes="muted")
+                yield Label("Groq", classes="section-label")
+                yield Static("Loading…", id="run-profiles-summary", classes="muted", markup=False)
+            with Vertical(id="run-context"):
                 with Horizontal(id="run-context-header"):
-                    yield Label("Current run", classes="heading")
+                    yield Label("Run", classes="heading", id="run-heading")
                     yield Button("Open Records", id="view-records")
                     yield Button("Open History", id="view-history")
                 with Horizontal(classes="run-statusbar"):
                     yield Static("Ready", id="run-status", markup=False)
                     yield Static("", id="run-elapsed", classes="muted", markup=False)
-                with Horizontal(id="run-meta"):
-                    yield Static("", id="run-counters", markup=False)
-                    yield Static("", id="run-resources", classes="muted", markup=False)
-                with Vertical(id="prepare-preview"):
-                    yield Static("Select Prepare all to review the work before any model call.", id="prepare-preview-body", classes="muted")
-                    with Horizontal(classes="actions"):
-                        yield Button("Confirm Prepare all", id="prepare-confirm", classes="impact", disabled=True)
-                        yield Button("Cancel preview", id="prepare-cancel")
+                yield Static("", id="run-resources", classes="muted", markup=False)
                 yield RunTimeline(id="run-timeline")
-                with Collapsible(title="Activity & step details", collapsed=True, id="run-activity"):
+                with Vertical(id="run-activity"):
                     yield Static("All steps", id="run-log-title", classes="muted", markup=False)
                     yield LogView(id="run-log")
 
     def on_mount(self) -> None:
         self.query_one("#cancel-pipeline").display = False
         self.query_one("#run-activity").display = False
-        self.query_one("#prepare-preview").display = False
-        self.query_one("#run-profiles-summary").display = True
-        self.query_one("#prepare-confirm").disabled = True
-        self.query_one("#prepare-cancel").display = False
         self._timer = self.set_interval(1, self._tick, pause=True)
         self.run_worker(self._update_stats(), exit_on_error=False)
         self.run_worker(self._load_profile_summary(), exit_on_error=False)
@@ -154,7 +149,7 @@ class RunPane(VerticalScroll):
             entry["name"]: entry for entry in self._orchestrator.preparation_profiles
         }
         if not configured and self._profiles_warning:
-            summary = f"Groq profiles unavailable: {self._profiles_warning}"
+            summary = f"Profiles unavailable: {self._profiles_warning}"
         elif not configured and not rows:
             summary = "No Groq profile. Add one to dataops/.env.profiles.toml."
         else:
@@ -177,24 +172,15 @@ class RunPane(VerticalScroll):
             return
         try:
             stats = await self._database.get_overview_stats()
-            self.query_one("#stat-entities", MetricCard).set_value(
-                str(stats["entities"]), "matched from records"
+            snapshots = stats["snapshots"]
+            self.query_one("#stat-entities-val", Label).update(
+                f"{stats['entities']} startups · {snapshots} snapshot{'' if snapshots == 1 else 's'}"
             )
-            self.query_one("#stat-snapshots", MetricCard).set_value(
-                str(stats["snapshots"]), "registry downloads"
-            )
-            self._set_collection_status(
-                "running" if self.collecting else stats["status"]
-            )
+            self._set_collection_status("running" if self.collecting else stats["status"])
         except (turso.Error, RuntimeError, ValueError, LookupError, NoMatches) as exc:
             with suppress(NoMatches):
-                for key in ("entities", "snapshots"):
-                    self.query_one(f"#stat-{key}", MetricCard).set_value(
-                        "—", "Unavailable"
-                    )
-                self.query_one("#stat-status", MetricCard).set_value(
-                    "UNKNOWN", "Could not read last run"
-                )
+                self.query_one("#stat-entities-val", Label).update("— startups · unavailable")
+                self.query_one("#stat-status-val", Label).update("Last run: UNKNOWN (could not read)")
             self.app.log_workspace_event(
                 f"Could not load collection summary: {exc}", "error"
             )
@@ -236,15 +222,11 @@ class RunPane(VerticalScroll):
             self._set_running(False)
             await self._update_stats()
         if error is not None:
-            self._set_status(f"Registry reset failed: {error}", "error")
-            self.app.set_workspace_status("FAILED · registry reset", "error")
+            self._set_status(f"Reset failed: {error}", "error")
+            self.app.set_workspace_status("FAILED · Reset registry data", "error")
             return
         self._terminal_status = None
         self._terminal_text = None
-        self._prepare_preview = None
-        self.query_one("#prepare-preview").display = False
-        self.query_one("#prepare-confirm", Button).disabled = True
-        self.query_one("#prepare-cancel", Button).display = False
         self._stage_logs = {"all": []}
         self._stage_starts.clear()
         self._metrics.clear()
@@ -253,7 +235,8 @@ class RunPane(VerticalScroll):
         self._timeline().set_steps([])
         self._render_log("all")
         self.query_one("#run-activity").display = False
-        for selector in ("#run-elapsed", "#run-counters", "#run-resources"):
+        self.query_one("#run-heading", Label).update("Run")
+        for selector in ("#run-elapsed", "#run-resources"):
             self.query_one(selector, Static).update("")
         self._set_status(
             f"Registry data reset · {deleted} rows deleted. Run Collect registry to start again.",
@@ -267,59 +250,24 @@ class RunPane(VerticalScroll):
     async def start_preparation(self) -> None:
         if self.collecting or self._resetting:
             return
-        preview = self.query_one("#prepare-preview")
-        preview.display = True
-        self.query_one("#prepare-preview-body", Static).update("Loading preparation preview…")
-        self.query_one("#prepare-confirm", Button).disabled = True
-        self._set_status("Loading preparation preview…", "")
-        await self._load_prepare_preview()
-
-    async def _load_prepare_preview(self) -> None:
+        self._set_status("Loading the Prepare preview…", "")
         try:
-            preview_data = await self._orchestrator.preparation_preview()
+            preview = await self._orchestrator.preparation_preview()
         except (RuntimeError, ValueError, LookupError, turso.Error) as exc:
-            self._set_status(f"Could not load preparation preview: {describe_error(exc)}", "error")
+            self._set_status(f"Could not load the Prepare preview: {describe_error(exc)}", "error")
             return
-        self._prepare_preview = preview_data
-        body = self.query_one("#prepare-preview-body", Static)
-        self.query_one("#prepare-preview").display = True
-        if not preview_data["available"]:
-            body.update("No Groq profile. Add one to dataops/.env.profiles.toml.")
-            self._set_status("Prepare needs a Groq profile", "warning")
-            return
-        profiles = "\n".join(
-            f"  {entry['name']} · {entry['model']} · key {entry['fingerprint']}"
-            for entry in preview_data["profiles"]
-        )
-        body.update(
-            f"Prepare {preview_data['eligible']} descriptions?\n\n"
-            f"Need a model call: {preview_data['uncached']}\n"
-            f"Already prepared, reused: {preview_data['cached']}\n\n"
-            f"Profiles:\n{profiles}\n\n"
-            "Each call counts against that profile's daily Groq limit. "
-            "Stopping keeps finished work."
-        )
-        self.query_one("#prepare-confirm", Button).disabled = preview_data["uncached"] == 0
-        self.query_one("#prepare-cancel", Button).display = True
-        self._set_status("Review the preview, then confirm to start model calls.", "warning")
-        self.query_one("#prepare-confirm", Button).focus()
         # preview() seeds registered profiles; refresh the summary to match.
         self.run_worker(self._load_profile_summary(), exit_on_error=False)
-
-    @on(Button.Pressed, "#prepare-confirm")
-    def confirm_preparation(self) -> None:
-        if self._prepare_preview is None or not self._prepare_preview.get("uncached"):
+        if not preview["available"]:
+            self._set_status("No Groq profile. Add one to dataops/.env.profiles.toml.", "warning")
             return
-        self._prepare_preview = None
-        self.query_one("#prepare-preview").display = False
-        self.query_one("#prepare-confirm", Button).disabled = True
-        self._begin_flow(False, preparing=True)
+        self._set_status("Review the preview, then confirm to start model calls.", "warning")
+        self.app.push_screen(PrepareConfirmScreen(preview), self._prepare_confirmed)
 
-    @on(Button.Pressed, "#prepare-cancel")
-    def cancel_prepare_preview(self) -> None:
-        self._prepare_preview = None
-        self.query_one("#prepare-preview").display = False
-        self.query_one("#prepare-confirm", Button).disabled = True
+    def _prepare_confirmed(self, confirmed: bool | None) -> None:
+        if confirmed:
+            self._begin_flow(False, preparing=True)
+            return
         self._set_status("Prepare cancelled before any model call.", "warning")
         self.query_one("#prepare-pipeline", Button).focus()
 
@@ -328,13 +276,10 @@ class RunPane(VerticalScroll):
             return
         self._terminal_status = None
         self._terminal_text = None
+        self._mode = "Prepare" if preparing else "Clean" if cleaning else "Collect"
         self._set_running(True)
         self.query_one("#run-activity").display = True
-        if not self.app.has_class("compact"):
-            # Expanding the panel makes Textual scroll it into view, which would
-            # push the primary actions off-screen at 80x24; compact users expand
-            # it themselves (that manual expand still reveals the panel).
-            self.query_one("#run-activity", Collapsible).collapsed = False
+        self.query_one("#run-heading", Label).update(f"Run · {self._mode}")
         self._stage_logs = {"all": []}
         self._stage_starts.clear()
         self._metrics.clear()
@@ -347,13 +292,9 @@ class RunPane(VerticalScroll):
         self._active_step_titles = dict(steps)
         self._timeline().set_steps(steps)
         self._render_log("all")
-        self.query_one("#run-counters", Static).update("")
-        self.query_one("#run-resources", Static).update("App process · CPU — · RSS —")
+        self.query_one("#run-resources", Static).update("")
         self._set_status("Loading stored rows…" if cleaning else "Connecting…")
-        self.app.set_workspace_status(
-            f"RUNNING · {('Prepare' if preparing else 'Clean' if cleaning else 'Collect')}",
-            "warning",
-        )
+        self.app.set_workspace_status(f"RUNNING · {self._mode}", "warning")
         self._timer.resume()
         self._tick()
         self._collection_worker = self.run_worker(
@@ -394,7 +335,7 @@ class RunPane(VerticalScroll):
     def _set_running(self, running: bool) -> None:
         self.collecting = running
         if running:
-            workspace_status = ("RUNNING · operation in progress", "warning")
+            workspace_status = (f"RUNNING · {self._mode}", "warning")
         elif self._terminal_status is not None and self._terminal_text is not None:
             workspace_status = (self._terminal_text, self._terminal_status)
         else:
@@ -415,16 +356,8 @@ class RunPane(VerticalScroll):
 
     def _set_collection_status(self, status: str) -> None:
         self._terminal_status = status
-        labels = {
-            "idle": "NOT RUN",
-            "running": "RUNNING",
-            "completed": "COMPLETED",
-            "failed": "FAILED",
-            "cancelled": "CANCELLED",
-        }
-        self.query_one("#stat-status", MetricCard).set_value(
-            labels.get(status, "UNKNOWN"), "Last run"
-        )
+        word = _STATUS_WORDS.get(status, "UNKNOWN")
+        self.query_one("#stat-status-val", Label).update(f"Last run: {word}")
 
     def _set_status(self, text: str, state: str = "") -> None:
         status = self.query_one("#run-status", Static)
@@ -473,9 +406,9 @@ class RunPane(VerticalScroll):
         self._timeline().tick(name, elapsed, metrics)
         rss = "—" if sample is None else f"{sample.rss_bytes / 1024**2:.1f} MiB"
         self.query_one("#run-resources", Static).update(
-            f"App process during step · {metrics.label()} · RSS {rss}"
+            f"This process · {metrics.label()} · memory {rss}"
         )
-        return f"{format_elapsed(elapsed)} · {metrics.label()}"
+        return format_elapsed(elapsed)
 
     def _progress(self, progress: StageProgress) -> None:
         name = progress.stage_name
@@ -493,9 +426,6 @@ class RunPane(VerticalScroll):
             if details:
                 message += f" · {details}"
             self._running_stage = None
-            self.query_one("#run-counters", Static).update(
-                f"{progress.items_processed} rows"
-            )
         self._append(
             LogEntry.create(message, progress.status, run_id=progress.run_id, step=name)
         )
@@ -511,7 +441,6 @@ class RunPane(VerticalScroll):
         self._set_status(f"{mode} failed: {sanitize_display(error)}", "error")
         self._terminal_text = f"FAILED · {mode}"
         self.app.set_workspace_status(f"FAILED · {mode}", "error")
-
         if (
             not self._stage_logs["all"]
             or self._stage_logs["all"][-1].status != "failed"
@@ -521,9 +450,6 @@ class RunPane(VerticalScroll):
                     error, "failed", run_id=self._run_id, step=self._running_stage
                 )
             )
-        if not self.app.has_class("compact"):
-            # Keep the re-enabled primary actions on screen at 80x24 (see _begin_flow).
-            self.query_one("#run-activity", Collapsible).collapsed = False
 
     async def _collect(self, cleaning: bool, preparing: bool = False) -> None:
         if preparing:
@@ -539,12 +465,9 @@ class RunPane(VerticalScroll):
                 summary = (
                     f"{result.records_processed} records · {result.review_count} in review"
                 )
-                self._set_status(summary, "success")
+                self._set_status(f"{mode} completed · {summary}", "success")
                 self._terminal_text = f"COMPLETED · {summary}"
-                self.app.set_workspace_status(
-                    f"COMPLETED · {summary}", "success"
-                )
-                self.query_one("#run-counters", Static).update(summary)
+                self.app.set_workspace_status(f"COMPLETED · {summary}", "success")
                 self.post_message(self.CollectionFinished())
             else:
                 self._failed(result.error or f"{mode} failed", mode)
@@ -565,6 +488,7 @@ class RunPane(VerticalScroll):
             if not self.app._exit:
                 try:
                     self._tick()
+                    self.query_one("#run-resources", Static).update("")
                     cancel_focused = self.query_one("#cancel-pipeline").has_focus
                     self._set_running(False)
                     if cancel_focused:

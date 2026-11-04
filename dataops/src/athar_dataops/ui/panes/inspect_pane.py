@@ -5,9 +5,7 @@ from contextlib import suppress
 from typing import ClassVar
 
 import turso
-from rich import box
 from rich.markup import escape
-from rich.table import Table
 from rich.text import Text
 from textual import on
 from textual.app import ComposeResult
@@ -29,6 +27,7 @@ from athar_dataops.services.database import DatabaseService
 from athar_dataops.themes import DARK, LIGHT, is_dark_theme, themed_json
 from athar_dataops.ui.arabic import describe_error, format_arabic, format_arabic_obj
 from athar_dataops.ui.widgets.badges import review_badge, review_chip
+from athar_dataops.ui.widgets.keyvalue import key_value
 
 
 class InspectPane(Vertical):
@@ -100,7 +99,7 @@ class InspectPane(Vertical):
         with Horizontal(classes="split", id="records-content"):
             with Vertical(classes="rail", id="records-rail"):
                 yield Input(
-                    placeholder="Search names, sectors, descriptions…", id="records-search"
+                    placeholder="Search records…", id="records-search"
                 )
                 with Horizontal(classes="count-row", id="records-count-row"):
                     yield Button("In review", id="records-review-filter")
@@ -121,15 +120,13 @@ class InspectPane(Vertical):
                     yield Label("", id="detail-title", classes="heading", markup=False)
                     yield Static("", id="detail-badge")
                 yield Static("", id="detail-summary", classes="muted", markup=False)
-                yield Static(
-                    "", id="detail-description", classes="description", markup=False
-                )
-                yield Static("", id="detail-secondary", classes="description", markup=False)
-                yield Static("", id="detail-related", classes="note", markup=False)
-                yield Static("", id="detail-normalized", markup=False)
                 with Vertical(id="review-section"):
-                    yield Label("Review findings", classes="section-label")
+                    yield Label("Findings", classes="section-label first")
                     yield Static("", id="detail-review", markup=False)
+                yield Label("Description", classes="section-label first", id="detail-description-label")
+                yield Static("", id="detail-description", classes="description", markup=False)
+                yield Static("", id="detail-secondary", classes="description", markup=False)
+                yield Static("", id="detail-normalized", markup=False)
                 with Collapsible(title="Prepared text", collapsed=True, id="prepared-disclosure"):
                     yield Static("", id="detail-prepared", markup=False)
                 with Collapsible(
@@ -137,9 +134,9 @@ class InspectPane(Vertical):
                     collapsed=True,
                     id="source-disclosure",
                 ):
-                    yield Static("", id="detail-fields", classes="muted", markup=False)
+                    yield Static("", id="detail-fields", markup=False)
                     yield Label("Original source row", classes="section-label")
-                    yield Static("", id="detail-original", classes="note", markup=False)
+                    yield Static("", id="detail-original", markup=False)
 
     async def on_mount(self) -> None:
         await self.refresh_records()
@@ -218,7 +215,6 @@ class InspectPane(Vertical):
                     "#detail-summary",
                     "#detail-description",
                     "#detail-secondary",
-                    "#detail-related",
                     "#detail-normalized",
                     "#detail-review",
                     "#detail-fields",
@@ -226,7 +222,7 @@ class InspectPane(Vertical):
                 ):
                     self.query_one(selector).update("")
                 self.query_one("#detail-secondary").display = False
-                self.query_one("#detail-related").display = False
+                self.query_one("#review-section").display = False
             count = (
                 f"{self._offset + 1}–{self._offset + len(self._records)} of {page.total}"
                 if self._records
@@ -335,8 +331,8 @@ class InspectPane(Vertical):
     def _show_detail(self, detail: RecordDetail) -> None:
         record = detail.normalized
         is_dark = self._is_dark()
-        pri = (DARK if is_dark else LIGHT).primary
-
+        palette = DARK if is_dark else LIGHT
+        pri = palette.primary
         self.query_one("#detail-title", Label).update(
             format_arabic(record.name or "Unnamed source row")
         )
@@ -347,9 +343,26 @@ class InspectPane(Vertical):
         else:
             badge.update("")
             badge.display = False
-        self.query_one("#detail-summary", Static).update(
-            format_arabic(f"Sector: {record.sector or 'Not listed'}")
-        )
+        summary = [format_arabic(record.sector or "No sector")]
+        if record.creation_year:
+            summary.append(f"founded {record.creation_year}")
+        if record.cohort_label:
+            summary.append(f"cohort {format_arabic(record.cohort_label)}")
+        self.query_one("#detail-summary", Static).update(" · ".join(summary))
+
+        # Findings come first: this tab exists to judge them.
+        self.query_one("#review-section").display = detail.needs_review
+        findings = Text()
+        for index, issue in enumerate(detail.open_issues):
+            if index:
+                findings.append("\n")
+            if issue.category == "human":
+                findings.append("! Decision needed: ", style=f"bold {palette.warning}")
+            else:
+                findings.append("· Source gap: ", style=f"bold {palette.variables['info-ink']}")
+            findings.append(format_arabic(issue.message), style=palette.foreground)
+        self.query_one("#detail-review", Static).update(findings)
+
         descriptions = detail.descriptions
         main_description = descriptions[0][1] if descriptions else record.description
         self.query_one("#detail-description", Static).update(
@@ -358,27 +371,10 @@ class InspectPane(Vertical):
         secondary = self.query_one("#detail-secondary", Static)
         secondary.display = len(descriptions) > 1
         secondary.update(format_arabic("\n\n".join(
-            f"Additional registry description · row {number}\n{description}"
+            f"Also, from row {number}:\n{description}"
             for number, description in descriptions[1:]
         )))
-        related = self.query_one("#detail-related", Static)
-        related.display = bool(detail.related)
-        related.update(format_arabic("\n".join(
-            f"Related registry entry: {name} · {count} shared founders; separate startup"
-            for name, count in detail.related
-        )))
-        # Structured registry property table with real borders
-        norm_table = Table(
-            box=box.ROUNDED, expand=True, show_header=True, header_style=f"bold {pri}"
-        )
-        norm_table.add_column("Field", style=f"bold {pri}", width=18)
-        norm_table.add_column("Value")
-        norm_table.add_row("Website", Text(format_arabic(record.website or "Not listed")))
-        norm_table.add_row(
-            "Founded",
-            str(record.creation_year) if record.creation_year else "Not listed",
-        )
-        norm_table.add_row("Cohort", Text(format_arabic(record.cohort_label or "Not listed")))
+
         founder_labels = {
             "confirmed": "confirmed across entries",
             "to_confirm": "to confirm",
@@ -389,41 +385,29 @@ class InspectPane(Vertical):
                       for name, status in detail.founder_evidence)
             if detail.founder_evidence else ", ".join(record.founders)
         )
-        norm_table.add_row("Founders", Text(format_arabic(founders or "Not listed")))
-        self.query_one("#detail-normalized", Static).update(norm_table)
+        rows: list[tuple[str, str]] = [
+            ("Website", format_arabic(record.website or "Not listed")),
+            ("Founders", format_arabic(founders or "Not listed")),
+        ]
+        if detail.related:
+            rows.append(("Related", format_arabic("; ".join(
+                f"{name} ({count} shared founders, separate startup)"
+                for name, count in detail.related
+            ))))
+        self.query_one("#detail-normalized", Static).update(key_value(rows, palette))
 
-        self.query_one("#review-section").display = detail.needs_review
-        self.query_one("#detail-review", Static).update(
-            format_arabic("\n".join(
-                f"• {'Decision needed' if issue.category == 'human' else 'Source gap'}: {issue.message}"
-                for issue in detail.open_issues
-            ))
-        )
         output = detail.prepared
         self.query_one("#prepared-disclosure").display = output is not None
         prepared_view = self.query_one("#detail-prepared", Static)
         prepared_view.update(self._prepared_card(output, is_dark, pri) if output else "")
 
-    # Source values keep full contrast; the container's muted style is for labels.
-        palette = DARK if is_dark else LIGHT
-        fields_table = Table(
-            box=box.ROUNDED,
-            expand=True,
-            show_header=True,
-            header_style=f"bold {pri}",
-            style=palette.foreground,
-            border_style=palette.variables["control-line"],
-        )
-        fields_table.add_column(
-            "Source", style=f"bold {palette.variables['muted']}", max_width=16
-        )
-        fields_table.add_column("Value", style=palette.foreground, overflow="fold")
-        fields_table.add_row("Source URL", Text(format_arabic(detail.source_url)))
-        fields_table.add_row("Row Number", str(record.row_number))
-        fields_table.add_row("Snapshot ID", detail.snapshot_id)
-        fields_table.add_row("SHA-256", detail.content_hash)
-        fields_table.add_row("Startup ID", record.entity_id or "No startup matched")
-        self.query_one("#detail-fields", Static).update(fields_table)
+        self.query_one("#detail-fields", Static).update(key_value([
+            ("Source URL", format_arabic(detail.source_url)),
+            ("Row", str(record.row_number)),
+            ("Snapshot", detail.snapshot_id),
+            ("SHA-256", detail.content_hash),
+            ("Startup ID", record.entity_id or "No startup matched"),
+        ], palette))
         self.query_one("#detail-original", Static).update(
             themed_json(format_arabic_obj(detail.original), dark=is_dark)
         )

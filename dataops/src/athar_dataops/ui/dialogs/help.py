@@ -2,15 +2,14 @@
 
 from typing import ClassVar
 
-from rich import box
-from rich.table import Table
 from textual import on
 from textual.app import ComposeResult
 from textual.containers import VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Button, Label, Static
 
-from athar_dataops.themes import DARK, LIGHT
+from athar_dataops.themes import DARK, LIGHT, palette_for
+from athar_dataops.ui.widgets.keyvalue import plain_table
 
 
 class HelpScreen(ModalScreen):
@@ -32,12 +31,8 @@ class HelpScreen(ModalScreen):
             is_dark = getattr(self.app, "theme", "athar-dark") != "athar-light"
             pri = (DARK if is_dark else LIGHT).primary
 
-            table = Table(
-                box=box.ROUNDED,
-                expand=True,
-                show_header=True,
-                header_style=f"bold {pri}",
-            )
+            table = plain_table(palette_for(self.app), show_header=True,
+                header_style=f"bold {pri}")
             table.add_column("Key", style=f"bold {pri}", width=18)
             table.add_column("Action")
 

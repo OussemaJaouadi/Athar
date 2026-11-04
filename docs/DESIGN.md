@@ -162,6 +162,26 @@
 - Avoid neon glow, decorative gradients, ornamental motion, and excessive enclosing cards.
 - Preserve recognizable controls; expression must not obscure how an action works.
 
+## Terminal components
+
+The terminal interface is built from this vocabulary and nothing else. A pane that needs something new extends the vocabulary here first.
+
+| Component | Rule |
+|---|---|
+| Pane | No outer frame. Padding `1 1 0 1`. Columns separate by a two-cell gap, and a detail column carries a single left rule. |
+| Section label | Bold muted text with one row above it. Uppercase only for list headings such as RUNS. |
+| Button | One row, `[ label ]` with two cells of padding, no border. Primary is the candy fill; secondary is the panel tint; quota-spending is information text on its tint; destructive is error text on its tint and fills only on hover or focus. Focus underlines the label. |
+| Input, select, text area | One row on the panel tint; focus moves to the selection tint. No borders. |
+| List row | One line, left padded; the highlighted row takes the selection tint and, when the list has focus, a thick left bar in the accent. |
+| Status chip | One row of text on the state's tint: success, warning, error, or neutral. Never bordered. |
+| Key-value | Two unboxed columns: muted bold label, text value, values fold. |
+| Disclosure | A Collapsible with no frame; the title is the accent and the contents indent by two cells. |
+| Timeline | Five rows: markers, road, step names, state chips sized to their word, badges. |
+| Log stream | The shared `render_entry` format; no frame; the title is a muted line above it. |
+| Dialog | The one place a rounded frame appears, in the dialog's semantic color: line for help and about, destructive red for wipe and reset, information blue for Prepare. |
+
+Under 100 columns the Run tab turns its operations into one row of buttons and gives the run the rest of the height; rails narrow; the Settings identity card and the Database drawer hide or take the full width.
+
 ## Interface copy
 
 One vocabulary for the whole interface; the words below are the only names for these things.

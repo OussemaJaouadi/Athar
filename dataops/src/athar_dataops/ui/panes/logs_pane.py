@@ -92,6 +92,7 @@ class LogsPane(Vertical):
                 yield Input(
                     placeholder="Search logs… (/ or Ctrl+F to focus)", id="logs-search"
                 )
+                yield Static("Events", id="logs-title", classes="muted", markup=False)
                 yield Static(
                     "No matching log entries. Clear the search or choose another filter.",
                     id="logs-empty",
@@ -206,11 +207,11 @@ class LogsPane(Vertical):
                     level, counts[level], palette
                 )
             visible = self._visible
-            console = self.query_one("#logs-console", RichLog)
+            self.query_one("#logs-console", RichLog)
             filter_label = (
                 self._current_filter.title() if self._current_filter != "all" else "All"
             )
-            console.border_title = f"Events · {filter_label} ({visible}/{total})"
+            self.query_one("#logs-title", Static).update(f"Events · {filter_label} · {visible} of {total}")
             empty = self.query_one("#logs-empty", Static)
             empty.display = visible == 0
             empty.update(

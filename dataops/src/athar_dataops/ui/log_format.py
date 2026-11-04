@@ -20,7 +20,7 @@ def severity_color(level: str, palette) -> str:
     }.get(level, palette.variables["muted"])
 
 
-_STEP_WIDTH = 14
+_STEP_WIDTH = 12
 
 
 def render_entry(entry: LogEntry, dark: bool) -> Text:
@@ -29,7 +29,7 @@ def render_entry(entry: LogEntry, dark: bool) -> Text:
     text = Text()
     stamp = entry.timestamp.strftime("%H:%M:%S") if entry.timestamp else "--:--:--"
     text.append(stamp + "  ", style=palette.variables["muted"])
-    text.append(f"{(entry.status or entry.level).upper():<9}  ", style=f"bold {color}")
+    text.append(f"{(entry.status or entry.level).upper():<10} ", style=f"bold {color}")
     if entry.run_id:
         text.append(f"{entry.run_id[:8]}  ", style=palette.variables["muted"])
     if entry.step:

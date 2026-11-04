@@ -3,7 +3,7 @@
 from unittest import IsolatedAsyncioTestCase
 
 from textual.app import App, ComposeResult
-from textual.widgets import Button, Input, RichLog
+from textual.widgets import Button, Input, RichLog, Static
 
 from athar_dataops.schemas.logs import LogEntry
 from athar_dataops.themes import DARK, LIGHT
@@ -61,7 +61,7 @@ class LogsPaneTests(IsolatedAsyncioTestCase):
             step="Finding descriptions to prepare",
         )
         plain = render_entry(entry, dark=True).plain
-        self.assertIn("COMPLETED  12345678  Finding descr…", plain)
+        self.assertIn("COMPLETED  12345678  Finding des…", plain)
         self.assertIn("│ Provider answered", plain)
         wrapped = render_entry(
             LogEntry.create(
@@ -156,13 +156,13 @@ class LogsPaneTests(IsolatedAsyncioTestCase):
             )
             self.assertTrue(app.query_one("#filter-error", Button).label.plain.endswith("1000"))
             self.assertTrue(app.query_one("#filter-info", Button).label.plain.endswith("1000"))
-            console = app.query_one("#logs-console", RichLog)
-            self.assertIn(f"(2000/{LogsPane.MAX_ENTRIES})", console.border_title)
+            app.query_one("#logs-console", RichLog)
+            self.assertIn(f"2000 of {LogsPane.MAX_ENTRIES}", str(app.query_one("#logs-title", Static).render()))
             # Filter changes still rebuild once and recount visible entries.
             app.query_one("#filter-error", Button).press()
             await pilot.pause()
             self.assertEqual(len(rebuilds), 1)
-            self.assertIn("(1000/2000)", console.border_title)
+            self.assertIn("1000 of 2000", str(app.query_one("#logs-title", Static).render()))
 
     async def test_search_rebuild_is_one_batched_write_of_the_newest_matches(self):
         app = LogsTestApp()
@@ -183,7 +183,7 @@ class LogsPaneTests(IsolatedAsyncioTestCase):
             self.assertEqual(len(console.lines), LogsPane.REBUILD_LIMIT + 1)
             self.assertIn("700 earlier matching entries", str(console.lines[0].text))
             self.assertIn("entry 1199", str(console.lines[-1].text))
-            self.assertIn("(1200/1200)", console.border_title)
+            self.assertIn("1200 of 1200", str(app.query_one("#logs-title", Static).render()))
 
     async def test_rail_arrows_cycle_focus(self):
         app = LogsTestApp()

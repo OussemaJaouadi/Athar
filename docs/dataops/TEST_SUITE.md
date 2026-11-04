@@ -101,7 +101,7 @@ uv run --project dataops python -m unittest discover -s dataops/tests/unit -t da
 
 ### `test_prepare_ui.py`
 
-- Configured profiles appear before first seeding; Prepare shows its preview and makes no call until confirmed; after a run the Records and Settings panes show the prepared text and usage without the key; combined descriptions show the secondary text and summary; the Settings usage table caps long profile lists.
+- Configured profiles appear before first seeding; Prepare opens its confirmation modal and makes no call until confirmed; after a run the Records and Settings panes show the prepared text and usage without the key; combined descriptions show the secondary text and summary; the Settings usage table caps long profile lists.
 
 ## Working rules
 

@@ -193,17 +193,21 @@ class RunTimeline(Widget):
             )
 
             chip = f" {glyph} {_BADGE_WORD[status]} "
+            left = max(0, (width - len(chip)) // 2)
+            right = max(0, width - len(chip) - left)
+            statuses.append(" " * left)
             if status == "pending":
-                statuses.append(chip.center(width), style=muted)
+                statuses.append(chip, style=muted)
             else:
-                bg = {
-                    "running": palette.primary,
-                    "completed": palette.success,
-                    "failed": palette.error,
-                    "cancelled": palette.warning,
+                # Text on the state's tint, sized to the word; never a band across the column.
+                tint = {
+                    "running": palette.variables["selection"],
+                    "completed": palette.variables["success-bg"],
+                    "failed": palette.variables["error-bg"],
+                    "cancelled": palette.variables["warning-bg"],
                 }[status]
-                fg = palette.variables["action-fg"]
-                statuses.append(chip.center(width), style=f"{fg} on {bg}")
+                statuses.append(chip, style=f"bold {color} on {tint}")
+            statuses.append(" " * right)
 
             badges: list[Text] = []
             if name in self._elapsed:

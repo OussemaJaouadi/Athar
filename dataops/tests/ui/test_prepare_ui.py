@@ -11,6 +11,7 @@ from textual.widgets import DataTable, Static
 from athar_dataops.app import DataOpsApp
 from athar_dataops.config import Settings
 from athar_dataops.themes import DARK, LIGHT
+from athar_dataops.ui.dialogs.prepare import PrepareConfirmScreen
 from athar_dataops.ui.panes.run_pane import RunPane
 from athar_dataops.ui.panes.settings_pane import SettingsPane
 
@@ -36,19 +37,20 @@ class PrepareWorkspaceTests(PreparationFixture):
                     await pilot.pause(0.05)
             row = usage.get_row_at(0)
             self.assertEqual(str(row[0]), "account-a")
-            self.assertEqual(str(row[2]), "Not used yet")
+            self.assertEqual(str(row[1]), "Not used yet")
 
     async def test_prepare_requires_confirmation_before_model_calls(self):
         app = DataOpsApp(self.pipeline, self.db, self.config)
         async with app.run_test(size=(120, 50)) as pilot:
             await pilot.click("#prepare-pipeline")
             await pilot.pause()
-            self.assertTrue(app.query_one("#prepare-preview").display)
-            self.assertIn("Need a model call", render_text(app.query_one("#prepare-preview-body", Static).render()))
+            await pilot.pause()
+            self.assertIsInstance(app.screen, PrepareConfirmScreen)
+            self.assertIn("Need a model call", render_text(app.screen.query_one("#prepare-preview-body", Static).render()))
             self.assertEqual(len(await self.db.preparation_usage_summary()), 0)
             await pilot.click("#prepare-cancel")
             await pilot.pause()
-            self.assertFalse(app.query_one("#prepare-preview").display)
+            self.assertNotIsInstance(app.screen, PrepareConfirmScreen)
             self.assertEqual(len(await self.db.preparation_usage_summary()), 0)
 
     async def test_prepare_button_records_panel_and_usage_panel(self):
@@ -56,7 +58,8 @@ class PrepareWorkspaceTests(PreparationFixture):
         async with app.run_test(size=(120, 50)) as pilot:
             await pilot.click("#prepare-pipeline")
             await pilot.pause()
-            self.assertTrue(app.query_one("#prepare-preview").display)
+            await pilot.pause()
+            self.assertIsInstance(app.screen, PrepareConfirmScreen)
             await pilot.click("#prepare-confirm")
             async with asyncio.timeout(10):
                 while app.query_one(RunPane).collecting:

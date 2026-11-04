@@ -26,6 +26,8 @@
 
 ### Workspace and review
 
+- Rebuilt the terminal layout on one component set: no frames inside frames, one-row buttons and inputs, unboxed key-value tables, a single status chip style, and a modal for the Prepare confirmation. The Run tab shows operations as a menu with the run's status, timeline, and log beside it; the Records detail leads with findings and a one-line summary; the metric cards are gone. Under 100 columns the operations become a button row so the timeline and log stay on screen.
+
 - One vocabulary across the interface: source row, record, startup, snapshot, finding, profile, and the three operations Collect, Clean, Prepare. Step titles and progress say what was asked for ("Match startups and save") instead of the function that runs. Failures show their cause and a next step instead of "Open Logs". Review findings are written for a reviewer ("Missing description", "Website is not a valid URL; kept as written"). The Prepare preview says how many descriptions need a model call and how many are reused. Settings, About, Help, and the dialogs use sentence case and drop the marketing lines; the version comes from package metadata.
 
 - Run now offers a confirmed registry reset for a fresh Collect/Clean evaluation. It clears source and derived records plus old run history, while retaining Groq profiles, quotas, and usage counts.

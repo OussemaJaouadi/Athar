@@ -2,8 +2,6 @@
 
 from contextlib import suppress
 
-from rich import box
-from rich.table import Table
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import Horizontal, VerticalScroll
@@ -17,6 +15,7 @@ from athar_dataops.services.database import DatabaseService
 from athar_dataops.services.groq import PROVIDER
 from athar_dataops.themes import palette_for
 from athar_dataops.ui.arabic import describe_error
+from athar_dataops.ui.widgets.keyvalue import key_value
 
 PROFILE_CAP = 6
 
@@ -47,9 +46,9 @@ class SettingsPane(VerticalScroll):
                 )
                 yield Static(id="settings-env-table")
                 yield Label("Groq usage", classes="heading")
-                yield DataTable(id="settings-usage", cursor_type="row", zebra_stripes=True)
+                yield DataTable(id="settings-usage", cursor_type="none", zebra_stripes=False)
                 yield Label("Provider limits", classes="heading")
-                yield DataTable(id="settings-limits", cursor_type="row", zebra_stripes=True)
+                yield DataTable(id="settings-limits", cursor_type="none", zebra_stripes=False)
 
             # Right Column: Application Identity (No modal, no internal dev fluff)
             with VerticalScroll(classes="detail", id="settings-about-card"):
@@ -71,7 +70,7 @@ class SettingsPane(VerticalScroll):
 
     def _configure_tables(self) -> None:
         self.query_one("#settings-usage", DataTable).add_columns(
-            "Profile", "Model", "State", "Total calls", "Today", "Last minute", "Tokens today"
+            "Profile", "State", "Total calls", "Today", "Last minute", "Tokens today"
         )
         self.query_one("#settings-limits", DataTable).add_columns(
             "Profile", "Records/day", "Requests/min", "Tokens/day", "Est. tokens/record"
@@ -113,8 +112,6 @@ class SettingsPane(VerticalScroll):
 
     def _clear_table(self, table: DataTable) -> None:
         table.clear()
-        table.cursor_type = "row"
-        table.zebra_stripes = True
 
     def _set_table_message(self, table: DataTable, message: str) -> None:
         self._clear_table(table)
@@ -136,7 +133,6 @@ class SettingsPane(VerticalScroll):
             tokens_today = entry.get("tokens_today")
             table.add_row(
                 Text(str(entry.get("name", "—"))),
-                Text(str(entry.get("model", "—"))),
                 state,
                 str(entry.get("calls", 0)),
                 str(entry.get("requests_today", 0)),
@@ -145,7 +141,7 @@ class SettingsPane(VerticalScroll):
                 key=str(entry.get("name", "")),
             )
         if len(rows) > PROFILE_CAP:
-            table.add_row(f"… and {len(rows) - PROFILE_CAP} more profiles", *["" for _ in range(6)])
+            table.add_row(f"… and {len(rows) - PROFILE_CAP} more profiles", *["" for _ in range(5)])
 
     def _profile_limits(self, rows: list[ProfileOverview]) -> None:
         table = self.query_one("#settings-limits", DataTable)
@@ -180,21 +176,16 @@ class SettingsPane(VerticalScroll):
         self.update_tables()
 
     def update_tables(self) -> None:
-        pri = palette_for(self.app).primary
+        palette = palette_for(self.app)
+        pri = palette.primary
 
-        env_table = Table(
-            box=box.ROUNDED,
-            expand=True,
-            show_header=True,
-            header_style=f"bold {pri}",
-        )
-        env_table.add_column("Setting", style=f"bold {pri}", width=16)
-        env_table.add_column("Value")
-        env_table.add_row("Registry URL", str(self._config.registry_url))
-        env_table.add_row("Database", str(self._config.db_path))
-        env_table.add_row("Groq profiles", self._profiles_summary())
-        env_table.add_row("Default model", self._config.groq_model)
-        env_table.add_row("Run timeout", f"{self._config.pipeline_timeout_seconds}s")
+        env_table = key_value([
+            ("Registry URL", str(self._config.registry_url)),
+            ("Database", str(self._config.db_path)),
+            ("Groq profiles", self._profiles_summary()),
+            ("Default model", self._config.groq_model),
+            ("Run timeout", f"{self._config.pipeline_timeout_seconds}s"),
+        ], palette, key_width=14)
         with suppress(NoMatches):
             self.query_one("#settings-env-table", Static).update(env_table)
 
@@ -204,17 +195,11 @@ class SettingsPane(VerticalScroll):
                 "This workspace collects the registry, cleans it, and prepares text for retrieval.\n"
             )
 
-        about_table = Table(
-            box=box.ROUNDED,
-            expand=True,
-            show_header=True,
-            header_style=f"bold {pri}",
-        )
-        about_table.add_column("Property", style=f"bold {pri}", width=18)
-        about_table.add_column("Details")
-        about_table.add_row("Application", "Athar DataOps")
-        about_table.add_row("Version", app_version())
-        about_table.add_row("Source", "Startup Tunisia registry")
-        about_table.add_row("License", "ISC")
+        about_table = key_value([
+            ("Application", "Athar DataOps"),
+            ("Version", app_version()),
+            ("Source", "Startup Tunisia registry"),
+            ("License", "ISC"),
+        ], palette, key_width=12)
         with suppress(NoMatches):
             self.query_one("#settings-arch-table", Static).update(about_table)

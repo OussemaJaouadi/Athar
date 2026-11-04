@@ -18,7 +18,9 @@ Paths below are relative to `src/athar_dataops/`.
 | `migrations/` | Numbered SQL migrations with recorded checksums. |
 | `app.py` | Application shell, seven primary tabs, navigation, refresh events, and quit handling. |
 | `ui/panes/` | Run, Records, History, Database, Logs, Probes (`checkpoints_pane.py`), and Settings. |
-| `ui/widgets/` | Artwork, progress, logs, metrics, and review badges. The timeline receives `StepMetrics` values, not formatted labels. |
+| `ui/widgets/keyvalue.py` | `key_value` and `plain_table`: the only way panes lay out labels and values. No box, no edge padding. |
+| `ui/dialogs/prepare.py` | `PrepareConfirmScreen`: the quota-spending confirmation, a modal like the wipe dialog. |
+| `ui/widgets/` | Artwork, the run timeline, the run log view, review badges, and the unboxed table helpers. The timeline receives `StepMetrics` values, not formatted labels. |
 | `services/groq.py` | HTTP transport for Groq preparation; never touches the database or UI. |
 | `services/preparation.py` | Prepare run loop: candidates, caching, usage accounting, run history. |
 | `ui/dialogs/` | Help and About dialogs. |
@@ -168,6 +170,7 @@ Records reads open findings from `entity_review_items`; its review filter, badge
 ## UI boundaries and working rules
 
 - Panes own interaction and view state; widgets own reusable presentation; dialogs own focused overlays.
+- Layout rules in `app.tcss`: at most one frame per column, and that frame is a single left rule; regions separate by whitespace and section labels; buttons are one row; every Rich table goes through `key_value` or `plain_table`; status is a one-row chip; the Prepare preview is a modal.
 - Records keeps its 100 list rows and updates their labels in place on paging and search; Logs rebuilds its console as one batched write of at most the newest 500 matches after a 150 ms typing pause. Neither view remounts widgets per keystroke.
 - `main.run()` freezes the heap and raises the gen-0 GC threshold once services and the app exist; nothing allocated before that point is scanned again.
 - `RunTimeline` is a focusable linked-circle pipeline; arrows stay local, while number keys keep their tab navigation role.

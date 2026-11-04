@@ -355,8 +355,7 @@ class DatabasePane(Vertical):
                 renderables.append(header)
 
             if i < len(row_data) - 1:
-                rule_style = "dim #2B393E" if is_dark else LIGHT.variables["line"]
-                renderables.append(Rule(style=rule_style))
+                renderables.append(Rule(style=(DARK if is_dark else LIGHT).variables["line"]))
 
         with suppress(NoMatches):
             self.query_one("#drawer-content", Static).update(Group(*renderables))

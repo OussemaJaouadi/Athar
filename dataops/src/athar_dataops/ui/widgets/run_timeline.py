@@ -7,7 +7,7 @@ from textual.widget import Widget
 
 from athar_dataops.schemas.pipeline import StageProgress
 from athar_dataops.services.metrics import StepMetrics
-from athar_dataops.themes import is_dark_theme, palette_for
+from athar_dataops.themes import palette_for
 
 _NODE = {
     "pending": "○",
@@ -149,7 +149,6 @@ class RunTimeline(Widget):
 
     def render(self) -> Text:
         palette = self._palette()
-        dark = is_dark_theme(self.app)
         muted = palette.variables["muted"]
         selection = palette.variables["selection"]
         if not self._steps:
@@ -203,7 +202,7 @@ class RunTimeline(Widget):
                     "failed": palette.error,
                     "cancelled": palette.warning,
                 }[status]
-                fg = "#071215" if dark else "#FFFFFF"
+                fg = palette.variables["action-fg"]
                 statuses.append(chip.center(width), style=f"{fg} on {bg}")
 
             badges: list[Text] = []

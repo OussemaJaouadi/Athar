@@ -202,34 +202,42 @@ Rules:
 - Preserve meaning when terminal colors are approximated or overridden.
 - Maintain responsive interaction during long-running work.
 
-### Current TUI refinement — awaiting visual review
+### Terminal tokens
 
+The terminal keeps the web roles and the two brand anchors, with values tuned for cells. Every pair below is checked by `tests/unit/test_themes.py`.
+
+| Role | Dark | Light | Use |
+|---|---|---|---|
+| canvas | `#020202` | `#E6EAEC` | workspace background |
+| surface | `#0F171A` | `#FFFFFF` | reading and control surface |
+| panel | `#1E2A2F` | `#F2F4F5` | inset blocks, secondary buttons |
+| hover | `#323C42` | `#E8EDEF` | temporary pointer feedback, a neutral lift |
+| selection | `#124552` | `#B9E3EB` | the current item, a teal tint |
+| text | `#EEF5F6` | `#1C1D1F` | primary text |
+| muted | `#A3B6BC` | `#555B5F` | secondary text, 4.5:1 or better on every surface |
+| line | `#36484F` | `#C3CCD0` | separators that group content |
+| control-line | `#7A929B` | `#6C7B82` | borders of inputs and secondary buttons |
+| accent | `#82D5E5` | `#075E73` | focus ring, links, selection text, primary fill (light fill `#0A6D82` with white) |
+| information | `#9BC7F2` on `#172838` | `#275E91` on `#E9F2FA` | text on its tint only: source gaps, the quota-spending action outline |
+| success | `#8FDCB2` on `#102A20` | `#176344` on `#E7F4EC` | a completed operation |
+| warning | `#F1C276` on `#302414` | `#7A4B08` on `#FFF1D6` | attention: warnings, cancelled, a finding that needs a decision |
+| error | `#E8837B` on `#311D1D` | `#C02A54` on `#FCEDEC` | a failed operation or invalid input |
+| destructive | `#B3453D` with `#EEF5F6` | `#C02A54` with white | Reset registry data and Wipe all data only |
+| violet | `#C5AAED` | `#68429A` | JSON numbers and booleans, a syntax role |
+
+- Hover and selection are different colors in both themes; focus adds a ring in the accent, and a focused primary button gets a ring in its own text color.
+- Surfaces separate on their own (1.2:1 dark, 1.1:1 light); borders group content and are not the only way to see a region.
+- Information is never a fill: the Prepare actions are outlined in it so the primary action stays the one filled candy blue control.
+- Amber means attention. Destructive actions are red. Running is the accent. A card never carries a colored stripe for decoration.
+- No pane or widget holds a color literal; the themes module is the only source, and the shared theme helper picks the palette.
 - Keep the accepted seven-tab primary layout, bordered panels, and terminal typography.
 - Keep Logs and Probes as normal primary tabs with consistent focus, empty, error, and loading states.
 - Keep the masthead operational: show active operation state, completion, cancellation, or failure before the user opens a detail view.
-- The web palette above remains its approved baseline; these are terminal-specific light overrides.
-- Light surfaces: canvas `#E6EAEC`, content `#FFFFFF`, inset `#F2F4F5`.
-- Light text: primary `#1C1D1F`, secondary `#5A5D61`, cyan emphasis `#075E73`.
-- TUI actions differ by theme: light uses cyan `#087B92` / white `#FFFFFF`, hover `#055D70`; dark uses candy blue `#82D5E5` / ink `#071215`, hover `#9CE0EC`.
-- The darker light-mode cyan carries the same blue-green identity with sufficient contrast on white; it also colors links, focus, and selected labels.
 - Rich JSON, tables, stage progress, and logs read theme colors explicitly; secondary text avoids ANSI dimming.
-- Light JSON: bold blue keys `#164455` on `#D6EAF0`, neutral ink strings `#171B1E`, violet numbers/booleans `#68429A`, slate null/punctuation `#59656D`, on `#F2F4F5`. Booleans are bold; null is italic. These are syntax roles, not operational statuses.
-- Inactive light tabs use slate `#46535A` on the white tab bar; hover and active fills remain distinct.
-- Source metadata uses dark values with quieter labels; original JSON has a labeled, lightly shaded reading area, shared with the database inspector.
-- Light hover `#DDECF0`, selection `#B9E3EB`; control borders `#6C7B82`; separators `#B9C3C7`.
-- Keep the established success, warning, and error meanings; status always has a text label.
-- Neutral light surfaces remove the pervasive blue-gray cast; blue marks actions and selection.
+- JSON keys render in the accent, strings in the text color, numbers and booleans in violet, null in muted italic, in both themes.
 - Records search covers names, sectors, and descriptions across the latest completed collection.
-- Use an explicit `block-hover-background` in the TUI: Textual’s generated `boost` resolves to transparent in light mode.
-- Uppercase is reserved for section headers, card titles, and status badges. Inline field labels such as the prepared-text card's language or producer use sentence case.
-- Actions that spend provider quota (Prepare all and its confirmation) use the information blue pair, dark `#9BC7F2` / ink, light `#275E91` / white. Amber is reserved for destructive actions: Reset registry data and the wipe confirmation.
-- The light-mode override block in `app.tcss` is deliberate: a white terminal changes color density enough that generated tints are wrong, so light states are specified explicitly per widget. Extend it when adding a widget rather than consolidating it.
-- A button draws one cell of padding each side of its label; size pager and action buttons to label length plus four, and judge clipping by the rendered cells, not the box.
-- Under 100 columns the masthead keeps one status row above its border.
-- Disabled buttons in both themes keep full opacity and use muted ink plus italic text; no theme fades controls.
-- The About dialog, which carries the ASCII mark, opens from the Settings identity card.
-- Opening a record's source evidence persists while stepping between records; a reload of the listing starts collapsed.
-- Light-mode states are explicit in Records, Database, Logs, and Settings, including dropdowns and the tab bar. Active navigation/filter fills are solid cyan; row selections use the stronger cyan tint. Keyboard focus adds a double border or underline, without implicit framework tinting.
+- Use an explicit `block-hover-background` in the TUI: Textual's generated `boost` resolves to transparent in light mode.
+- Light-mode states are explicit in Records, Database, Logs, and Settings, including dropdowns and the tab bar. Active navigation and filter fills are the accent; row selections use the selection tint. Keyboard focus adds a ring or underline, without implicit framework tinting.
 - No matches keeps search available and clears previous record details.
 - At fewer than 120 terminal columns, Database opens row details on Enter; Escape restores the table and selected row.
 - The collection card reports the last run outcome, with Unknown on read failure. No static health claim.

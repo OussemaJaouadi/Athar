@@ -70,6 +70,10 @@ uv run --project dataops python -m unittest discover -s dataops/tests/unit -t da
 - A search rebuild is one batched console write of the newest 500 matches with a one-line summary of the rest; a full 2000-entry buffer evicts the oldest entry without redrawing; counts and the visible/total header stay right after a filter change.
 - Rail arrows cycle the sidebar and never move focus out of the search box.
 
+### `test_themes.py`
+
+- Every text pair the interface relies on meets 4.5:1 and every border or indicator pair meets 3:1 in both themes; hover differs from selection; panels and surfaces separate; primary and information differ.
+
 ### `test_metrics.py`, `test_arabic.py`
 
 - Time-weighted CPU averages and sampled peaks; missing samples and denied access are not invented zeroes; status colors per theme with literal messages.

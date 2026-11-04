@@ -1,23 +1,28 @@
-"""Theme-aware review badges using DESIGN.md semantic colors."""
+"""Review badges on the theme's warning and information tints.
+
+A decision is a warning: attention needed. A gap is information: context,
+no urgency. Both are text on a tint, never a fill.
+"""
+
+from athar_dataops.themes import DARK, LIGHT
+
+
+def _pair(dark: bool, decision: bool) -> tuple[str, str]:
+    palette = DARK if dark else LIGHT
+    if decision:
+        return palette.variables["warning-bg"], palette.warning
+    return palette.variables["info-bg"], palette.variables["info-ink"]
 
 
 def review_badge(dark: bool = True, *, decision: bool = True) -> str:
     """Distinguish decisions from source gaps that never block a run."""
-    if decision:
-        bg, fg = ("#302414", "#F1C276") if dark else ("#FFF1D6", "#7A4B08")
-        label = "⚠ Needs a decision"
-    else:
-        bg, fg = ("#182D3A", "#9ACBEA") if dark else ("#EAF4FA", "#245B7A")
-        label = "Source gap"
+    bg, fg = _pair(dark, decision)
+    label = "⚠ Needs a decision" if decision else "Source gap"
     return f"[bold {fg} on {bg}] {label} [/]"
 
 
 def review_chip(dark: bool = True, *, decision: bool = True) -> str:
     """Format a compact review chip for list items."""
-    if decision:
-        bg, fg = ("#302414", "#F1C276") if dark else ("#FFF1D6", "#7A4B08")
-        label = "Decision"
-    else:
-        bg, fg = ("#182D3A", "#9ACBEA") if dark else ("#EAF4FA", "#245B7A")
-        label = "Gap"
+    bg, fg = _pair(dark, decision)
+    label = "Decision" if decision else "Gap"
     return f"[bold {fg} on {bg}] {label} [/]"

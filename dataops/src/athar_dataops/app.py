@@ -71,21 +71,21 @@ class DataOpsApp(App[None]):
     PANES: ClassVar[list[str]] = ["run", "inspect", "history", "database", "logs", "probes", "settings"]
 
     BINDINGS: ClassVar[list[Binding]] = [
-        Binding("1", "navigate('run')", "Collect", priority=False),
+        Binding("1", "navigate('run')", "Run", priority=False),
         Binding("2", "navigate('inspect')", "Records", priority=False),
         Binding("3", "navigate('history')", "History", priority=False),
         Binding("4", "navigate('database')", "Database", priority=False),
         Binding("5", "navigate('logs')", "Logs", priority=False),
         Binding("6", "navigate('probes')", "Probes", priority=False),
         Binding("7", "navigate('settings')", "Settings", priority=False),
-        Binding("ctrl+1", "navigate('run')", "Collect", show=False, priority=True),
+        Binding("ctrl+1", "navigate('run')", "Run", show=False, priority=True),
         Binding("ctrl+2", "navigate('inspect')", "Records", show=False, priority=True),
         Binding("ctrl+3", "navigate('history')", "History", show=False, priority=True),
         Binding("ctrl+4", "navigate('database')", "Database", show=False, priority=True),
         Binding("ctrl+5", "navigate('logs')", "Logs", show=False, priority=True),
         Binding("ctrl+6", "navigate('probes')", "Probes", show=False, priority=True),
         Binding("ctrl+7", "navigate('settings')", "Settings", show=False, priority=True),
-        Binding("alt+1", "navigate('run')", "Collect", show=False, priority=True),
+        Binding("alt+1", "navigate('run')", "Run", show=False, priority=True),
         Binding("alt+2", "navigate('inspect')", "Records", show=False, priority=True),
         Binding("alt+3", "navigate('history')", "History", show=False, priority=True),
         Binding("alt+4", "navigate('database')", "Database", show=False, priority=True),
@@ -328,7 +328,7 @@ class DataOpsApp(App[None]):
     @on(RunPane.CollectionFinished)
     async def collection_finished(self) -> None:
         self.log_workspace_event(
-            "Collection completed · refreshed Records and Database views", "stage"
+            "Run completed · Records, History, and Database refreshed", "stage"
         )
         await self.query_one(InspectPane).refresh_records()
         await self.query_one(DatabasePane).refresh_schema()
@@ -337,7 +337,7 @@ class DataOpsApp(App[None]):
     @on(RunPane.RegistryReset)
     async def registry_reset(self, event: RunPane.RegistryReset) -> None:
         self.log_workspace_event(
-            f"Registry reset · {event.deleted} rows deleted · Groq usage retained",
+            f"Registry data reset · {event.deleted} rows deleted · Groq usage kept",
             "stage",
         )
         await self.query_one(InspectPane).refresh_records()

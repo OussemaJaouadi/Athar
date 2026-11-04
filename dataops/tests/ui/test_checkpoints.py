@@ -139,10 +139,10 @@ class CheckpointTests(IsolatedAsyncioTestCase):
             await self._press(pilot, "#checkpoint-fetch")
             await self.wait_until(
                 pilot,
-                lambda: "Fetched + normalized" in self._status(app),
+                lambda: "Fetched and cleaned" in self._status(app),
             )
             status = self._status(app)
-            self.assertIn("no database writes", status)
+            self.assertIn("nothing saved", status)
             chip = app.query_one("#checkpoint-registry-chip", Static)
             self.assertTrue(chip.display)
             self.assertIn("row 2 of", str(chip.render()))
@@ -182,7 +182,7 @@ class CheckpointTests(IsolatedAsyncioTestCase):
             await self._press(pilot, "#checkpoint-fetch")
             await self.wait_until(
                 pilot,
-                lambda: "Fetched + normalized" in self._status(app),
+                lambda: "Fetched and cleaned" in self._status(app),
             )
             label = render_text(
                 app.query_one("#checkpoint-registry-result-label", Static).render()
@@ -206,7 +206,7 @@ class CheckpointTests(IsolatedAsyncioTestCase):
             pane.query_one("#checkpoint-row").value = "2"
             await self._press(pilot, "#checkpoint-fetch")
             await self.wait_until(
-                pilot, lambda: "Fetched + normalized" in self._status(app)
+                pilot, lambda: "Fetched and cleaned" in self._status(app)
             )
             self.assertEqual(pane._registry_result["record"].website, website)
             rendered = render_text(
@@ -242,11 +242,11 @@ class CheckpointTests(IsolatedAsyncioTestCase):
             await self._press(pilot, "#checkpoint-prepare")
             await self.wait_until(
                 pilot,
-                lambda: "Reply validated" in self._status(app),
+                lambda: "Reply valid" in self._status(app),
             )
             status = self._status(app)
-            self.assertIn("Reply validated", status)
-            self.assertIn("no cache, quota, or DB writes", status)
+            self.assertIn("Reply valid", status)
+            self.assertIn("nothing saved", status)
             self.assertTrue(app.query_one("#checkpoint-prepare-chip", Static).display)
             pane = app.query_one(CheckpointsPane)
             reply = pane._prepare_reply
@@ -587,12 +587,12 @@ class CheckpointTests(IsolatedAsyncioTestCase):
 
             await self._press(pilot, "#run-reset")
             await pilot.pause()
-            self.assertIn("Groq profiles, quota limits, and usage counts stay",
+            self.assertIn("Groq profiles, limits, and usage counts stay",
                           render_text(app.screen.query_one("#wipe-warning", Static).render()))
             await self._press(pilot, "#wipe-confirm", root=app.screen)
             await self.wait_until(
                 pilot,
-                lambda: "Registry reset" in render_text(
+                lambda: "Registry data reset" in render_text(
                     app.query_one("#run-status", Static).render()
                 ),
             )

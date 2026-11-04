@@ -74,8 +74,8 @@ class LogsPane(Vertical):
     def compose(self) -> ComposeResult:
         with Horizontal(id="logs-split"):
             with Vertical(id="logs-rail"):
-                yield Label("OPERATIONAL LOGS", id="logs-rail-title")
-                yield Static("Live runtime telemetry", id="logs-rail-subtitle")
+                yield Label("LOGS", id="logs-rail-title")
+                yield Static("Events from this session", id="logs-rail-subtitle")
 
                 yield Label("SEVERITY", classes="rail-section")
                 yield Button("● All (0)", id="filter-all", classes="-active")
@@ -86,7 +86,7 @@ class LogsPane(Vertical):
 
                 yield Label("ACTIONS", classes="rail-section")
                 yield Button("Auto-scroll: ON", id="toggle-scroll")
-                yield Button("Clear console", id="clear-logs")
+                yield Button("Clear log", id="clear-logs")
 
             with Vertical(id="logs-stream"):
                 yield Input(
@@ -106,7 +106,7 @@ class LogsPane(Vertical):
                 )
 
     def on_mount(self) -> None:
-        self.log_entry("Athar DataOps runtime initialized (v0.1.0)", "info")
+        self.log_entry("Athar DataOps started", "info")
         self._update_stats_bar()
 
     def action_focus_search(self) -> None:
@@ -210,7 +210,7 @@ class LogsPane(Vertical):
             filter_label = (
                 self._current_filter.title() if self._current_filter != "all" else "All"
             )
-            console.border_title = f"Console Stream · {filter_label} ({visible}/{total})"
+            console.border_title = f"Events · {filter_label} ({visible}/{total})"
             empty = self.query_one("#logs-empty", Static)
             empty.display = visible == 0
             empty.update(

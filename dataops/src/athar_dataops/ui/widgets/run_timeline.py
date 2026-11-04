@@ -153,7 +153,7 @@ class RunTimeline(Widget):
         muted = palette.variables["muted"]
         selection = palette.variables["selection"]
         if not self._steps:
-            return Text("No recorded steps.", style=muted)
+            return Text("No run yet.", style=muted)
 
         width = max(4, (self.content_size.width or 80) // len(self._steps))
 

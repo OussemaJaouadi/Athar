@@ -26,7 +26,7 @@ class HelpScreen(ModalScreen):
     def compose(self) -> ComposeResult:
         with VerticalScroll(id="help-dialog"):
             yield Label(
-                "Athar DataOps · Keyboard Shortcuts", classes="heading", id="help-title"
+                "Keyboard shortcuts", classes="heading", id="help-title"
             )
 
             is_dark = getattr(self.app, "theme", "athar-dark") != "athar-light"
@@ -39,47 +39,30 @@ class HelpScreen(ModalScreen):
                 header_style=f"bold {pri}",
             )
             table.add_column("Key", style=f"bold {pri}", width=18)
-            table.add_column("Action / Scope")
+            table.add_column("Action")
 
-            table.add_row(
-                "1 – 7 / Alt+1–7",
-                "Switch tab: Run · Records · History · Database · Logs · Probes · Settings",
-            )
-            table.add_row("[  /  ]", "Cycle previous / next workspace tab")
-            table.add_row("Alt+← / Alt+→", "Cycle previous / next workspace tab")
-            table.add_row("Ctrl+PgUp / PgDn", "Cycle previous / next workspace tab")
-            table.add_row("Esc", "Close row inspector, otherwise focus workspace tabs")
-            table.add_row(
-                "Enter", "Inspect selected database row; Esc returns to table"
-            )
-            table.add_row("Tab / Shift+Tab", "Move focus between controls & panels")
-            table.add_row(
-                "s  /  e",
-                "Toggle Source Evidence & raw JSON (in Records)",
-            )
-            table.add_row(
-                "p  /  n",
-                "Previous / Next page (Records & Database)",
-            )
-            table.add_row(
-                "Ctrl+← / Ctrl+→",
-                "Previous / Next page (Records & Database)",
-            )
-            table.add_row("/  /  Ctrl+F", "Search records (names, sectors, descriptions) / filter logs")
-            table.add_row("Ctrl+L", "Clear operational logs console (in Logs)")
-            table.add_row(
-                "PageUp / PageDown", "Previous / next page (Records & Database)"
-            )
-            table.add_row("↑  /  ↓", "Navigate records, tables, and rows")
-            table.add_row("Prepare all", "Preview uncached model work, then confirm before starting")
-            table.add_row("Reset registry data", "Clear registry evidence and runs; keep Groq usage")
-            table.add_row("F1", "Toggle this Help modal")
-            table.add_row("F6", "Toggle light / dark theme")
-            table.add_row("Ctrl+Q", "Graceful quit (cancels active pipeline safely)")
-            table.add_row("Esc / q / Enter", "Close this Help guide")
+            table.add_row("1 to 7, Alt+1 to 7", "Open a tab: Run, Records, History, Database, Logs, Probes, Settings")
+            table.add_row("[ and ], Alt+← →, Ctrl+PgUp PgDn", "Previous or next tab")
+            table.add_row("Tab, Shift+Tab", "Move between controls")
+            table.add_row("↑ ↓", "Move through records, runs, and rows")
+            table.add_row("Enter", "Database: inspect the selected row")
+            table.add_row("Esc", "Close the row inspector, else focus the tab bar")
+            table.add_row("s or e", "Records: show or hide the source row")
+            table.add_row("p and n, Ctrl+← →, PgUp PgDn", "Records and Database: previous or next page")
+            table.add_row("/ or Ctrl+F", "Records: search names, sectors, descriptions. Logs: filter")
+            table.add_row("Ctrl+L", "Logs: clear the log")
+            table.add_row("F1", "Show or hide this help")
+            table.add_row("F6", "Switch light and dark theme")
+            table.add_row("Ctrl+Q", "Quit; a running operation is cancelled first")
 
             yield Static(table, id="help-table")
-            yield Button("Close Help (Esc)", id="close-help", variant="primary")
+            yield Static(
+                "Prepare all previews the model calls and asks for confirmation. "
+                "Reset registry data deletes registry rows and runs; Groq usage stays.",
+                classes="muted",
+                id="help-operations",
+            )
+            yield Button("Close", id="close-help", variant="primary")
 
     @on(Button.Pressed, "#close-help")
     def close_help(self) -> None:

@@ -74,7 +74,7 @@ class PipelineOrchestrator:
         if self._running:
             raise RuntimeError("A pipeline operation is already running")
         if not self.preparation_available:
-            raise RuntimeError("Set GROQ_API_KEY to prepare text")
+            raise RuntimeError("No Groq profile. Add one to dataops/.env.profiles.toml.")
         self._running = True
         try:
             return await self._preparation.run(progress)
@@ -121,28 +121,28 @@ class PipelineOrchestrator:
             await self._db.start_run(run_id)
             started = True
             async with asyncio.timeout(self._timeout_seconds):
-                await begin("fetch", "Fetching registry")
+                await begin("fetch", "Downloading the registry")
                 fetched = await self._artifact.fetch()
                 snapshot = await self._db.preserve_snapshot(run_id, fetched)
                 snapshot_id = snapshot.id
-                await finish("fetch", "Source bytes preserved")
+                await finish("fetch", "Registry downloaded and stored")
 
-                await begin("preserve", "Storing source rows")
+                await begin("preserve", "Storing rows")
                 # Read back the stored artifact: derived data must have a durable source.
                 stored = await self._db.get_snapshot(snapshot_id)
                 rows = parse_registry_payload(stored.raw_content)
                 row_ids = await self._db.preserve_rows(snapshot_id, rows)
                 await finish("preserve", f"{len(rows)} source rows stored", len(rows))
 
-                await begin("normalize", "Checking records")
+                await begin("normalize", "Cleaning records")
                 records = self._registry.normalize(rows)
                 await finish(
                     "normalize",
-                    f"{len(records)} records normalized",
+                    f"{len(records)} records cleaned",
                     len(records),
                 )
 
-                await begin("resolve", "Resolving identities and saving records")
+                await begin("resolve", "Matching startups and saving")
                 result = await self._db.complete_run(
                     run_id, snapshot_id, records, row_ids
                 )
@@ -154,9 +154,9 @@ class PipelineOrchestrator:
             cancelled = isinstance(exc, asyncio.CancelledError)
             status = "cancelled" if cancelled else "failed"
             if isinstance(exc, TimeoutError):
-                error = f"Collection exceeded {self._timeout_seconds:g} seconds"
+                error = f"Collect exceeded {self._timeout_seconds:g} seconds"
             else:
-                error = "Collection cancelled" if cancelled else str(exc)
+                error = "Collect cancelled" if cancelled else str(exc)
             if started:
                 await self._db.finish_failed_run(run_id, status, error)
                 result = await self._db.get_run(run_id)
@@ -222,19 +222,19 @@ class PipelineOrchestrator:
             await self._db.start_run(run_id, "clean")
             started = True
             async with asyncio.timeout(self._timeout_seconds):
-                await begin("load", "Reading latest preserved evidence")
+                await begin("load", "Loading stored rows")
                 snapshot_id, rows, row_ids = await self._db.get_latest_snapshot_rows()
                 await finish("load", f"{len(rows)} stored rows loaded", len(rows))
 
-                await begin("normalize", "Normalizing stored evidence")
+                await begin("normalize", "Cleaning records")
                 records = self._registry.normalize(rows)
                 await finish(
                     "normalize",
-                    f"{len(records)} records normalized",
+                    f"{len(records)} records cleaned",
                     len(records),
                 )
 
-                await begin("reconcile", "Deduplicating and backfilling the corpus")
+                await begin("reconcile", "Matching startups and saving")
                 result = await self._db.reconcile_corpus(
                     run_id, snapshot_id, records, row_ids
                 )
@@ -246,9 +246,9 @@ class PipelineOrchestrator:
             cancelled = isinstance(exc, asyncio.CancelledError)
             status = "cancelled" if cancelled else "failed"
             if isinstance(exc, TimeoutError):
-                error = f"Cleaning exceeded {self._timeout_seconds:g} seconds"
+                error = f"Clean exceeded {self._timeout_seconds:g} seconds"
             else:
-                error = "Cleaning cancelled" if cancelled else str(exc)
+                error = "Clean cancelled" if cancelled else str(exc)
             if started:
                 await self._db.finish_failed_run(run_id, status, error)
                 result = await self._db.get_run(run_id)

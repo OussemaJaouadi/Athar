@@ -52,9 +52,9 @@ class CheckpointsPane(VerticalScroll):
     def compose(self) -> ComposeResult:
         with Horizontal(id="checkpoint-header"):
             with Vertical(id="checkpoint-header-title"):
-                yield Label("Stage probes", classes="heading")
+                yield Label("Probes", classes="heading")
                 yield Static(
-                    "Test one stage on one element. Nothing is written to the database.",
+                    "Try one step on one input. Nothing is saved.",
                     id="checkpoint-subtitle",
                     classes="muted",
                 )
@@ -73,10 +73,10 @@ class CheckpointsPane(VerticalScroll):
                     chip.set_classes("chip")
                     chip.display = False
                     yield chip
-                yield Static("Fetch, hash, parse and normalize one row.", classes="muted")
+                yield Static("Download the registry and clean one row.", classes="muted")
                 with Horizontal(classes="probe-actions"):
                     yield Input("1", id="checkpoint-row", placeholder="row number")
-                    yield Button("Fetch 1 record", id="checkpoint-fetch", variant="primary", disabled=self._artifact is None)
+                    yield Button("Fetch one row", id="checkpoint-fetch", variant="primary", disabled=self._artifact is None)
                     yield Button("Clear", id="checkpoint-registry-clear", disabled=True)
                 with Horizontal(id="checkpoint-registry-result-header"):
                     yield Label("Result", classes="section-label")
@@ -92,7 +92,7 @@ class CheckpointsPane(VerticalScroll):
                     chip.set_classes("chip")
                     chip.display = False
                     yield chip
-                yield Static("One description · one provider call · no database writes.", classes="muted")
+                yield Static("One description · one Groq call · nothing saved.", classes="muted")
                 with Vertical(id="checkpoint-profile-pick"):
                     if self._profile_names:
                         if len(self._profile_names) > 8:
@@ -104,7 +104,7 @@ class CheckpointsPane(VerticalScroll):
                             prompt="No profiles configured",
                         )
                     else:
-                        yield Static("No Groq profiles configured", classes="muted")
+                        yield Static("No Groq profile. Add one to dataops/.env.profiles.toml.", classes="muted")
                 yield TextArea(placeholder="Paste one description…", id="checkpoint-desc", soft_wrap=True)
                 with Horizontal(classes="probe-actions"):
                     yield Button("Prepare once", id="checkpoint-prepare", variant="primary", disabled=self._groq is None or not self._profile_names)
@@ -208,7 +208,7 @@ class CheckpointsPane(VerticalScroll):
         try:
             await self._fetch()
         except (WorkerCancelled, asyncio.CancelledError):
-            self._set_status("Checkpoint cancelled.", "warning")
+            self._set_status("Probe cancelled.", "warning")
             raise
         finally:
             self._clear_busy()
@@ -234,7 +234,7 @@ class CheckpointsPane(VerticalScroll):
             IndexError,
             NoMatches,
         ) as exc:
-            self._set_status(f"Registry checkpoint failed: {describe_error(exc)}", "error")
+            self._set_status(f"Record probe failed: {describe_error(exc)}", "error")
             self._card_chip("registry", "failed", "error")
             return
         self._registry_result = {
@@ -247,7 +247,7 @@ class CheckpointsPane(VerticalScroll):
         }
         self._render_fetch(self._registry_result)
         self._set_status(
-            f"Fetched + normalized row {requested} of {len(rows)} · no database writes",
+            f"Fetched and cleaned row {requested} of {len(rows)} · nothing saved",
             "success",
         )
         self._card_chip("registry", f"row {requested} of {len(rows)}", "success")
@@ -309,7 +309,7 @@ class CheckpointsPane(VerticalScroll):
             Group(
                 summary,
                 rule,
-                Text("Normalized record", style=f"bold {pri}"),
+                Text("Cleaned record", style=f"bold {pri}"),
                 fields,
                 rule,
                 Text("Review findings", style=f"bold {pri}"),
@@ -329,7 +329,7 @@ class CheckpointsPane(VerticalScroll):
         try:
             await self._prepare()
         except (WorkerCancelled, asyncio.CancelledError):
-            self._set_status("Checkpoint cancelled.", "warning")
+            self._set_status("Probe cancelled.", "warning")
             raise
         finally:
             self._clear_busy()
@@ -345,26 +345,23 @@ class CheckpointsPane(VerticalScroll):
         if not description:
             self._set_status("Paste a description first.", "warning")
             return
-        self._set_status("Sending exactly one prompt…")
+        self._set_status("Sending one Groq call…")
         try:
             reply = await self._groq.prepare(profile, description)
         except (httpx.HTTPError, RuntimeError, ValueError, TypeError, KeyError) as exc:
-            self._set_status(f"Preparation checkpoint failed: {describe_error(exc)}", "error")
+            self._set_status(f"Prepare probe failed: {describe_error(exc)}", "error")
             self._card_chip("prepare", "failed", "error")
             return
         self._prepare_reply = reply
         self._render_prepare(reply)
         if reply.error:
-            self._set_status(
-                f"{reply.error} · stop={reply.stop}",
-                "error" if reply.stop else "warning",
-            )
+            self._set_status(reply.error, "error" if reply.stop else "warning")
             self._card_chip(
                 "prepare", "rejected", "error" if reply.stop else "warning"
             )
         else:
             self._set_status(
-                "Reply validated · one prompt only · no cache, quota, or DB writes",
+                "Reply valid · one Groq call · nothing saved; it counts against the provider limit, not in Settings",
                 "success",
             )
             self._card_chip("prepare", "validated", "success")
@@ -392,8 +389,7 @@ class CheckpointsPane(VerticalScroll):
             detail.add_column("Property", style=f"bold {pri}", width=18)
             detail.add_column("Value", overflow="fold")
             detail.add_row("Error", reply.error)
-            detail.add_row("Stop flag", str(reply.stop))
-            detail.add_row("Limit hint", reply.limit_hint or "—")
+            detail.add_row("Effect on a run", "stops the run" if reply.stop else "tries the next profile")
             self.query_one("#checkpoint-prepare-output", Static).update(
                 Group(
                     Text("Provider reply", style=f"bold {pri}"),
@@ -403,7 +399,7 @@ class CheckpointsPane(VerticalScroll):
                     detail,
                 )
             )
-            self.query_one("#checkpoint-prepare-result-label", Static).update("Provider rejected request")
+            self.query_one("#checkpoint-prepare-result-label", Static).update("Groq rejected the request")
             self.query_one("#checkpoint-prepare-result").display = True
             self.query_one("#checkpoint-prepare-clear", Button).disabled = False
             return
@@ -429,13 +425,13 @@ class CheckpointsPane(VerticalScroll):
         )
         self.query_one("#checkpoint-prepare-output", Static).update(
             Group(
-                Text("Strict JSON reply", style=f"bold {pri}"),
+                Text("Reply", style=f"bold {pri}"),
                 result,
                 rule,
-                Text("Provider meta", style=f"bold {pri}"),
+                Text("Provider details", style=f"bold {pri}"),
                 meta,
                 rule,
-                Text("Validated output", style=f"bold {pri}"),
+                Text("Output", style=f"bold {pri}"),
                 themed_json(format_arabic_obj(output.model_dump()), dark=is_dark),
             )
         )

@@ -20,13 +20,13 @@ class PrepareWorkspaceTests(PreparationFixture):
         app = DataOpsApp(self.pipeline, self.db, self.config)
         async with app.run_test() as pilot:
             async with asyncio.timeout(5):
-                while "configured" not in str(
+                while "profile" not in str(
                     app.query_one("#run-profiles-summary", Static).render()
                 ):
                     await pilot.pause(0.05)
             summary = str(app.query_one("#run-profiles-summary", Static).render())
-            self.assertIn("1 configured", summary)
-            self.assertIn("0 registered", summary)
+            self.assertIn("1 profile", summary)
+            self.assertNotIn("registered", summary)
             self.assertIn("account-a", summary)
             app.action_navigate("settings")
             await pilot.pause()
@@ -36,7 +36,7 @@ class PrepareWorkspaceTests(PreparationFixture):
                     await pilot.pause(0.05)
             row = usage.get_row_at(0)
             self.assertEqual(str(row[0]), "account-a")
-            self.assertEqual(row[2], "configured")
+            self.assertEqual(str(row[2]), "Not used yet")
 
     async def test_prepare_requires_confirmation_before_model_calls(self):
         app = DataOpsApp(self.pipeline, self.db, self.config)
@@ -44,7 +44,7 @@ class PrepareWorkspaceTests(PreparationFixture):
             await pilot.click("#prepare-pipeline")
             await pilot.pause()
             self.assertTrue(app.query_one("#prepare-preview").display)
-            self.assertIn("Uncached model calls", render_text(app.query_one("#prepare-preview-body", Static).render()))
+            self.assertIn("Need a model call", render_text(app.query_one("#prepare-preview-body", Static).render()))
             self.assertEqual(len(await self.db.preparation_usage_summary()), 0)
             await pilot.click("#prepare-cancel")
             await pilot.pause()

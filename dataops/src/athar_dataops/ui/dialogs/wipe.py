@@ -31,14 +31,13 @@ class WipeConfirmScreen(ModalScreen[bool]):
             yield Static(
                 (
                     "This deletes registry snapshots and rows, entities, founders, "
-                    "related entries, reviews, embeddings, prepared text, and run history.\n\n"
-                    "Groq profiles, quota limits, and usage counts stay. Old usage "
-                    "entries lose their removed source and run links. The schema and "
+                    "related startups, findings, embeddings, prepared text, and run history.\n\n"
+                    "Groq profiles, limits, and usage counts stay. The tables and "
                     "migrations stay. This cannot be undone."
                     if self.registry_only else
-                    "This permanently deletes every stored row except the migration "
-                    "ledger: source snapshots and rows, entries, run history, prepared "
-                    "text, usage, profiles, and their quotas.\n\n"
+                    "This permanently deletes every stored row except the applied "
+                    "migrations: source snapshots and rows, startups, run history, prepared "
+                    "text, usage, profiles, and their limits.\n\n"
                     "The schema stays in place, migrations stay recorded, and profiles "
                     "re-seed from dataops/.env.profiles.toml on the next Prepare run. "
                     "This cannot be undone."
@@ -48,7 +47,7 @@ class WipeConfirmScreen(ModalScreen[bool]):
             )
             with Horizontal(id="wipe-actions"):
                 yield Button(
-                    "Reset registry" if self.registry_only else "Wipe everything",
+                    "Reset registry data" if self.registry_only else "Wipe all data",
                     id="wipe-confirm", variant="warning",
                 )
                 yield Button("Cancel", id="wipe-cancel", variant="primary")

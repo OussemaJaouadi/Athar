@@ -19,25 +19,26 @@ from athar_dataops.schemas.preparation import PreparePreview
 from athar_dataops.services.database import DatabaseService
 from athar_dataops.services.metrics import ProcessSampler, StepMetrics
 from athar_dataops.services.orchestrator import PipelineOrchestrator
-from athar_dataops.ui.arabic import describe_error
+from athar_dataops.ui.arabic import describe_error, sanitize_display
 from athar_dataops.ui.dialogs.wipe import WipeConfirmScreen
 from athar_dataops.ui.panes.logs_pane import LogsPane
 from athar_dataops.ui.widgets.log_view import LogView
 from athar_dataops.ui.widgets.metric_card import MetricCard
 from athar_dataops.ui.widgets.run_timeline import RunTimeline, format_elapsed
 
+# Step titles are what the operator pressed for, not the function that runs.
 COLLECT_STEPS = [
-    ("fetch", "Acquire snapshot & hash"),
-    ("preserve", "Preserve source rows"),
-    ("normalize", "Normalize & validate"),
-    ("resolve", "Resolve identities & commit"),
+    ("fetch", "Download registry"),
+    ("preserve", "Store source rows"),
+    ("normalize", "Clean records"),
+    ("resolve", "Match startups and save"),
 ]
 CLEAN_STEPS = [
-    ("load", "Load stored evidence"),
-    ("normalize", "Normalize records"),
-    ("reconcile", "Reconcile corpus & commit"),
+    ("load", "Load stored rows"),
+    ("normalize", "Clean records"),
+    ("reconcile", "Match startups and save"),
 ]
-PREPARE_STEPS = [("load", "Load descriptions"), ("prepare", "Prepare text")]
+PREPARE_STEPS = [("load", "Find descriptions"), ("prepare", "Prepare text")]
 
 
 def _build_step_titles() -> dict[str, str]:
@@ -94,17 +95,13 @@ class RunPane(VerticalScroll):
 
     def compose(self):
         with Horizontal(id="run-metrics"):
-            yield MetricCard(
-                "Saved Entities", "—", "Registered startups", card_id="stat-entities"
-            )
-            yield MetricCard(
-                "Source Snapshots", "—", "Raw JSON archives", card_id="stat-snapshots"
-            )
-            yield MetricCard("Collection", "—", "Last run", card_id="stat-status")
+            yield MetricCard("Startups", "—", "matched from records", card_id="stat-entities")
+            yield MetricCard("Snapshots", "—", "registry downloads", card_id="stat-snapshots")
+            yield MetricCard("Last run", "—", "Collect", card_id="stat-status")
         with Horizontal(id="run-workspace"):
             with VerticalScroll(id="run-operations"):
                 yield Label("Operations", classes="heading")
-                yield Static("Choose an operation, then inspect its result in the activity panel.", classes="muted")
+                yield Static("Choose an operation; its progress shows on the right.", classes="muted")
                 with Horizontal(classes="actions", id="run-primary-actions"):
                     yield Button("Collect registry", id="run-pipeline", variant="primary")
                     yield Button("Clean data", id="clean-pipeline")
@@ -159,25 +156,16 @@ class RunPane(VerticalScroll):
         if not configured and self._profiles_warning:
             summary = f"Groq profiles unavailable: {self._profiles_warning}"
         elif not configured and not rows:
-            summary = "No Groq profiles configured"
+            summary = "No Groq profile. Add one to dataops/.env.profiles.toml."
         else:
-            # Configured (TOML/env) is truth on first launch; registered/disabled
-            # rows arrive once seeding or state changes happen.
+            # The TOML file is the truth; stored rows only add the disabled state.
             names = list(configured) or [row["name"] for row in rows]
-            registered = (
-                sum(1 for row in rows if row["name"] in configured)
-                if configured
-                else len(rows)
-            )
             disabled = sum(
                 1 for row in rows if row["name"] in names and row.get("disabled")
             )
-            if configured:
-                summary = f"{len(names)} configured · {registered} registered"
-            else:
-                summary = f"{registered} registered"
+            summary = f"{len(names)} profile{'' if len(names) == 1 else 's'}"
             if disabled:
-                summary += f" · {disabled} disabled"
+                summary += f" · {disabled} disabled (key rejected)"
             if len(names) <= 2:
                 summary += f" · {', '.join(names)}"
             else:
@@ -190,10 +178,10 @@ class RunPane(VerticalScroll):
         try:
             stats = await self._database.get_overview_stats()
             self.query_one("#stat-entities", MetricCard).set_value(
-                str(stats["entities"]), "Registered startups"
+                str(stats["entities"]), "matched from records"
             )
             self.query_one("#stat-snapshots", MetricCard).set_value(
-                str(stats["snapshots"]), "Raw source archives"
+                str(stats["snapshots"]), "registry downloads"
             )
             self._set_collection_status(
                 "running" if self.collecting else stats["status"]
@@ -268,10 +256,10 @@ class RunPane(VerticalScroll):
         for selector in ("#run-elapsed", "#run-counters", "#run-resources"):
             self.query_one(selector, Static).update("")
         self._set_status(
-            f"Registry reset · {deleted} rows deleted. Collect registry to start again.",
+            f"Registry data reset · {deleted} rows deleted. Run Collect registry to start again.",
             "success",
         )
-        self.app.set_workspace_status("Registry cleared · ready to collect", "success")
+        self.app.set_workspace_status("Registry data reset · ready to collect", "success")
         self.post_message(self.RegistryReset(deleted))
         self.query_one("#run-pipeline", Button).focus()
 
@@ -296,25 +284,24 @@ class RunPane(VerticalScroll):
         body = self.query_one("#prepare-preview-body", Static)
         self.query_one("#prepare-preview").display = True
         if not preview_data["available"]:
-            body.update("Preparation unavailable: no Groq profile is configured.")
-            self._set_status("Preparation unavailable", "warning")
+            body.update("No Groq profile. Add one to dataops/.env.profiles.toml.")
+            self._set_status("Prepare needs a Groq profile", "warning")
             return
         profiles = "\n".join(
             f"  {entry['name']} · {entry['model']} · key {entry['fingerprint']}"
             for entry in preview_data["profiles"]
         )
         body.update(
-            f"Prepare all eligible descriptions?\n\n"
-            f"Eligible descriptions: {preview_data['eligible']}\n"
-            f"Uncached model calls: {preview_data['uncached']}\n"
-            f"Cached descriptions: {preview_data['cached']}\n\n"
+            f"Prepare {preview_data['eligible']} descriptions?\n\n"
+            f"Need a model call: {preview_data['uncached']}\n"
+            f"Already prepared, reused: {preview_data['cached']}\n\n"
             f"Profiles:\n{profiles}\n\n"
-            f"Provider limits are operational safeguards, not Athar user quotas. "
-            f"Cancelled or stopped work keeps saved results."
+            "Each call counts against that profile's daily Groq limit. "
+            "Stopping keeps finished work."
         )
         self.query_one("#prepare-confirm", Button).disabled = preview_data["uncached"] == 0
         self.query_one("#prepare-cancel", Button).display = True
-        self._set_status("Review the preparation preview before starting model calls.", "warning")
+        self._set_status("Review the preview, then confirm to start model calls.", "warning")
         self.query_one("#prepare-confirm", Button).focus()
         # preview() seeds registered profiles; refresh the summary to match.
         self.run_worker(self._load_profile_summary(), exit_on_error=False)
@@ -333,7 +320,7 @@ class RunPane(VerticalScroll):
         self._prepare_preview = None
         self.query_one("#prepare-preview").display = False
         self.query_one("#prepare-confirm", Button).disabled = True
-        self._set_status("Preparation cancelled before any model call.", "warning")
+        self._set_status("Prepare cancelled before any model call.", "warning")
         self.query_one("#prepare-pipeline", Button).focus()
 
     def _begin_flow(self, cleaning: bool, preparing: bool = False) -> None:
@@ -362,9 +349,9 @@ class RunPane(VerticalScroll):
         self._render_log("all")
         self.query_one("#run-counters", Static).update("")
         self.query_one("#run-resources", Static).update("App process · CPU — · RSS —")
-        self._set_status("Loading stored evidence…" if cleaning else "Connecting…")
+        self._set_status("Loading stored rows…" if cleaning else "Connecting…")
         self.app.set_workspace_status(
-            f"RUNNING · {('Preparation' if preparing else 'Cleaning' if cleaning else 'Collection')}",
+            f"RUNNING · {('Prepare' if preparing else 'Clean' if cleaning else 'Collect')}",
             "warning",
         )
         self._timer.resume()
@@ -521,7 +508,7 @@ class RunPane(VerticalScroll):
 
     def _failed(self, error: str, mode: str) -> None:
         self._set_collection_status("failed")
-        self._set_status(f"{mode} failed. Open Logs for details and recovery.", "error")
+        self._set_status(f"{mode} failed: {sanitize_display(error)}", "error")
         self._terminal_text = f"FAILED · {mode}"
         self.app.set_workspace_status(f"FAILED · {mode}", "error")
 
@@ -540,11 +527,11 @@ class RunPane(VerticalScroll):
 
     async def _collect(self, cleaning: bool, preparing: bool = False) -> None:
         if preparing:
-            mode, operation = "Preparation", self._orchestrator.run_preparation
+            mode, operation = "Prepare", self._orchestrator.run_preparation
         elif cleaning:
-            mode, operation = "Cleaning", self._orchestrator.run_clean_pipeline
+            mode, operation = "Clean", self._orchestrator.run_clean_pipeline
         else:
-            mode, operation = "Collection", self._orchestrator.run_pipeline
+            mode, operation = "Collect", self._orchestrator.run_pipeline
         try:
             result = await operation(self._progress)
             self._set_collection_status(result.status)
@@ -564,9 +551,9 @@ class RunPane(VerticalScroll):
         except asyncio.CancelledError:
             try:
                 self._set_collection_status("cancelled")
-                self._set_status("Cancelled. Stored evidence kept.", "warning")
-                self._terminal_text = "CANCELLED · stored evidence kept"
-                self.app.set_workspace_status("CANCELLED · stored evidence kept", "warning")
+                self._set_status("Cancelled · stored rows are kept.", "warning")
+                self._terminal_text = "CANCELLED · stored rows kept"
+                self.app.set_workspace_status("CANCELLED · stored rows kept", "warning")
             except NoMatches:
                 pass
             raise

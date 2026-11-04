@@ -230,8 +230,8 @@ class WorkspaceTests(IsolatedAsyncioTestCase):
         async with app.run_test(size=(80, 24)) as pilot:
             await pilot.press("ctrl+2")
             await pilot.pause()
-            self.assertIn("SOURCE GAP", render_text(app.query_one("#detail-badge", Static).render()))
-            self.assertIn("Source gap (nonblocking)", str(app.query_one("#detail-review", Static).render()))
+            self.assertIn("Source gap", render_text(app.query_one("#detail-badge", Static).render()))
+            self.assertIn("Source gap: Missing description", str(app.query_one("#detail-review", Static).render()))
             await pilot.click("#records-review-filter")
             await pilot.pause()
             self.assertIn("1–1 of 1", str(app.query_one("#records-count", Static).render()))
@@ -650,7 +650,7 @@ class WorkspaceTests(IsolatedAsyncioTestCase):
             detail = render_text(app.query_one("#history-detail-body", Static).render())
             self.assertIn("Outcome: failed", detail)
             self.assertIn("Legacy error", detail)
-            self.assertIn("No step details recorded", detail)
+            self.assertIn("No step details were saved", detail)
             self.assertIn("Started: ", detail)
             self.assertNotIn("Started: Unknown time", detail)
 

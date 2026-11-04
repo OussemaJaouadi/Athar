@@ -11,6 +11,7 @@ Paths below are relative to `src/athar_dataops/`.
 | --- | --- |
 | `main.py`, `__main__.py` | Entry point, dependency construction, resource cleanup. |
 | `config.py` | Validated settings and absolute database path. |
+| `identity.py` | Application name, tagline, and version from package metadata; the only source for those strings. |
 | `services/` | Acquisition, normalization, prepare (Groq), and pipeline coordination. |
 | `services/database/` | `DatabaseService` composed from one store per responsibility: `core` (connection, transactions, migrations, schema previews), `registry` (evidence, identity, findings, reset), `runs` (run and step bookkeeping), `retrieval` (Records pages), `preparation` (prepare cache, usage, quotas). |
 | `schemas/` | Shared records, progress events, prepared output, issue classification, and query results. |

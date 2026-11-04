@@ -207,7 +207,7 @@ class PreparationTests(PreparationFixture):
         )
         result = await self.pipeline.run_preparation()
         self.assertEqual(result.status, "failed")
-        self.assertIn("daily allowance", result.error)
+        self.assertIn("Daily Groq limit", result.error)
 
     async def test_duplicate_cannot_hide_canonical_description_from_preparation(self):
         self.rows.append(dict(self.rows[0]))
@@ -294,7 +294,7 @@ class PreparationTests(PreparationFixture):
         config = self.config.model_copy(update={"groq_api_key": SecretStr("")})
         self.pipeline._preparation = PreparationService(GroqPreparationClient(self.http, config), self.db)
         self.assertFalse(self.pipeline.preparation_available)
-        with self.assertRaisesRegex(RuntimeError, "GROQ_API_KEY"):
+        with self.assertRaisesRegex(RuntimeError, "No Groq profile"):
             await self.pipeline.run_preparation()
         self.assertEqual((await self.pipeline.run_clean_pipeline()).status, "completed")
 

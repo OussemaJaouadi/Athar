@@ -8,6 +8,7 @@ from textual.containers import VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Button, Label, Static
 
+from athar_dataops.identity import APP_NAME, TAGLINE, app_version
 from athar_dataops.ui.widgets.ascii_mark import AsciiMark
 
 
@@ -22,10 +23,9 @@ class AboutScreen(ModalScreen):
 
     def compose(self) -> ComposeResult:
         with VerticalScroll(id="about-dialog"):
-            yield Label("Athar · DataOps", classes="heading")
+            yield Label(f"{APP_NAME} {app_version()}", classes="heading")
             yield Static(
-                "An evidence-backed memory of Tunisian startups.\n"
-                "Terminal workspace · Local-first · Evidence-first",
+                f"{TAGLINE}\nMaintainer workspace for the registry pipeline.",
                 classes="muted",
             )
             yield AsciiMark(id="ascii-mark")

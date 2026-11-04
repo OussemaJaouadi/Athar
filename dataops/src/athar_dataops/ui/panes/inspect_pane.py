@@ -87,13 +87,13 @@ class InspectPane(Vertical):
         with Vertical(id="records-empty"):
             yield Label("No records yet", classes="heading")
             yield Static(
-                "Collect the registry to get started.",
+                "Run Collect registry to get started.",
                 id="records-empty-message",
                 markup=False,
                 classes="muted",
             )
             yield Button(
-                "Go to collect", id="go-collect", variant="primary", classes="note"
+                "Open Run", id="go-collect", variant="primary", classes="note"
             )
             yield Button("Try again", id="retry-records", classes="note")
 
@@ -130,10 +130,10 @@ class InspectPane(Vertical):
                 with Vertical(id="review-section"):
                     yield Label("Review findings", classes="section-label")
                     yield Static("", id="detail-review", markup=False)
-                with Collapsible(title="Prepared retrieval text", collapsed=True, id="prepared-disclosure"):
+                with Collapsible(title="Prepared text", collapsed=True, id="prepared-disclosure"):
                     yield Static("", id="detail-prepared", markup=False)
                 with Collapsible(
-                    title="Source evidence & snapshot",
+                    title="Source row and snapshot",
                     collapsed=True,
                     id="source-disclosure",
                 ):
@@ -204,7 +204,7 @@ class InspectPane(Vertical):
                 return
             self.query_one("#records-empty Label", Label).update("No records yet")
             self.query_one("#records-empty-message", Static).update(
-                "Collect the registry to get started."
+                "Run Collect registry to get started."
             )
             await self._sync_listing(listing)
             self.query_one("#source-disclosure", Collapsible).collapsed = True
@@ -371,7 +371,7 @@ class InspectPane(Vertical):
         norm_table = Table(
             box=box.ROUNDED, expand=True, show_header=True, header_style=f"bold {pri}"
         )
-        norm_table.add_column("Registry Property", style=f"bold {pri}", width=18)
+        norm_table.add_column("Field", style=f"bold {pri}", width=18)
         norm_table.add_column("Value")
         norm_table.add_row("Website", Text(format_arabic(record.website or "Not listed")))
         norm_table.add_row(
@@ -395,7 +395,7 @@ class InspectPane(Vertical):
         self.query_one("#review-section").display = detail.needs_review
         self.query_one("#detail-review", Static).update(
             format_arabic("\n".join(
-                f"• { 'Decision needed' if issue.category == 'human' else 'Source gap (nonblocking)'}: {issue.message}"
+                f"• {'Decision needed' if issue.category == 'human' else 'Source gap'}: {issue.message}"
                 for issue in detail.open_issues
             ))
         )
@@ -415,14 +415,14 @@ class InspectPane(Vertical):
             border_style=palette.variables["control-line"],
         )
         fields_table.add_column(
-            "Provenance Field", style=f"bold {palette.variables['muted']}", max_width=16
+            "Source", style=f"bold {palette.variables['muted']}", max_width=16
         )
         fields_table.add_column("Value", style=palette.foreground, overflow="fold")
         fields_table.add_row("Source URL", Text(format_arabic(detail.source_url)))
         fields_table.add_row("Row Number", str(record.row_number))
         fields_table.add_row("Snapshot ID", detail.snapshot_id)
         fields_table.add_row("SHA-256", detail.content_hash)
-        fields_table.add_row("Entity ID", record.entity_id or "Unresolved")
+        fields_table.add_row("Startup ID", record.entity_id or "No startup matched")
         self.query_one("#detail-fields", Static).update(fields_table)
         self.query_one("#detail-original", Static).update(
             themed_json(format_arabic_obj(detail.original), dark=is_dark)

@@ -11,6 +11,7 @@ from textual.css.query import NoMatches
 from textual.widgets import Button, DataTable, Label, Select, Static
 
 from athar_dataops.config import Settings
+from athar_dataops.identity import TAGLINE, app_version
 from athar_dataops.schemas.preparation import ProfileOverview
 from athar_dataops.services.database import DatabaseService
 from athar_dataops.services.groq import PROVIDER
@@ -30,8 +31,8 @@ class SettingsPane(VerticalScroll):
         with Horizontal(classes="split", id="settings-split"):
             # Left Column: Configuration & Preferences
             with VerticalScroll(classes="rail", id="settings-config-card"):
-                yield Label("Preferences & Appearance", classes="heading")
-                yield Label("Theme Appearance", classes="field-label")
+                yield Label("Appearance", classes="heading")
+                yield Label("Theme", classes="field-label")
                 yield Select(
                     [("Athar Dark", "athar-dark"), ("Athar Light", "athar-light")],
                     value=(
@@ -42,7 +43,7 @@ class SettingsPane(VerticalScroll):
                 )
 
                 yield Label(
-                    "Workspace Settings", classes="heading", id="settings-env-heading"
+                    "Configuration", classes="heading", id="settings-env-heading"
                 )
                 yield Static(id="settings-env-table")
                 yield Label("Groq usage", classes="heading")
@@ -55,11 +56,6 @@ class SettingsPane(VerticalScroll):
                 yield Label("About Athar", classes="heading")
                 yield Static(id="settings-tagline", markup=True)
                 yield Static(id="settings-arch-table")
-                yield Static(
-                    "\n[dim]All claims remain traceable to durable, preserved source artifacts.[/]",
-                    markup=True,
-                    id="settings-footer-note",
-                )
                 yield Button("About Athar", id="about")
 
     def on_mount(self) -> None:
@@ -75,10 +71,10 @@ class SettingsPane(VerticalScroll):
 
     def _configure_tables(self) -> None:
         self.query_one("#settings-usage", DataTable).add_columns(
-            "Profile", "Model", "State", "Calls", "Req today", "Req/min", "Tokens today"
+            "Profile", "Model", "State", "Total calls", "Today", "Last minute", "Tokens today"
         )
         self.query_one("#settings-limits", DataTable).add_columns(
-            "Profile", "Records/day", "Req/min", "Tokens/day", "Est./record"
+            "Profile", "Records/day", "Requests/min", "Tokens/day", "Est. tokens/record"
         )
 
     async def _load_usage(self) -> None:
@@ -128,15 +124,15 @@ class SettingsPane(VerticalScroll):
         table = self.query_one("#settings-usage", DataTable)
         self._clear_table(table)
         if not rows:
-            self._set_table_message(table, "No Groq profiles registered")
+            self._set_table_message(table, "No Groq profile yet")
             return
         for entry in rows[:PROFILE_CAP]:
             if not entry.get("registered", True):
-                state = "configured"
+                state = "Not used yet"
             elif entry.get("disabled"):
-                state = "disabled"
+                state = "Disabled (key rejected)"
             else:
-                state = "active"
+                state = "Ready"
             tokens_today = entry.get("tokens_today")
             table.add_row(
                 Text(str(entry.get("name", "—"))),
@@ -155,7 +151,7 @@ class SettingsPane(VerticalScroll):
         table = self.query_one("#settings-limits", DataTable)
         self._clear_table(table)
         if not rows:
-            self._set_table_message(table, "No provider profiles configured")
+            self._set_table_message(table, "No Groq profile yet")
             return
         for entry in rows[:PROFILE_CAP]:
             quotas = entry.get("quotas", {})
@@ -194,20 +190,18 @@ class SettingsPane(VerticalScroll):
         )
         env_table.add_column("Setting", style=f"bold {pri}", width=16)
         env_table.add_column("Value")
-        env_table.add_row("Registry Source", str(self._config.registry_url))
-        env_table.add_row("Database Location", str(self._config.db_path))
+        env_table.add_row("Registry URL", str(self._config.registry_url))
+        env_table.add_row("Database", str(self._config.db_path))
         env_table.add_row("Groq profiles", self._profiles_summary())
-        env_table.add_row("Groq default model", self._config.groq_model)
-        env_table.add_row(
-            "Pipeline Timeout", f"{self._config.pipeline_timeout_seconds}s"
-        )
+        env_table.add_row("Default model", self._config.groq_model)
+        env_table.add_row("Run timeout", f"{self._config.pipeline_timeout_seconds}s")
         with suppress(NoMatches):
             self.query_one("#settings-env-table", Static).update(env_table)
 
         with suppress(NoMatches):
             self.query_one("#settings-tagline", Static).update(
-                f"[bold {pri}]An evidence-backed directory of Tunisian startups.[/]\n"
-                "Explore entities, track cohorts, review provenance, and verify records against original sources.\n"
+                f"[bold {pri}]{TAGLINE}[/]\n"
+                "This workspace collects the registry, cleans it, and prepares text for retrieval.\n"
             )
 
         about_table = Table(
@@ -219,13 +213,8 @@ class SettingsPane(VerticalScroll):
         about_table.add_column("Property", style=f"bold {pri}", width=18)
         about_table.add_column("Details")
         about_table.add_row("Application", "Athar DataOps")
-        about_table.add_row("Version", "0.1.0")
-        about_table.add_row("Dataset Scope", "Tunisian Startup Registry & Ecosystem")
-        about_table.add_row(
-            "Data Guarantee", "Immutable snapshots with byte-exact SHA-256 verification"
-        )
-        about_table.add_row(
-            "Workspace Mode", "Local-first desktop research environment"
-        )
+        about_table.add_row("Version", app_version())
+        about_table.add_row("Source", "Startup Tunisia registry")
+        about_table.add_row("License", "ISC")
         with suppress(NoMatches):
             self.query_one("#settings-arch-table", Static).update(about_table)

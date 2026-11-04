@@ -145,8 +145,8 @@ TabPane {
 }
 
 #run-reset {
-    width: 24;
-    min-width: 24;
+    width: auto;
+    min-width: 14;
     color: $warning;
     border: round $warning;
 }
@@ -597,7 +597,7 @@ Button:disabled {
 }
 
 #db-toolbar #db-wipe {
-    width: 14;
+    width: auto;
     min-width: 14;
 }
 
@@ -1153,6 +1153,7 @@ HelpScreen, AboutScreen, WipeConfirmScreen {
 
 #wipe-actions Button {
     width: 1fr;
+    min-width: 14;
     margin-right: 1;
 }
 

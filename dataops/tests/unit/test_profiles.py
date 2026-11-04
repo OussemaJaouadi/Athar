@@ -119,7 +119,7 @@ class ProfileRotationTests(IsolatedAsyncioTestCase):
         result = await self.pipeline.run_preparation()
         self.assertEqual(result.status, "failed")
         self.assertIn("HTTP 400", result.error or "")
-        self.assertNotIn("throttl", (result.error or "").lower())
+        self.assertNotIn("rate limited", (result.error or "").lower())
         self.assertEqual(len(self.calls["account-a"]) + len(self.calls["account-b"]), 1)
         state = {entry["name"]: entry for entry in await self.db.preparation_quota_state()}
         self.assertFalse(state["account-a"]["disabled"])
@@ -157,7 +157,7 @@ class ProfileRotationTests(IsolatedAsyncioTestCase):
         result = await self.pipeline.run_preparation()
         self.assertEqual(result.status, "failed")
         self.assertEqual(result.records_processed, 1)
-        self.assertIn("resume", (result.error or "").lower())
+        self.assertIn("daily groq limit", (result.error or "").lower())
         records = await self.db.list_records()
         self.assertEqual(sum(1 for record in records if record.prepared), 1)
 
@@ -172,7 +172,7 @@ class ProfileRotationTests(IsolatedAsyncioTestCase):
         self.assertEqual(result.status, "failed")
         self.assertEqual(self.calls["account-a"], [1])
         self.assertEqual(self.calls["account-b"], [1])
-        self.assertIn("throttl", (result.error or "").lower())
+        self.assertIn("rate limited", (result.error or "").lower())
         records = await self.db.list_records()
         self.assertEqual(sum(1 for record in records if record.prepared), 0)
 

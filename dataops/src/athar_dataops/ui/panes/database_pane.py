@@ -68,7 +68,7 @@ class DatabasePane(Vertical):
             yield Static(
                 "Checking…", id="db-migrations-summary", classes="muted", markup=False
             )
-            yield Button("Wipe data", id="db-wipe")
+            yield Button("Wipe all data", id="db-wipe")
         with Collapsible(title="Migration details", collapsed=True, id="db-migrations"):
             yield Static("Loading…", id="db-migrations-table", markup=False)
         with Horizontal(classes="split"):
@@ -82,13 +82,13 @@ class DatabasePane(Vertical):
                     zebra_stripes=True,
                     cell_padding=0,
                 )
-                yield Button("Inspect row · Enter", id="inspect-row", disabled=True)
+                yield Button("Inspect row (Enter)", id="inspect-row", disabled=True)
                 with Horizontal(classes="pager", id="table-pager"):
                     yield Button("Prev (p)", id="table-prev", disabled=True)
                     yield Button("Next (n)", id="table-next", disabled=True)
             with VerticalScroll(classes="rail", id="db-drawer"):
-                yield Button("Back to table · Esc", id="drawer-back")
-                yield Label("ROW INSPECTOR", id="drawer-title", classes="heading")
+                yield Button("Back to table (Esc)", id="drawer-back")
+                yield Label("Row", id="drawer-title", classes="heading")
                 yield Static("Select a row to inspect fields.", id="drawer-content")
 
     async def on_mount(self) -> None:
@@ -211,7 +211,7 @@ class DatabasePane(Vertical):
             return
         if self._orchestrator is not None and self._orchestrator.running:
             self.query_one("#results-label", Label).update(
-                "Wait for the running pipeline before wiping."
+                "Wait for the running operation before wiping."
             )
             return
         self.app.push_screen(WipeConfirmScreen(), self._wipe_confirmed)
@@ -238,7 +238,7 @@ class DatabasePane(Vertical):
         self._wiping = False
         await self.refresh_schema()
         await self.refresh_migrations()
-        summary.update(f"Wiped {deleted} rows · schema and migrations kept")
+        summary.update(f"Wiped {deleted} rows · tables and migrations kept")
         summary.set_classes("muted success")
         self.post_message(self.DatabaseWiped(deleted))
 

@@ -5,7 +5,7 @@ import unicodedata
 from typing import Any
 
 from athar_dataops.schemas.database import RecordPage
-from athar_dataops.schemas.issues import RecordIssue
+from athar_dataops.schemas.issues import RecordIssue, describe_finding
 from athar_dataops.schemas.registry import (
     NormalizedRecord,
     RecordDetail,
@@ -216,7 +216,10 @@ class RetrievalStore(ConnectionCore):
         issues_by_row: dict[int, list[RecordIssue]] = {}
         for finding in findings:
             issues_by_row.setdefault(finding["row_number"], []).append(
-                RecordIssue(finding["code"], finding["category"], finding["reason"])
+                RecordIssue(
+                    finding["code"], finding["category"],
+                    describe_finding(finding["code"], finding["reason"]),
+                )
             )
         originals = {row["row_number"]: row for row in rows}
         details = []

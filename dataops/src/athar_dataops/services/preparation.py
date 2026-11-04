@@ -28,8 +28,19 @@ from athar_dataops.services.groq import (
     ProfileStatus,
 )
 
-_QUOTA_EXHAUSTED = "Groq daily allowance reached across all profiles; resume after reset"
-_RATE_LIMITED = "Groq rate limits still throttling; resume later with your configured profiles"
+_QUOTA_EXHAUSTED = (
+    "Daily Groq limit reached on every profile. Finished work is saved; "
+    "run Prepare all again after the limit resets."
+)
+_RATE_LIMITED = (
+    "Every profile is rate limited. Finished work is saved; "
+    "run Prepare all again in a minute."
+)
+_HINT_LABELS = {
+    "rate_limited": "rate limited",
+    "transport": "connection failed",
+    "authentication": "key rejected",
+}
 
 
 def candidate_versions(candidate: dict) -> tuple[str, str]:
@@ -254,7 +265,7 @@ class PreparationService:
 
     async def run(self, progress: Callable[[StageProgress], None] | None = None) -> PipelineRunResult:
         if not self.available:
-            raise RuntimeError("No Groq credentials: set GROQ_API_KEY or add profiles to .env.profiles.toml")
+            raise RuntimeError("No Groq profile. Add one to dataops/.env.profiles.toml.")
         await self._db.sync_profiles(list(self.provider.profiles), list(GROQ_DEFAULT_QUOTAS))
         run_id = str(uuid4())
         processed = cached = failed = 0
@@ -281,7 +292,7 @@ class PreparationService:
             await report("running", "Finding descriptions to prepare")
             candidates = await self._db.preparation_candidates()
             snapshot_id = candidates[0]["snapshot_id"] if candidates else None
-            await report("completed", f"{len(candidates)} eligible descriptions")
+            await report("completed", f"{len(candidates)} descriptions to prepare")
             stage = "prepare"
             await report("running", f"Groq {self.marker}")
             # One index for the whole run: candidates are distinct entities, so a
@@ -308,7 +319,7 @@ class PreparationService:
                     processed += 1
                     if progress:
                         progress(StageProgress(stage, "running",
-                                               f"{profile} · {processed}/{len(candidates)} prepared · {cached} cached · {failed} failed",
+                                               f"{profile} · {processed}/{len(candidates)} prepared · {cached} reused · {failed} failed",
                                                processed, run_id))
                     continue
                 while True:
@@ -352,7 +363,8 @@ class PreparationService:
                         hinted.add(profile)
                         if progress:
                             progress(StageProgress(stage, "running",
-                                                   f"{profile}: {reply.limit_hint}; rotating", processed, run_id))
+                                                   f"{profile}: {_HINT_LABELS.get(reply.limit_hint, reply.limit_hint)} · trying the next profile",
+                                                   processed, run_id))
                         continue
                     await self._db.finish_preparation_usage(
                         attempt_id, monotonic() - start,
@@ -364,7 +376,7 @@ class PreparationService:
                         failed += 1
                         if progress:
                             progress(StageProgress(stage, "running",
-                                                   f"Skipped invalid output for record {candidate['entity_id'][:8]}; retryable", processed, run_id))
+                                                   f"Skipped startup {candidate['entity_id'][:8]}: reply changed the facts; retried next run", processed, run_id))
                         break
                     await self._db.save_preparation(
                         candidate, cache_key, input_hash, ledger.model_for(profile),
@@ -374,16 +386,16 @@ class PreparationService:
                     break
                 if progress:
                     progress(StageProgress(stage, "running",
-                                           f"{profile} · {processed}/{len(candidates)} prepared · {cached} cached · {failed} failed",
+                                           f"{profile} · {processed}/{len(candidates)} prepared · {cached} reused · {failed} failed",
                                            processed, run_id))
             if failed:
-                raise RuntimeError(f"{failed} descriptions failed validation; {processed} successes retained")
-            await report("completed", f"{processed} prepared · {cached} cached · 0 failed")
+                raise RuntimeError(f"{failed} replies changed the facts and were skipped; {processed} prepared texts are saved")
+            await report("completed", f"{processed} prepared · {cached} reused · 0 failed")
             return await self._db.finish_preparation_run(run_id, "completed", processed, snapshot_id)
         except (Exception, asyncio.CancelledError) as exc:
             cancelled = isinstance(exc, asyncio.CancelledError)
             status = "cancelled" if cancelled else "failed"
-            message = "Preparation cancelled; saved outputs retained" if cancelled else str(exc)
+            message = "Prepare cancelled; finished work is saved" if cancelled else str(exc)
             await report(status, message)
             result = await self._db.finish_preparation_run(run_id, status, processed, snapshot_id, message)
             if cancelled:

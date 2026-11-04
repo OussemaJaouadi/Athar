@@ -1,4 +1,4 @@
-"""Persisted pipeline run history and step inspection."""
+"""Saved run history and step inspection."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from athar_dataops.ui.arabic import describe_error, sanitize_display
 
 
 class HistoryPane(Vertical):
-    """Browse persisted runs without coupling them to live Run state."""
+    """Browse saved runs without coupling them to live Run state."""
 
     def __init__(self, database: DatabaseService | None = None, **kwargs) -> None:
         super().__init__(**kwargs)
@@ -30,7 +30,7 @@ class HistoryPane(Vertical):
             with Vertical(id="history-title"):
                 yield Label("Run history", classes="heading")
                 yield Static(
-                    "Persisted collection, cleaning, and preparation runs.",
+                    "Saved Collect, Clean, and Prepare runs.",
                     id="history-subtitle",
                     classes="muted",
                 )
@@ -89,9 +89,9 @@ class HistoryPane(Vertical):
             self.query_one("#history-run-status", Static).display = False
             self.query_one("#history-detail-title", Label).update("No matching runs")
             self.query_one("#history-detail-body", Static).update(
-                "No persisted runs match this filter."
+                "No saved runs match this filter."
                 if runs
-                else "No persisted runs yet. Start a collection or cleaning operation."
+                else "No runs yet. Run Collect registry to create one."
             )
             return
         if self._selected_run:
@@ -120,15 +120,15 @@ class HistoryPane(Vertical):
         return self._query in haystack
 
     def _operation(self, run: dict) -> str:
-        operation = str(run.get("operation") or "unknown").replace("_", " ").title()
+        operation = _OPERATION_NAMES.get(str(run.get("operation") or ""), "Unknown operation")
         status = str(run.get("status") or "unknown").upper()
         return f"{operation} · {status}"
 
     def _metrics(self, run: dict) -> str:
         return (
             f"{_short_time(run.get('started_at'))} · "
-            f"{run.get('records_processed', 0)} rec · "
-            f"{run.get('review_count', 0)} rev"
+            f"{run.get('records_processed', 0)} records · "
+            f"{run.get('review_count', 0)} in review"
         )
 
     @on(Button.Pressed, "#history-refresh")
@@ -173,7 +173,7 @@ class HistoryPane(Vertical):
             )
             return
         self._set_status("Loaded", "success")
-        operation = str(run.get("operation") or "unknown").replace("_", " ").title()
+        operation = _OPERATION_NAMES.get(str(run.get("operation") or ""), "Unknown operation")
         self.query_one("#history-detail-title", Label).update(
             escape(f"Run {run_id[:8]} · {operation}")
         )
@@ -196,7 +196,7 @@ class HistoryPane(Vertical):
                 f"[dim]Records: {run.get('records_processed', 0)} · "
                 f"Records in review: {run.get('review_count', 0)}[/]"
             ),
-            f"[dim]Snapshot: {escape(str(run.get('snapshot_id') or 'None'))}[/]",
+            f"[dim]Snapshot: {escape(str(run.get('snapshot_id') or 'none recorded'))}[/]",
         ]
         error = run.get("error")
         if error:
@@ -220,7 +220,7 @@ class HistoryPane(Vertical):
             if step.get("message"):
                 lines.append(f"   [dim]{escape(sanitize_display(str(step['message'])))}[/]")
         if not steps:
-            lines.append("[dim]No step details recorded.[/dim]")
+            lines.append("[dim]No step details were saved for this run.[/dim]")
         self.query_one("#history-detail-body", Static).update("\n".join(lines))
 
     def _is_dark(self) -> bool:
@@ -233,6 +233,9 @@ class HistoryPane(Vertical):
 
 
 _CHIP_CLASSES = {"completed": "success", "failed": "error", "running": "warning"}
+_OPERATION_NAMES = {"collect": "Collect", "clean": "Clean", "prepare": "Prepare"}
+_OPERATION_NAMES = {"collect": "Collect", "clean": "Clean", "prepare": "Prepare"}
+_OPERATION_NAMES = {"collect": "Collect", "clean": "Clean", "prepare": "Prepare"}
 
 
 def _timestamp(value: str | None) -> datetime | None:

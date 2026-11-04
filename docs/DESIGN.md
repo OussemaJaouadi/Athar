@@ -162,6 +162,34 @@
 - Avoid neon glow, decorative gradients, ornamental motion, and excessive enclosing cards.
 - Preserve recognizable controls; expression must not obscure how an action works.
 
+## Interface copy
+
+One vocabulary for the whole interface; the words below are the only names for these things.
+
+| Term | Meaning |
+|---|---|
+| **Run** | One execution of an operation; also the tab that starts one. |
+| **Collect, Clean, Prepare** | The three operations. Status prose keeps the stem: "Collect failed", not "Collection failed". |
+| **Source row** | One raw registry row as downloaded. Never "entry", "item", or "evidence" on its own. |
+| **Record** | One cleaned source row; the unit of "records in review". |
+| **Startup** | One matched entity. "Entity" appears only in the Database tab, where it is a table name. |
+| **Snapshot** | One downloaded copy of the registry. |
+| **In review** | A record with an open finding, which is either a **decision** or a **gap**. |
+| **Finding** | One reason a record is in review. |
+| **Profile** | One Groq key with its model and limits. |
+| **Reset registry data**, **Wipe all data** | The two destructive actions. "Clear" never destroys stored data. |
+
+Rules:
+
+- Sentence case for every label, heading, column, and button. Uppercase only on status badges and section labels.
+- Buttons are verb first and name the object: "Open Records", "Reset registry data". Key hints share one format: "Prev (p)".
+- Step titles and progress say what the operator asked for, never the function that runs: "Match startups and save", not "Resolve identities & commit".
+- Errors read "Operation failed: cause." followed by one next step. Never "see Logs" when the cause is known.
+- Code identifiers never reach a widget: no enum values, booleans, or theme names in copy.
+- Every terminal status says what is kept, in the same words everywhere: "Finished work is saved" (Prepare), "Stored rows are kept" (Collect).
+- No reassurance or marketing adjectives: graceful, safely, immutable, guarantee.
+- The name, tagline, and version come from one module (`identity.py`), not literals.
+
 ## Textual adaptation — proposed
 
 - Share semantic color names, selection emphasis, and status wording with the web interface.

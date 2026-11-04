@@ -26,6 +26,8 @@
 
 ### Workspace and review
 
+- One vocabulary across the interface: source row, record, startup, snapshot, finding, profile, and the three operations Collect, Clean, Prepare. Step titles and progress say what was asked for ("Match startups and save") instead of the function that runs. Failures show their cause and a next step instead of "Open Logs". Review findings are written for a reviewer ("Missing description", "Website is not a valid URL; kept as written"). The Prepare preview says how many descriptions need a model call and how many are reused. Settings, About, Help, and the dialogs use sentence case and drop the marketing lines; the version comes from package metadata.
+
 - Run now offers a confirmed registry reset for a fresh Collect/Clean evaluation. It clears source and derived records plus old run history, while retaining Groq profiles, quotas, and usage counts.
 - Records shows the main and additional descriptions, related registry entries, and founder evidence labels.
 - Organized the terminal app into Run, Records, History, Database, Logs, Probes, and Settings, with keyboard navigation and dark and light themes.

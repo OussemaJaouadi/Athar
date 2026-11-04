@@ -50,7 +50,7 @@ class MetricCard(Vertical):
         self._subtext = subtext
 
     def compose(self) -> ComposeResult:
-        yield Label(self._label_text.upper(), classes="card-label")
+        yield Label(self._label_text, classes="card-label")
         yield Label(
             self._value_text,
             classes="card-value",

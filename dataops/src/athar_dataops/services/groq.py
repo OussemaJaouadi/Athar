@@ -151,16 +151,16 @@ class GroqPreparationClient:
             )
         except (httpx.TimeoutException, httpx.TransportError):
             # Rotation-friendly: a connection failure cools this profile, not the run.
-            return PreparationReply(error="Groq connection failed or timed out; consumption unknown",
+            return PreparationReply(error="Groq connection failed or timed out; token count unknown",
                                     stop=False, profile=name, limit_hint="transport")
         # Never surface response bodies or exception reprs: they may echo credentials/input.
         if response.status_code != 200:
             if response.status_code in (401, 403):
-                reason = {401: "Groq authentication failed", 403: "Groq access denied"}[response.status_code]
+                reason = {401: "Groq rejected the key", 403: "Groq denied access for this key"}[response.status_code]
                 return PreparationReply(error=reason, stop=True, profile=name, limit_hint="authentication")
             if response.status_code in (429, 503, 530):
                 return PreparationReply(
-                    error="Groq rate limit reached; this profile cools and the run rotates",
+                    error="Groq rate limit reached; trying the next profile",
                     stop=False, profile=name, limit_hint="rate_limited",
                 )
             # Any other status is a request or provider fault, not a quota signal.
@@ -216,7 +216,7 @@ class GroqPreparationClient:
             error = None
         except (ValueError, ValidationError, KeyError, IndexError, TypeError, AttributeError):
             output = None
-            error = "Groq output refused, incomplete, or failed evidence validation; retryable"
+            error = "Groq reply was refused, incomplete, or changed the facts; retried next run"
         def count(key: str) -> int | None:
             value = usage.get(key)
             return value if type(value) is int and value >= 0 else None

@@ -56,6 +56,7 @@ class DatabasePane(Vertical):
         self._orchestrator = orchestrator
         self._table: str | None = None
         self._offset = 0
+        self._page_size = 30
         self._current_page: TablePage | None = None
         self._inspecting = False
         self._migration_rows: list[dict] = []
@@ -75,12 +76,7 @@ class DatabasePane(Vertical):
                 yield Tree("Tables", id="schema-tree")
             with Vertical(classes="detail database-detail", id="db-detail"):
                 yield Label("Choose a table", id="results-label", markup=False)
-                yield DataTable(
-                    id="results-table",
-                    cursor_type="row",
-                    zebra_stripes=True,
-                    cell_padding=0,
-                )
+                yield DataTable(id="results-table", cursor_type="row", zebra_stripes=False)
                 yield Button("Inspect row (Enter)", id="inspect-row", disabled=True)
                 with Horizontal(classes="pager", id="table-pager"):
                     yield Button("Prev (p)", id="table-prev", disabled=True)
@@ -252,9 +248,8 @@ class DatabasePane(Vertical):
     @on(Button.Pressed, "#table-prev")
     @on(Button.Pressed, "#table-next")
     async def change_page(self, event: Button.Pressed) -> None:
-        self._offset = max(
-            0, self._offset + (100 if event.button.id == "table-next" else -100)
-        )
+        step = self._page_size
+        self._offset = max(0, self._offset + (step if event.button.id == "table-next" else -step))
         await self._show_table()
 
     def action_prev_page(self) -> None:
@@ -370,47 +365,22 @@ class DatabasePane(Vertical):
         self.query_one("#drawer-content", Static).update("Loading row details…")
         self.query_one("#table-next", Button).disabled = True
         try:
-            page = await self._db.table_page(self._table, self._offset)
+            # Page at what the table can show; a 100-row page cost 180 ms to render.
+            visible = table.size.height - 1 if table.size.height > 1 else 0
+            self._page_size = max(10, visible) if visible else 30
+            page = await self._db.table_page(self._table, self._offset, self._page_size)
             self._current_page = page
             self.query_one("#inspect-row", Button).disabled = not page.rows
 
-            col_widths = []
+            widths = []
             for col_idx, col_name in enumerate(page.columns):
-                max_val_len = max(
-                    (len(self._preview(row[col_idx])) for row in page.rows),
-                    default=0,
-                )
-                w = max(len(col_name) + 3, max_val_len + 3, 8)
-                w = min(w, 24)
-                col_widths.append(w)
-
-            for i, (col_name, w) in enumerate(zip(page.columns, col_widths)):
-                is_last = i == len(page.columns) - 1
-                header_text = (
-                    f" {col_name:<{w - 3}} │"
-                    if not is_last
-                    else f" {col_name:<{w - 1}}"
-                )
-                table.add_column(Text(header_text), width=w)
-
+                longest = max((len(self._preview(row[col_idx], 24)) for row in page.rows), default=0)
+                widths.append(min(max(len(col_name), longest, 6), 24))
+            for col_name, width in zip(page.columns, widths):
+                table.add_column(Text(col_name), width=width)
             for row in page.rows:
-                formatted_cells = []
-                for i, (val, w) in enumerate(zip(row, col_widths)):
-                    is_last = i == len(row) - 1
-                    pv = self._preview(val, max_len=w - 3 if not is_last else w - 1)
-                    cell_text = (
-                        f" {pv:<{w - 3}} │" if not is_last else f" {pv:<{w - 1}}"
-                    )
-                    formatted_cells.append(cell_text)
-                # DataTable parses str cells as markup; Text() keeps them literal.
-                table.add_row(*(Text(cell) for cell in formatted_cells))
+                table.add_row(*(Text(self._preview(val, width)) for val, width in zip(row, widths)))
 
-            table.border_title = f" {self._table} "
-            table.border_subtitle = (
-                f" rows {self._offset + 1}–{self._offset + len(page.rows)} "
-                if page.rows
-                else " empty "
-            )
             self.query_one("#results-label", Label).update(
                 f"{self._table} · "
                 + (

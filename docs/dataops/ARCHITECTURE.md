@@ -164,7 +164,7 @@ Records reads open findings from `entity_review_items`; its review filter, badge
 - Failed parsing or processing retains evidence already saved; failed derived writes roll back.
 - Cancellation and timeout update run history; cancellation propagates after bookkeeping.
 - A shared database lock serializes access; transaction handling protects commit/rollback boundaries.
-- The database browser exposes bounded table previews, not arbitrary SQL execution.
+- The database browser exposes bounded table previews, not arbitrary SQL execution. A page is sized to the rows the table can show (at least 10, at most 500), so paging and scrolling are the same motion and a page never costs a 100-row render.
 - Arabic shaping and JSON highlighting affect presentation only; stored originals remain intact.
 
 ## UI boundaries and working rules

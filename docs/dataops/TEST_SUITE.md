@@ -41,7 +41,7 @@ uv run --project dataops python -m unittest discover -s dataops/tests/unit -t da
 - The review filter, the stats' review count, and pagination use one ledger.
 - Invalid JSON, a non-array payload, an oversized body, too many rows, and an HTTP failure each fail visibly while preserving whatever was already stored.
 - A failed derived write rolls back entities and records; cancellation during the derived transaction rolls back; cancellation before it keeps the preserved source; a timeout is a persisted failure.
-- Bounded table pages, Unicode-aware search across pages, and refusal of a table name that is not in the schema.
+- Bounded table pages with a caller-chosen page size, Unicode-aware search across pages, and refusal of a table name that is not in the schema.
 - A redirect from the registry fails the run with the target in the error and stores no snapshot; account tables in the same file are invisible to the schema, paging, and wipe; the database and its journal are owner-only.
 - Reopening keeps data and migration history; foreign keys reject orphan rows; an unknown legacy database is refused without touching it.
 - Upgrades from the 001, 002, and 008 schemas keep evidence, review items, and usage; migration 010 backfills coverage without trusting a legacy false entity group; the superseded 003 checksum stays visible as `legacy`.

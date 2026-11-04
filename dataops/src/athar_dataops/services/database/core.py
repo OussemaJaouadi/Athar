@@ -191,21 +191,23 @@ class ConnectionCore:
             self._schema_cache = result
             return result
 
-    async def table_page(self, table: str, offset: int = 0) -> TablePage:
+    async def table_page(self, table: str, offset: int = 0, limit: int = 100) -> TablePage:
+        """One bounded page of a product table; the caller sizes it to what it can show."""
         schema = await self.schema()
         if table not in schema:
             raise ValueError("Unknown table")
+        limit = max(1, min(int(limit), 500))
         quoted = table.replace('"', '""')
         async with self._lock:
             cursor = await self.connection.execute(
-                f'SELECT * FROM "{quoted}" ORDER BY rowid LIMIT 101 OFFSET ?',
-                (max(0, offset),),
+                f'SELECT * FROM "{quoted}" ORDER BY rowid LIMIT ? OFFSET ?',
+                (limit + 1, max(0, offset)),
             )
             try:
                 rows = await cursor.fetchall()
             finally:
                 await cursor.close()
-        return TablePage(schema[table], rows[:100], len(rows) > 100)
+        return TablePage(schema[table], rows[:limit], len(rows) > limit)
 
     async def migration_status(self) -> list[dict[str, Any]]:
         """Compare packaged migrations with applied rows; reporting never fails fast."""

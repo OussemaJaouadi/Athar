@@ -362,7 +362,7 @@ VerticalScroll, ListView, DataTable, RichLog, Tree, TextArea {
 #run-status.error { color: $error; }
 #run-status.warning { color: $warning; }
 #run-elapsed { width: auto; }
-#run-resources { height: 1; }
+#run-resources { height: auto; }
 
 RunTimeline {
     height: 5;
@@ -377,7 +377,7 @@ RunTimeline:focus { background: $panel; border: none; }
 #run-activity { height: 1fr; min-height: 6; }
 #run-log-title { height: 1; margin-bottom: 0; }
 LogView { height: 1fr; min-height: 4; border: none; background: transparent; }
-LogView RichLog { background: transparent; }
+LogView RichLog { background: transparent; overflow-x: hidden; }
 
 /* ---------- Records ---------- */
 
@@ -553,6 +553,7 @@ HelpScreen, AboutScreen, WipeConfirmScreen, PrepareConfirmScreen {
 .compact #run-context { width: 1fr; height: 1fr; border-left: none; padding-left: 0; }
 .compact #run-context-header Button { display: none; }
 .compact #run-activity { min-height: 4; }
+.compact RunTimeline { margin: 0; }
 .compact #records-rail { width: 30; }
 .compact #history-rail { width: 30; }
 .compact #logs-rail { width: 20; }

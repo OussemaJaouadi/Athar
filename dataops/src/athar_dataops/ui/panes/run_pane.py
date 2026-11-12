@@ -224,7 +224,7 @@ class RunPane(Vertical):
         self._runs = [run for run in runs if self._run_matches(run)]
         listing = self.query_one("#history-list", DataTable)
         if not listing.columns:
-            listing.add_column(Text("Operation"), width=8, key="operation")
+            listing.add_column(Text("Operation"), width=9, key="operation")
             listing.add_column(Text("Status"), width=9, key="status")
             listing.add_column(Text("Started"), width=11, key="started")
             listing.add_column(Text("Rows"), width=4, key="rows")

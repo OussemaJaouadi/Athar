@@ -175,7 +175,7 @@ The terminal interface is built from this vocabulary and nothing else. A pane th
 | List row | One line, left padded; the highlighted row takes the selection tint and, when the list has focus, a thick left bar in the accent. |
 | Status chip | One row of text on the state's tint: success, warning, error, or neutral. Never bordered. |
 | Key-value | Two unboxed columns: muted bold label, text value, values fold. |
-| Table | No outer box. The header is bold in the link color over one rule in the line color; values fold to the column width. The Data grid, which must scroll, uses a faint alternate-row tint instead of rules. |
+| Table | No outer box. The header is bold in the link color over one rule in the line color; values fold to the column width. Grids that scroll or carry a cursor (Review records, saved runs, Data) are DataTables with the same header colors and a faint alternate-row tint instead of rules. |
 | Disclosure | A Collapsible with no frame; the title is the accent and the contents indent by two cells. |
 | Timeline | Five rows: markers, road, step names, state chips sized to their word, badges. |
 | Log stream | The shared `render_entry` format; no frame; the title is a muted line above it. |

@@ -26,6 +26,8 @@
 
 ### Workspace and review
 
+- Review records and saved runs are tables: a Name and Review column for records, Operation, Status, Started and Rows for runs, one line each, with the row cursor driving the detail beside them.
+- Tests run in parallel processes with a shared migrated template database and wait on the state they assert; the unit layer takes about 8 s and the UI layer about 35 s on a 12-core machine, down from 52 s and 195 s.
 - Settings is one column; the About card it carried is the About dialog under Tools, nothing else.
 - Tables read as tables again: a bold header in the link color over one rule, numbers right-aligned, and the Data grid striped so rows read apart. The Settings usage and limits tables fold to the column instead of scrolling sideways.
 - Review and Data load on first view instead of before the first paint, so the app appears about a fifth sooner on a 150-record database.

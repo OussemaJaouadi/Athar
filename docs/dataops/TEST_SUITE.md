@@ -16,8 +16,11 @@ uv run --project dataops dataops/tests/run.py unit          # every change
 uv run --project dataops dataops/tests/run.py ui            # before a commit
 uv run --project dataops dataops/tests/run.py all
 uv run --project dataops dataops/tests/run.py unit -k reconcile   # select by name
+uv run --project dataops dataops/tests/run.py ui -j 1              # one process, plain unittest output
 uvx ruff check dataops/src dataops/tests --no-cache
 ```
+
+The runner spreads tests across processes (up to eight, one test per task), because every test owns a temporary database and shares nothing. A module that fails to import is reported with its traceback before anything runs. Budget on a 12-core machine: unit about 8 s, ui about 35 s; the same layers take 52 s and 195 s in one process.
 
 One file, with the layer directory as the start and `tests` as the top level:
 
@@ -26,7 +29,7 @@ uv run --project dataops python -m unittest discover -s dataops/tests/unit -t da
 ```
 
 - Standard-library `unittest`; asynchronous cases use isolated event loops.
-- `tests/support.py` holds the shared pieces: `registry_row` (a synthetic registry record), `render_text` (plain-text rendering of a Rich renderable), and `PreparationFixture` (one collected record plus a steerable fake Groq). It also silences asyncio's slow-callback log, which Textual mounts trip constantly.
+- `tests/support.py` holds the shared pieces: `registry_row` (a synthetic registry record), `render_text` (plain-text rendering of a Rich renderable or a Static's content), `fresh_database` (a copy of a migrated template, built once per migrations version under the temp directory, so a test pays 7 ms for its schema instead of 150 ms; `initialize` on the copy still verifies every checksum, and the upgrade tests build their own files), `wait_until` (poll the app for the asserted state with a loud timeout, never a fixed sleep), and `PreparationFixture` (one collected record plus a steerable fake Groq). It also silences asyncio's slow-callback log, which Textual mounts trip constantly.
 - No live registry or model calls; fixtures close clients and connections and remove temporary files.
 
 ## Unit layer

@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import os
 import shutil
 import tempfile
 from importlib.resources import files
@@ -48,13 +49,21 @@ async def fresh_database(path: Path) -> DatabaseService:
     """
     global _TEMPLATE
     if _TEMPLATE is None:
-        template = Path(tempfile.mkdtemp(prefix="athar-template-")) / f"{_migrations_digest()}.db"
-        db = DatabaseService(template)
-        await db.initialize()
-        await db.close()  # checkpoints the WAL; a leftover WAL would mean the copy is incomplete
-        wal = template.with_name(template.name + "-wal")
-        if wal.exists() and wal.stat().st_size:
-            raise RuntimeError("template database closed with an unflushed WAL")
+        # One file per migrations version, shared by every process and run; built atomically.
+        folder = Path(tempfile.gettempdir()) / f"athar-test-templates-{os.getuid()}"
+        folder.mkdir(mode=0o700, exist_ok=True)
+        template = folder / f"{_migrations_digest()}.db"
+        if not template.exists():
+            building = folder / f"{_migrations_digest()}.{os.getpid()}.building"
+            db = DatabaseService(building)
+            await db.initialize()
+            await db.close()  # checkpoints the WAL; a leftover WAL would mean the copy is incomplete
+            wal = building.with_name(building.name + "-wal")
+            if wal.exists() and wal.stat().st_size:
+                raise RuntimeError("template database closed with an unflushed WAL")
+            os.replace(building, template)
+            for leftover in (wal, building.with_name(building.name + "-shm")):
+                leftover.unlink(missing_ok=True)
         _TEMPLATE = template
     shutil.copy(_TEMPLATE, path)
     db = DatabaseService(path)

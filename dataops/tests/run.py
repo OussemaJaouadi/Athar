@@ -23,15 +23,21 @@ ROOT = Path(__file__).resolve().parent
 DEFAULT_JOBS = max(1, min(8, (os.cpu_count() or 2) - 1))
 
 
-def _collect(layer: str, patterns: list[str]) -> list[str]:
+def _collect(layer: str, patterns: list[str]) -> tuple[list[str], list[unittest.TestCase]]:
+    """Test ids to run in workers, and any module that failed to import (reported here, not reloaded)."""
     loader = unittest.TestLoader()
     if patterns:
         loader.testNamePatterns = [f"*{pattern}*" for pattern in patterns]
     ids: list[str] = []
+    broken: list[unittest.TestCase] = []
     for directory in LAYERS[layer]:
         suite = loader.discover(str(ROOT / directory), top_level_dir=str(ROOT))
-        ids.extend(test.id() for test in _flatten(suite))
-    return ids
+        for test in _flatten(suite):
+            if isinstance(test, unittest.loader._FailedTest):
+                broken.append(test)
+            else:
+                ids.append(test.id())
+    return ids, broken
 
 
 def _flatten(suite):
@@ -51,7 +57,8 @@ def run_ids(ids: list[str]) -> dict:
     result = unittest.TextTestRunner(stream=stream, verbosity=0).run(suite)
     return {
         "ran": result.testsRun,
-        "failed": [(str(test), trace) for test, trace in result.failures],
+        "failed": [(str(test), trace) for test, trace in result.failures]
+        + [(str(test), "unexpected success") for test in result.unexpectedSuccesses],
         "errored": [(str(test), trace) for test, trace in result.errors],
         "skipped": len(result.skipped),
         "seconds": time.perf_counter() - started,
@@ -63,7 +70,11 @@ def main() -> int:
     layer = args[0] if args and args[0] in LAYERS else "unit"
     patterns = [args[i + 1] for i, arg in enumerate(args) if arg == "-k" and i + 1 < len(args)]
     jobs = next((int(args[i + 1]) for i, arg in enumerate(args) if arg == "-j" and i + 1 < len(args)), DEFAULT_JOBS)
-    ids = _collect(layer, patterns)
+    ids, broken = _collect(layer, patterns)
+    if broken:
+        # An import error is reported with its traceback, the way plain unittest does.
+        unittest.TextTestRunner(verbosity=1).run(unittest.TestSuite(broken))
+        return 1
     if not ids:
         print("no tests matched")
         return 1

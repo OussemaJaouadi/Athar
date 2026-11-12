@@ -171,7 +171,7 @@ Records reads open findings from `entity_review_items`; its review filter, badge
 
 - Panes own interaction and view state; widgets own reusable presentation; dialogs own focused overlays.
 - Layout rules in `app.tcss`: at most one frame per column, and that frame is a single left rule; regions separate by whitespace and section labels; buttons are one row; every Rich table goes through `key_value` or `plain_table`; status is a one-row chip; the Prepare preview is a modal.
-- Review keeps its 100 list rows and updates their labels in place on paging and search; the event log rebuilds its console as one batched write of at most the newest 500 matches after a 150 ms typing pause. Neither view remounts widgets per keystroke.
+- Review and the saved runs are DataTables (row cursor, one line per row); a page of 100 rows is rebuilt in a few milliseconds on paging, search, resize, and theme change. The event log rebuilds its console as one batched write of at most the newest 500 matches after a 150 ms typing pause. Neither view remounts widgets per keystroke.
 - Review and Data read nothing at mount. Each loads on its first `Show`, so startup paints after the Pipeline tab alone; a run finishing before that first view refreshes them as usual and counts as the first load.
 - `main.run()` freezes the heap and raises the gen-0 GC threshold once services and the app exist; nothing allocated before that point is scanned again.
 - `RunTimeline` is a focusable linked-circle pipeline; arrows stay local, while number keys keep their tab navigation role.

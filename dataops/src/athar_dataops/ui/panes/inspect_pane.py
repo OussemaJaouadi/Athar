@@ -28,6 +28,15 @@ from athar_dataops.ui.widgets.badges import review_badge, review_cell
 from athar_dataops.ui.widgets.keyvalue import key_value
 
 
+class RecordsTable(DataTable):
+    """The records grid; its own resize is the right moment to refit the Name column."""
+
+    def on_resize(self) -> None:
+        pane = next((node for node in self.ancestors if isinstance(node, InspectPane)), None)
+        if pane is not None:
+            pane._fit_columns()
+
+
 class InspectPane(Vertical):
     BINDINGS: ClassVar[list[Binding]] = [
         Binding("slash", "focus_search", "Search", show=False),
@@ -103,7 +112,7 @@ class InspectPane(Vertical):
                 with Horizontal(classes="count-row", id="records-count-row"):
                     yield Button("In review", id="records-review-filter")
                     yield Static("", id="records-count", classes="muted")
-                yield DataTable(id="records-list", cursor_type="row", zebra_stripes=True)
+                yield RecordsTable(id="records-list", cursor_type="row", zebra_stripes=True)
                 with Horizontal(classes="pager", id="records-pager"):
                     yield Button("Prev (p)", id="records-prev", disabled=True)
                     yield Button("Next (n)", id="records-next", disabled=True)
@@ -143,14 +152,15 @@ class InspectPane(Vertical):
         self.query_one("#records-content").display = False
         self._fit_columns()
 
-    def on_resize(self) -> None:
-        self._fit_columns()
-
     def _fit_columns(self) -> None:
-        """Name takes what the rail leaves after the review chip; rebuilt when the width changes."""
+        """Name takes what the table's own width leaves after the review chip and the scrollbar.
+
+        The table calls this from its resize, so the compact rail (set by the app
+        after its own resize) is measured after it has actually shrunk.
+        """
         listing = self.query_one("#records-list", DataTable)
-        rail = self.query_one("#records-rail").size.width or 38
-        name_width = max(10, rail - 2 - len(" Decision ") - 4)
+        width = listing.size.width or 42
+        name_width = max(8, width - 2 - (len(" Decision ") + 2) - 2)  # scrollbar, chip cell, name padding
         if listing.columns and next(iter(listing.columns.values())).width == name_width:
             return
         self._name_width = name_width
@@ -341,7 +351,7 @@ class InspectPane(Vertical):
 
     @on(DataTable.RowHighlighted, "#records-list")
     def highlight_record(self, event: DataTable.RowHighlighted) -> None:
-        index = event.cursor_row
+        index = event.data_table.cursor_row  # the table's row now, not a queued event's from the previous page
         if 0 <= index < len(self._records):
             self._show_detail(self._records[index])
 

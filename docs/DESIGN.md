@@ -1,9 +1,8 @@
 # Athar — Design System
 
-> Foundation v0.1 — approved web design baseline following the user's Stitch
-> preview review. Use the specified visual system for the first implementation.
-> Runtime behavior and accessibility still require validation; the Textual
-> adaptation remains proposed until reviewed in the terminal.
+> Foundation v0.2 — the Qallaline palette and type, November 2026. The earlier
+> onyx and candy-blue baseline is reserved for another product and is withdrawn.
+> Runtime behavior and accessibility still require validation on real screens.
 
 ## Authority and scope
 
@@ -12,67 +11,70 @@
 - Preserve the approved web baseline across implementation; reopen visual choices only for an explicit change or a demonstrated issue.
 - A color or component's presence does not introduce a product feature or milestone.
 - Keep the system independent of the frontend framework and component library.
-- Web and Textual share semantic roles and emphasis; each uses its native layout.
 - Demonstration content used during design is not product data.
 
 ## Confirmed direction
 
 - **Layout:** research workspace; results remain beside the selected profile.
-- **Brand anchors:** onyx `#020202` and candy blue `#82D5E5`.
+- **Source of the palette:** Qallaline tiles of Tunis, the four historic glazes on white tin glaze: manganese, copper green, antimony ochre, cobalt. Cobalt is deliberately unused because blue belongs to the owner's other products.
+- **Brand anchors:** manganese ink `#2A211C` and glaze green `#0F7A66`.
 - **Themes:** light and dark, each designed explicitly.
-- **Character:** cool, clear, approachable, comfortable for extended research.
+- **Character:** "Athar keeps the traces: every fact about Tunisian startups, with its source beside it."
 - **Evidence:** a claim leads to its original source while preserving context.
+- **Proportion:** 60-30-10. The page is the 60, the glaze-neutral family is the 30, green is the single 10 and the only action color.
 
 ## Color tokens
 
 - Values are listed as **light / dark**. Components consume role names, not raw hex values.
 - Keep the brand anchors stable; use theme-specific variants for legible text and controls.
 - Use explicit background colors so contrast does not depend on stacked transparency.
+- Ratios below are computed WCAG contrast against the stated background.
 
-### Surfaces and content
+### Surfaces and content (the 60 and the 30)
 
-- `color.canvas`: `#F2F7F8` / `#020202`.
-- `color.surface`: `#FFFFFF` / `#0E1417`.
-- `color.surface.raised`: `#EAF1F3` / `#182226`.
-- `color.selection.background`: `#DDF2F6` / `#16333B`.
-- `color.text.primary`: `#10191C` / `#EEF5F6`.
-- `color.text.secondary`: `#526368` / `#A7B9BE`.
-- `color.link`: `#176579` / `#82D5E5`.
-- `color.focus`: `#176579` / `#82D5E5`.
-- `color.border.subtle`: `#D2DEE1` / `#2B393E`.
-- `color.border.control`: `#758A90` / `#60767E`.
+- `color.canvas`: `#F8F6F1` / `#171412` — the 60, the page itself.
+- `color.surface`: `#EEEAE2` / `#211C18` — section fills, cards, tables.
+- `color.surface.raised`: `#E4DFD5` / `#2B251F` — toolbars, overlays.
+- `color.selection.background`: `#DCEDE6` / `#1F3A33` — a green tint; text on it keeps its own color (13.0:1 / 11.4:1).
+- `color.text.primary`: `#2A211C` / `#F8F6F1` (14.6:1 / 17.0:1 on canvas).
+- `color.text.secondary`: `#6B5F55` / `#A89C90` (5.7:1 / 6.8:1 on canvas; 5.2:1 / 6.3:1 on surface).
+- `color.link`: `#0F7A66` on canvas, `#0D6E5C` on surface / `#6FCDB4` (4.9:1 and 5.1:1 / 9.7:1).
+- `color.focus`: same as link.
+- `color.border.subtle`: `#D6D0C4` / `#3A332D` — decorative dividers only.
+- `color.border.control`: `#8A8076` / `#7A7066` — input outlines (3.6:1 / 3.8:1, above the 3:1 floor).
 
 - Canvas is the workspace background; surface is the main reading or control surface.
-- Raised surfaces separate toolbars, secondary regions, and floating content.
 - Selected content retains primary and secondary text; its tint communicates selection.
 - Subtle separators group content; they must not be the only way to identify a control.
-- Use the control border for input outlines and other essential visible boundaries.
 - Link text inside prose is underlined; color alone does not identify the link.
 
-### Actions and focus
+### Actions and focus (the 10)
 
-- `color.action.primary.background`: `#82D5E5` in both themes.
-- `color.action.primary.foreground`: `#071215` in both themes.
-- `color.action.primary.hover`: `#9CE0EC` in both themes.
-- `color.action.primary.pressed`: `#67C3D7` in both themes.
-- Light-mode primary buttons retain a visible control outline.
+- `color.action.primary.background`: `#0F7A66` / `#6FCDB4`.
+- `color.action.primary.foreground`: `#FFFFFF` / `#171412` (5.3:1 / 9.7:1).
+- `color.action.primary.hover`: `#0D6E5C` / `#86D8C3`.
+- `color.action.primary.pressed`: `#0B6150` / `#5CBFA6`.
 - Secondary actions use surface, primary text, and the control border.
 - Focus uses a 2px ring with 2px separation, independent of hover or selection.
-- Hover gives temporary feedback; selection remains visible after the pointer leaves.
-- Reserve strong candy-blue emphasis for actions, current selection, and navigation.
-- Do not turn ordinary descriptions or source text blue for decoration.
+- Green is reserved for actions, links, current selection, and navigation. Nothing else is green.
+
+### Ochre, the data accent
+
+- `color.accent.data`: `#B07A0C` / `#E4B64A` — chart fills, the evidence marker, "sourced" and year badges; large shapes only in light (3.5:1).
+- `color.accent.data.text`: `#875D08` / `#E4B64A` (5.4:1 on canvas, 4.9:1 on surface / 9.7:1).
+- Ochre is never a link or a button, so green stays the only action color and the 10 holds.
 
 ### Semantic states
 
-- Each state combines text, an icon or symbol, and a tinted background.
-- **Success, light:** foreground `#176344`, background `#E7F4EC`.
-- **Success, dark:** foreground `#80CFA6`, background `#102A20`.
-- **Warning, light:** foreground `#7A4B08`, background `#FFF1D6`.
-- **Warning, dark:** foreground `#F1C276`, background `#302414`.
-- **Error, light:** foreground `#A13635`, background `#FCEDEC`.
-- **Error, dark:** foreground `#F2A09A`, background `#311D1D`.
-- **Information, light:** foreground `#275E91`, background `#E9F2FA`.
-- **Information, dark:** foreground `#9BC7F2`, background `#172838`.
+- Each state combines text, an icon or symbol, and a tinted background. Ratios are text on its tint.
+- **Success, light:** foreground `#276A43`, background `#E6F1E9` (4.6:1).
+- **Success, dark:** foreground `#7BD094`, background `#17302A` (7.6:1).
+- **Warning, light:** foreground `#7A5F00`, background `#F7EDD6` (4.6:1); yellow-leaning so it never reads as copper.
+- **Warning, dark:** foreground `#E0B84A`, background `#332A12` (7.5:1).
+- **Error, light:** foreground `#B3261E`, background `#F7E2DF` (5.3:1).
+- **Error, dark:** foreground `#F08A80`, background `#35201D` (6.3:1).
+- **Information, light:** foreground `#4A6B8C`, background `#E2EAF0` (4.6:1); a muted steel, kept far from cobalt and candy blue.
+- **Information, dark:** foreground `#A9BFD6`, background `#1C262E` (8.1:1).
 
 - Success reports a completed operation; it does not certify a startup or claim.
 - Warning means attention is needed; error means an operation failed or input is invalid.
@@ -80,13 +82,14 @@
 - Missing evidence stays neutral and is described explicitly.
 - Brand selection never implies verification, confidence, or business performance.
 
-### Charts
+### Charts (tesserae)
 
-- Category A: light `#23798C`, dark `#82D5E5`.
-- Category B: light `#26764F`, dark `#83CEA3`.
-- Category C: light `#8256A6`, dark `#C5AAED`.
-- Category D: light `#946307`, dark `#E6BE74`.
-- Category E: light `#B55367`, dark `#EEA4B5`.
+- Slot A, glaze green: light `#0F7A66`, dark `#6FCDB4`.
+- Slot B, ochre: light `#B07A0C`, dark `#E4B64A`.
+- Slot C, manganese: light `#5A4036`, dark `#C9A999`.
+- Slot D, terracotta: light `#B5553A`, dark `#E8927B`.
+- Slot E, steel: light `#4A6B8C`, dark `#A9BFD6`.
+- Every light slot is at least 4.5:1 on canvas; every dark slot at least 7.7:1.
 - A–E are palette slots, not product categories or rankings.
 - Preserve category-to-slot assignments across filters, views, and theme changes.
 - Add labels; use distinguishable markers, line styles, or patterns where needed.
@@ -104,21 +107,20 @@
 
 ## Typography
 
-- **Web family:** Figtree, self-hosted; system sans-serif fallback while it loads.
-- Its friendly geometric forms soften the onyx/candy-blue palette.
-- Weights: 400 for reading, 500 for controls, 600 for headings.
-- Page title: 28px size / 36px line height.
-- Section heading: 20px / 28px.
-- Body and source excerpts: 16px / 24px.
-- Controls and compact labels: 14px / 20px.
-- Secondary metadata: 13px / 18px.
+All families are free (Google Fonts, OFL) and cover Arabic, French and English together.
+
+- **Display:** Readex Pro 500 and 600, variable. Built from Lexend for readability; its Latin and Arabic were designed together, with geometric, kufi-like forms that answer the tile geometry.
+- **Body and tables:** IBM Plex Sans with IBM Plex Sans Arabic, 400 and 500. One family across scripts, tabular figures (`tnum`) for every table and comparison.
+- **Fallback pair:** El Messiri 600 for display; Noto Sans with Noto Naskh Arabic for body.
+- **Arabic running text:** Noto Naskh Arabic; **Arabic UI labels:** Noto Kufi Arabic.
+- Verify Readex Pro's tabular figures before setting numbers in it; until then all numbers are Plex.
+- Page title: 28px size / 36px line height. Section heading: 20px / 28px.
+- Body and source excerpts: 16px / 24px. Controls and compact labels: 14px / 20px. Secondary metadata: 13px / 18px.
 - Implement sizes in rem; preserve browser zoom and user text scaling.
 - Keep prose approximately 65–75 characters wide; tables may be wider.
-- Use tabular figures for numeric comparisons.
 - Reserve monospace for identifiers, code, and technical output.
 - Avoid tiny uppercase labels and exaggerated heading scales.
-- Source excerpts retain their original language and reading direction, with suitable font fallbacks.
-- Figtree belongs to the approved web baseline following the Stitch preview review.
+- Source excerpts retain their original language and reading direction.
 
 ## Geometry and elevation
 
@@ -162,122 +164,49 @@
 - Avoid neon glow, decorative gradients, ornamental motion, and excessive enclosing cards.
 - Preserve recognizable controls; expression must not obscure how an action works.
 
-## Terminal components
-
-The terminal interface is built from this vocabulary and nothing else. A pane that needs something new extends the vocabulary here first.
-
-| Component | Rule |
-|---|---|
-| Pane | No outer frame. Padding `1 1 0 1`. Columns separate by a two-cell gap, and a detail column carries a single left rule. |
-| Section label | Bold muted text with one row above it. Uppercase only for list headings such as RUNS. |
-| Button | One row, `[ label ]` with two cells of padding, no border. Primary is the candy fill; secondary is the panel tint; quota-spending is information text on its tint; destructive is error text on its tint and fills only on hover or focus. Focus underlines the label. |
-| Input, select, text area | One row on the panel tint; focus moves to the selection tint. No borders. |
-| List row | One line, left padded; the highlighted row takes the selection tint and, when the list has focus, a thick left bar in the accent. |
-| Status chip | One row of text on the state's tint: success, warning, error, or neutral. Never bordered. |
-| Key-value | Two unboxed columns: muted bold label, text value, values fold. |
-| Table | No outer box. The header is bold in the link color over one rule in the line color; values fold to the column width. Grids that scroll or carry a cursor (Review records, saved runs, Data) are DataTables with the same header colors and a faint alternate-row tint instead of rules. |
-| Disclosure | A Collapsible with no frame; the title is the accent and the contents indent by two cells. |
-| Timeline | Five rows: markers, road, step names, state chips sized to their word, badges. |
-| Log stream | The shared `render_entry` format; no frame; the title is a muted line above it. |
-| Dialog | The one place a rounded frame appears, in the dialog's semantic color: line for help and about, destructive red for wipe and reset, information blue for Prepare. |
-
-Under 100 columns the Run tab turns its operations into one row of buttons and gives the run the rest of the height; rails narrow; the Settings identity card and the Database drawer hide or take the full width.
-
 ## Interface copy
 
 One vocabulary for the whole interface; the words below are the only names for these things.
 
 | Term | Meaning |
 |---|---|
-| **Run** | One execution of an operation; also the tab that starts one. |
+| **Run** | One execution of an operation. |
 | **Collect, Clean, Prepare** | The three operations. Status prose keeps the stem: "Collect failed", not "Collection failed". |
 | **Source row** | One raw registry row as downloaded. Never "entry", "item", or "evidence" on its own. |
 | **Record** | One cleaned source row; the unit of "records in review". |
-| **Startup** | One matched entity. "Entity" appears only in the Database tab, where it is a table name. |
+| **Startup** | One matched entity. "Entity" is a table name, never interface copy. |
 | **Snapshot** | One downloaded copy of the registry. |
 | **In review** | A record with an open finding, which is either a **decision** or a **gap**. |
 | **Finding** | One reason a record is in review. |
 | **Profile** | One Groq key with its model and limits. |
-| **Reset registry data**, **Wipe all data** | The two destructive actions. "Clear" never destroys stored data. |
+| **Reset registry data** | The destructive action. "Clear" never destroys stored data. |
 
 Rules:
 
-- Sentence case for every label, heading, column, and button. Uppercase only on status badges and section labels.
-- Buttons are verb first and name the object: "Open Records", "Reset registry data". Key hints share one format: "Prev (p)".
+- Sentence case for every label, heading, column, and button. Uppercase only on status badges.
+- Buttons are verb first and name the object: "Open profile", "Reset registry data".
 - Step titles and progress say what the operator asked for, never the function that runs: "Match startups and save", not "Resolve identities & commit".
 - Errors read "Operation failed: cause." followed by one next step. Never "see Logs" when the cause is known.
-- Code identifiers never reach a widget: no enum values, booleans, or theme names in copy.
+- Code identifiers never reach the screen: no enum values, booleans, or theme names in copy.
 - Every terminal status says what is kept, in the same words everywhere: "Finished work is saved" (Prepare), "Stored rows are kept" (Collect).
 - No reassurance or marketing adjectives: graceful, safely, immutable, guarantee.
-- The name, tagline, and version come from one module (`identity.py`), not literals.
-
-## Textual adaptation — proposed
-
-- Share semantic color names, selection emphasis, and status wording with the web interface.
-- Keep the terminal's font; adapt spacing to cells and geometry to terminal capabilities.
-- Use visible focus outlines or markers; distinguish focus from selected content.
-- Arrow keys navigate choices; Enter activates; Escape returns or dismisses where safe.
-- Text inputs retain native editing behavior.
-- Navigation alone never launches a DataOps operation.
-- Represent execution, progress, completion, and errors using both labels and symbols.
-- Preserve meaning when terminal colors are approximated or overridden.
-- Maintain responsive interaction during long-running work.
-
-### Terminal tokens
-
-The terminal keeps the web roles and the two brand anchors, with values tuned for cells. Every pair below is checked by `tests/unit/test_themes.py`.
-
-| Role | Dark | Light | Use |
-|---|---|---|---|
-| canvas | `#020202` | `#E6EAEC` | workspace background |
-| surface | `#0F171A` | `#FFFFFF` | reading and control surface |
-| panel | `#1E2A2F` | `#F2F4F5` | inset blocks, secondary buttons |
-| hover | `#323C42` | `#E8EDEF` | temporary pointer feedback, a neutral lift |
-| selection | `#124552` | `#B9E3EB` | the current item, a teal tint |
-| text | `#EEF5F6` | `#1C1D1F` | primary text |
-| muted | `#A3B6BC` | `#555B5F` | secondary text, 4.5:1 or better on every surface |
-| line | `#36484F` | `#C3CCD0` | separators that group content |
-| control-line | `#7A929B` | `#6C7B82` | borders of inputs and secondary buttons |
-| accent | `#82D5E5` | `#075E73` | focus ring, links, selection text, primary fill (light fill `#0A6D82` with white) |
-| information | `#9BC7F2` on `#172838` | `#275E91` on `#E9F2FA` | text on its tint only: source gaps, the quota-spending action outline |
-| success | `#8FDCB2` on `#102A20` | `#176344` on `#E7F4EC` | a completed operation |
-| warning | `#F1C276` on `#302414` | `#7A4B08` on `#FFF1D6` | attention: warnings, cancelled, a finding that needs a decision |
-| error | `#E8837B` on `#311D1D` | `#C02A54` on `#FCEDEC` | a failed operation or invalid input |
-| destructive | `#B3453D` with `#EEF5F6` | `#C02A54` with white | Reset registry data and Wipe all data only |
-| violet | `#C5AAED` | `#68429A` | JSON numbers and booleans, a syntax role |
-
-- Hover and selection are different colors in both themes; focus adds a ring in the accent, and a focused primary button gets a ring in its own text color.
-- Surfaces separate on their own (1.2:1 dark, 1.1:1 light); borders group content and are not the only way to see a region.
-- Information is never a fill: the Prepare actions are outlined in it so the primary action stays the one filled candy blue control.
-- Amber means attention. Destructive actions are red. Running is the accent. A card never carries a colored stripe for decoration.
-- No pane or widget holds a color literal; the themes module is the only source, and the shared theme helper picks the palette.
-- Four tabs mapped to jobs: Pipeline (run and watch), Review (judge records), Data (inspect tables), Tools (probes, settings, about). The event log lives under the Pipeline timeline, not in its own tab.
-- Keep the masthead operational: show active operation state, completion, cancellation, or failure before the user opens a detail view.
-- Rich JSON, tables, stage progress, and logs read theme colors explicitly; secondary text avoids ANSI dimming.
-- JSON keys render in the accent, strings in the text color, numbers and booleans in violet, null in muted italic, in both themes.
-- Records search covers names, sectors, and descriptions across the latest completed collection.
-- Use an explicit `block-hover-background` in the TUI: Textual's generated `boost` resolves to transparent in light mode.
-- Light-mode states are explicit in Records, Database, Logs, and Settings, including dropdowns and the tab bar. Active navigation and filter fills are the accent; row selections use the selection tint. Keyboard focus adds a ring or underline, without implicit framework tinting.
-- No matches keeps search available and clears previous record details.
-- At fewer than 120 terminal columns, Database opens row details on Enter; Escape restores the table and selected row.
-- The collection card reports the last run outcome, with Unknown on read failure. No static health claim.
+- The name, tagline, and version come from one module, not literals.
 
 ## Validation and decision changes
 
-- The foundation's 51 sampled color pairings passed the checks below.
-- Lowest sampled text contrast: **5.42:1**; lowest checked control/chart contrast: **3.17:1**.
-- Primary button text on candy blue: **11.39:1**.
-- Samples cover primary/secondary/link text on four surfaces per theme, control borders on three surfaces, chart marks on content surfaces, semantic text on its tint, and three primary-button states.
+- Every text pair above was computed against its stated background; the lowest text contrast is **4.6:1** (success, warning and information on their light tints), the lowest control boundary **3.6:1**.
+- Light-theme ochre `#B07A0C` fails for text (3.5:1) and is restricted to fills and large shapes; the text variant is `#875D08`.
+- Light-theme green `#0F7A66` passes on canvas (4.9:1) but not on surface (4.4:1); links on surfaces use `#0D6E5C`.
 - These measurements validate specified pairs, not accessibility of a rendered application.
 - Target at least 4.5:1 for normal text and 3:1 for essential control boundaries and graphical information.
-- During implementation, verify typography rendering, keyboard focus, narrow layouts, long content, and both themes against the approved baseline.
+- During implementation, verify typography rendering, keyboard focus, narrow layouts, long content, Arabic text, and both themes.
 - Check text enlargement, reduced motion, and color-vision differences on actual screens.
 - Recheck changed color pairs whenever tokens or their usage change.
 - Promote a proposed choice to confirmed only after its visual or interaction review.
-- Visual approval does not replace runtime testing or accessibility verification.
 
 ## References
 
-- [Figtree — official font repository](https://github.com/erikdkennedy/figtree).
+- [Readex Pro](https://fonts.google.com/specimen/Readex+Pro), [IBM Plex Sans Arabic](https://fonts.google.com/specimen/IBM+Plex+Sans+Arabic), [El Messiri](https://fonts.google.com/specimen/El+Messiri), [Noto Naskh Arabic](https://fonts.google.com/specimen/Noto+Naskh+Arabic).
+- Qallaline tilework: the Tunis workshops of the 17th and 18th centuries; see the Bardo and Dar Ben Abdallah collections.
 - [WCAG 2.2 — text contrast](https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html).
 - [WCAG 2.2 — non-text contrast](https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast.html).

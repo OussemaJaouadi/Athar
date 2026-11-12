@@ -121,6 +121,7 @@ class RunPane(Vertical):
         self._runs: list[dict[str, Any]] = []
         self._runs_query = ""
         self._shown_run: str | None = None
+        self._rebuild_target: str | None = None  # the row a rebuild leaves the cursor on
 
     def _timeline(self) -> RunTimeline:
         return self.query_one(RunTimeline)
@@ -234,6 +235,10 @@ class RunPane(Vertical):
             listing.add_column(Text("Status"), width=9, key="status")
             listing.add_column(Text("Started"), width=11, key="started")
             listing.add_column(Text("Rows"), width=4, key="rows")
+        # DataTable posts RowHighlighted for row 0 as soon as the first row lands, and again when
+        # the cursor is restored. Those are the rebuild's, not the user's: highlight_run ignores
+        # everything up to and including the highlight of the row the cursor ends on.
+        self._rebuild_target = None
         listing.clear()
         for run in self._runs:
             status = str(run.get("status") or "unknown").lower()
@@ -244,9 +249,12 @@ class RunPane(Vertical):
                 Text(str(run.get("records_processed", 0)), justify="right"),
                 key=run["id"],
             )
-        if self._shown_run and not self.collecting:
-            index = next((i for i, run in enumerate(self._runs) if run["id"] == self._shown_run), None)
-            if index is not None:
+        if self._runs:
+            index = 0
+            if self._shown_run and not self.collecting:
+                index = next((i for i, run in enumerate(self._runs) if run["id"] == self._shown_run), 0)
+            self._rebuild_target = self._runs[index]["id"]
+            if index:
                 listing.move_cursor(row=index, animate=False)
 
     def _status_style(self, status: str) -> str:
@@ -272,6 +280,10 @@ class RunPane(Vertical):
     @on(DataTable.RowHighlighted, "#history-list")
     async def highlight_run(self, event: DataTable.RowHighlighted) -> None:
         run_id = event.row_key.value if event.row_key is not None else None
+        if self._rebuild_target is not None:
+            if run_id == self._rebuild_target:
+                self._rebuild_target = None  # the rebuild's last highlight; the user's start after it
+            return
         if run_id and run_id != self._shown_run and not self.collecting:
             await self.show_saved_run(run_id)
 

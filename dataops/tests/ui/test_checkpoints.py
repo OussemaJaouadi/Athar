@@ -533,11 +533,9 @@ class CheckpointTests(IsolatedAsyncioTestCase):
             await pilot.press("3")
             await pilot.pause()
             await self._press(pilot, "#db-wipe")
-            await pilot.pause()
-            self.assertIsInstance(app.screen, WipeConfirmScreen)
+            await self.wait_until(pilot, lambda: isinstance(app.screen, WipeConfirmScreen))
             await pilot.press("escape")
-            await pilot.pause()
-            self.assertEqual(len(app.screen_stack), 1)
+            await self.wait_until(pilot, lambda: len(app.screen_stack) == 1)
             self.assertEqual(
                 (await self.db._rows("SELECT COUNT(*) AS n FROM source_rows"))[0]["n"],
                 2,
@@ -572,13 +570,11 @@ class CheckpointTests(IsolatedAsyncioTestCase):
             await pilot.pause()
             self.pipeline._running = True
             await self._press(pilot, "#run-reset")
-            await pilot.pause()
-            self.assertEqual(len(app.screen_stack), 1)
+            await self.wait_until(pilot, lambda: len(app.screen_stack) == 1)
             self.pipeline._running = False
 
             await self._press(pilot, "#run-reset")
-            await pilot.pause()
-            self.assertIsInstance(app.screen, WipeConfirmScreen)
+            await self.wait_until(pilot, lambda: isinstance(app.screen, WipeConfirmScreen))
             self.assertTrue(app.screen.registry_only)
             await pilot.press("escape")
             await pilot.pause()

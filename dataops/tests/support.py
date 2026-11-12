@@ -13,6 +13,7 @@ from pathlib import Path
 from unittest import IsolatedAsyncioTestCase
 
 import httpx
+import turso
 from rich.console import Console
 
 from athar_dataops.config import Settings
@@ -32,11 +33,13 @@ _TEMPLATE: Path | None = None
 
 
 def _migrations_digest() -> str:
-    """Changes to any migration file produce a different template."""
+    """A different template for any change to a migration, to the service that applies them, or to turso."""
     digest = hashlib.sha256()
     for path in sorted(files("athar_dataops").joinpath("migrations").iterdir(), key=lambda p: p.name):
         digest.update(path.name.encode())
         digest.update(path.read_bytes())
+    digest.update(files("athar_dataops").joinpath("services/database/core.py").read_bytes())
+    digest.update(getattr(turso, "__version__", "").encode())
     return digest.hexdigest()[:12]
 
 

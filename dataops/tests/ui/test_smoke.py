@@ -564,14 +564,35 @@ class WorkspaceTests(IsolatedAsyncioTestCase):
             )
 
     async def test_saved_run_shows_on_the_timeline_with_its_events(self):
+        older = await self.orchestrator.run_pipeline()
         result = await self.orchestrator.run_pipeline()
         app = self.app()
         async with app.run_test(size=(120, 40)) as pilot:
             await pilot.pause()
             await app.workers.wait_for_complete()
             await pilot.pause()
+            pane = app.query_one(RunPane)
+            # Listing the saved runs is not choosing one: the tab opens on the ready view.
+            self.assertIsNone(pane._shown_run)
+            self.assertEqual(render_text(app.query_one("#run-heading", Label).render()).strip(), "Run")
             runs = app.query_one("#history-list", DataTable)
-            self.assertGreaterEqual(runs.row_count, 1)
+            self.assertEqual(runs.row_count, 2)
+            # A rebuild keeps the cursor on the shown run and loads nothing on its own.
+            await pane.show_saved_run(older.run_id)
+            await pilot.pause()
+            shown, calls = pane.show_saved_run, []
+
+            async def spy(run_id):
+                calls.append(run_id)
+                await shown(run_id)
+
+            pane.show_saved_run = spy
+            await pane.refresh_runs()
+            await pilot.pause()
+            await pilot.pause()
+            self.assertEqual(calls, [])
+            self.assertEqual((pane._shown_run, runs.cursor_row), (older.run_id, 1))
+            pane.show_saved_run = shown
             operation, status, started, rows = runs.get_row_at(0)
             self.assertEqual((operation.plain, status.plain), ("Collect", "done"))
             self.assertRegex(started.plain, r"^\d\d-\d\d \d\d:\d\d$")

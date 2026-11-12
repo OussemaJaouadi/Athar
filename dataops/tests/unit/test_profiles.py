@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest import IsolatedAsyncioTestCase
 
 import httpx
-from support import registry_row
+from support import fresh_database, registry_row
 
 from athar_dataops.config import (
     Settings,
@@ -15,7 +15,6 @@ from athar_dataops.config import (
     load_groq_profiles,
 )
 from athar_dataops.services.artifacts import ArtifactService
-from athar_dataops.services.database import DatabaseService
 from athar_dataops.services.groq import GROQ_DEFAULT_QUOTAS, GroqPreparationClient
 from athar_dataops.services.orchestrator import PipelineOrchestrator
 from athar_dataops.services.preparation import PreparationService
@@ -49,8 +48,7 @@ class ProfileRotationTests(IsolatedAsyncioTestCase):
         self.path = Path(self.directory.name) / "test.db"
         self.profiles_path = Path(self.directory.name) / ".env.profiles.toml"
         self.profiles_path.write_text(PROFILES_TOML, encoding="utf-8")
-        self.db = DatabaseService(self.path)
-        await self.db.initialize()
+        self.db = await fresh_database(self.path)
         self.config = Settings(_env_file=None, groq_profiles_path=self.profiles_path)
         self.calls: dict[str, list[int]] = {"account-a": [], "account-b": []}
         self.hints: dict[str, int] = {}

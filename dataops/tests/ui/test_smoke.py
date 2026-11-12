@@ -7,7 +7,7 @@ from unittest import IsolatedAsyncioTestCase
 from unittest.mock import patch
 
 import httpx
-from support import registry_row, render_text
+from support import fresh_database, registry_row, render_text
 from textual.geometry import Region
 from textual.widgets import (
     Button,
@@ -23,7 +23,6 @@ from textual.widgets import (
 from athar_dataops.app import DataOpsApp
 from athar_dataops.config import Settings
 from athar_dataops.services.artifacts import ArtifactService
-from athar_dataops.services.database import DatabaseService
 from athar_dataops.services.orchestrator import PipelineOrchestrator
 from athar_dataops.services.registry import RegistryService
 from athar_dataops.ui.dialogs import AboutScreen, HelpScreen
@@ -44,8 +43,7 @@ class WorkspaceTests(IsolatedAsyncioTestCase):
             groq_profiles_path=Path(self.directory.name) / "none.toml",
             theme="dark",
         )
-        self.db = DatabaseService(self.config.db_path)
-        await self.db.initialize()
+        self.db = await fresh_database(self.config.db_path)
         self.block = False
         self.http_status = 200
         self.fixture_rows = [registry_row(name="[bold]Literal company")]

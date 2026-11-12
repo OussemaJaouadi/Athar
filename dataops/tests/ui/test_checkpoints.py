@@ -10,7 +10,7 @@ from unittest import IsolatedAsyncioTestCase
 from unittest.mock import patch
 
 import httpx
-from support import registry_row, render_text
+from support import fresh_database, registry_row, render_text
 from textual.visual import RichVisual
 from textual.widgets import Button, Static, TextArea
 
@@ -43,8 +43,7 @@ class CheckpointTests(IsolatedAsyncioTestCase):
             groq_profiles_path=profiles,
             theme="dark",
         )
-        self.db = DatabaseService(self.config.db_path)
-        await self.db.initialize()
+        self.db = await fresh_database(self.config.db_path)
         self.registry_rows = [
             registry_row(name="Alpha", desc="Machine learning saas wow"),
             registry_row(name="Beta", desc="Clean energy producer"),

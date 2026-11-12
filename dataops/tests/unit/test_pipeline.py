@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 import httpx
 import turso
-from support import registry_row
+from support import fresh_database, registry_row
 
 from athar_dataops.config import Settings
 from athar_dataops.services.artifacts import ArtifactService
@@ -26,8 +26,7 @@ class PipelineTests(IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.path = Path(self.directory.name) / "test.db"
-        self.db = DatabaseService(self.path)
-        await self.db.initialize()
+        self.db = await fresh_database(self.path)
         self.body = json.dumps([registry_row()], ensure_ascii=False).encode()
         self.status_code = 200
         self.client = httpx.AsyncClient(transport=httpx.MockTransport(self.respond))

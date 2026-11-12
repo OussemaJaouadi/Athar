@@ -1,9 +1,12 @@
 """Shared fixtures for both test layers: synthetic registry rows, a fake Groq, literal rendering."""
 
 import asyncio
+import hashlib
 import json
 import logging
+import shutil
 import tempfile
+from importlib.resources import files
 from io import StringIO
 from pathlib import Path
 from unittest import IsolatedAsyncioTestCase
@@ -22,6 +25,41 @@ from athar_dataops.services.registry import RegistryService
 # IsolatedAsyncioTestCase runs the loop in debug mode, which logs every callback
 # slower than 100 ms. Textual mounts trip that constantly; it is noise, not a failure.
 logging.getLogger("asyncio").setLevel(logging.ERROR)
+
+
+_TEMPLATE: Path | None = None
+
+
+def _migrations_digest() -> str:
+    """Changes to any migration file produce a different template."""
+    digest = hashlib.sha256()
+    for path in sorted(files("athar_dataops").joinpath("migrations").iterdir(), key=lambda p: p.name):
+        digest.update(path.name.encode())
+        digest.update(path.read_bytes())
+    return digest.hexdigest()[:12]
+
+
+async def fresh_database(path: Path) -> DatabaseService:
+    """An open, fully migrated database at ``path``.
+
+    The ten migrations run once per process into a template; each test gets its
+    own copy, and ``initialize`` on the copy still verifies every checksum. Tests
+    that exercise the upgrade path build their own files and never call this.
+    """
+    global _TEMPLATE
+    if _TEMPLATE is None:
+        template = Path(tempfile.mkdtemp(prefix="athar-template-")) / f"{_migrations_digest()}.db"
+        db = DatabaseService(template)
+        await db.initialize()
+        await db.close()  # checkpoints the WAL; a leftover WAL would mean the copy is incomplete
+        wal = template.with_name(template.name + "-wal")
+        if wal.exists() and wal.stat().st_size:
+            raise RuntimeError("template database closed with an unflushed WAL")
+        _TEMPLATE = template
+    shutil.copy(_TEMPLATE, path)
+    db = DatabaseService(path)
+    await db.initialize()
+    return db
 
 
 def registry_row(**changes):
@@ -54,8 +92,7 @@ class PreparationFixture(IsolatedAsyncioTestCase):
 
     async def asyncSetUp(self):
         self.directory = tempfile.TemporaryDirectory()
-        self.db = DatabaseService(Path(self.directory.name) / "test.db")
-        await self.db.initialize()
+        self.db = await fresh_database(Path(self.directory.name) / "test.db")
         self.config = Settings(_env_file=None, groq_api_key="fake-secret", groq_profile="account-a",
                                groq_profiles_path=Path(self.directory.name) / "none.toml")
         self.calls = 0

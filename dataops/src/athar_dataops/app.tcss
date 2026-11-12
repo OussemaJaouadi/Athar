@@ -382,7 +382,7 @@ RunTimeline:focus { background: $panel; border: none; }
 
 /* ---------- Review ---------- */
 
-#records-rail { width: 38; }
+#records-rail { width: 42; }
 #records-search { margin-bottom: 1; }
 #records-count-row { height: 1; margin-bottom: 1; }
 #records-review-filter { margin-right: 1; }
@@ -430,17 +430,6 @@ DatabasePane.narrow.inspecting #db-drawer {
 }
 DatabasePane.narrow #drawer-back { display: block; }
 DatabasePane.narrow #inspect-row { display: block; }
-
-/* ---------- Pipeline: runs list ---------- */
-
-#history-list > ListItem { min-height: 2; padding: 0 1; }
-#history-list > ListItem > Label { width: 1fr; height: 1; }
-#history-list .history-item-title { text-style: bold; }
-#history-list .history-item-meta { color: $muted; }
-#history-list > ListItem.history-completed { border-left: thick $success; padding-left: 0; }
-#history-list > ListItem.history-failed { border-left: thick $error; padding-left: 0; }
-#history-list > ListItem.history-cancelled { border-left: thick $warning; padding-left: 0; }
-#history-list > ListItem.history-running { border-left: thick $link-ink; padding-left: 0; }
 
 /* ---------- Tools ---------- */
 

@@ -15,7 +15,6 @@ from textual.widgets import (
     DataTable,
     Input,
     Label,
-    ListView,
     Static,
     TabbedContent,
 )
@@ -93,7 +92,7 @@ class WorkspaceTests(IsolatedAsyncioTestCase):
                         app.query_one("#workspace", TabbedContent).active, "review"
                     )
                     self.assertEqual(
-                        len(app.query_one("#records-list", ListView).children), 1
+                        app.query_one("#records-list", DataTable).row_count, 1
                     )
                     self.assertIn(
                         "Concrete product detail",
@@ -149,7 +148,7 @@ class WorkspaceTests(IsolatedAsyncioTestCase):
         async with app.run_test(size=(80, 24)) as pilot:
             await pilot.press("ctrl+2")
             await pilot.pause()
-            self.assertTrue(app.query_one("#records-list", ListView).has_focus)
+            self.assertTrue(app.query_one("#records-list", DataTable).has_focus)
             self.assertIn(
                 "Concrete product detail",
                 str(app.query_one("#detail-description", Static).render()),
@@ -315,7 +314,7 @@ class WorkspaceTests(IsolatedAsyncioTestCase):
             await pilot.pause()
             await app.workers.wait_for_complete()
             await pilot.pause()
-            self.assertEqual(len(app.query_one("#records-list", ListView).children), 1)
+            self.assertEqual(app.query_one("#records-list", DataTable).row_count, 1)
             self.assertIn(
                 "Needle", render_text(app.query_one("#detail-title", Label).render())
             )
@@ -332,13 +331,14 @@ class WorkspaceTests(IsolatedAsyncioTestCase):
             await pilot.pause()
             await app.workers.wait_for_complete()
             await pilot.pause()
-            first_rows = list(app.query_one("#records-list", ListView).children)[:5]
+            listing = app.query_one("#records-list", DataTable)
+            first_page = [listing.get_row_at(i)[0].plain for i in range(5)]
             self.assertTrue(await pilot.click("#records-next"))
             await pilot.pause()
             self.assertEqual(search.value, "Company")
-            rows = list(app.query_one("#records-list", ListView).children)
-            self.assertEqual(len(rows), 5)
-            self.assertEqual(rows, first_rows, "paging must reuse rows, not remount them")
+            self.assertEqual(listing.row_count, 5)
+            second_page = [listing.get_row_at(i)[0].plain for i in range(5)]
+            self.assertNotEqual(second_page, first_page, "Next must show the next page's names")
             self.assertIn(
                 "101–105 of 105",
                 render_text(app.query_one("#records-count", Static).render()),
@@ -564,12 +564,12 @@ class WorkspaceTests(IsolatedAsyncioTestCase):
             await pilot.pause()
             await app.workers.wait_for_complete()
             await pilot.pause()
-            runs = app.query_one("#history-list", ListView)
-            self.assertGreaterEqual(len(runs.children), 1)
-            first = runs.children[0]
-            self.assertTrue(first.has_class("history-completed"))
-            self.assertIn("Collect", render_text(first.children[0].render()))
-            self.assertIn("150 records" if False else "records", render_text(first.children[1].render()))
+            runs = app.query_one("#history-list", DataTable)
+            self.assertGreaterEqual(runs.row_count, 1)
+            operation, status, started, rows = runs.get_row_at(0)
+            self.assertEqual((operation.plain, status.plain), ("Collect", "done"))
+            self.assertRegex(started.plain, r"^\d\d-\d\d \d\d:\d\d$")
+            self.assertEqual(rows.plain, str(result.records_processed))
             await app.query_one(RunPane).show_saved_run(result.run_id)
             await pilot.pause()
             self.assertIn("Run " + result.run_id[:8], render_text(app.query_one("#run-heading", Label).render()))

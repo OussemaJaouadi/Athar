@@ -5,7 +5,6 @@ from contextlib import suppress
 from typing import ClassVar
 
 import turso
-from rich.markup import escape
 from rich.text import Text
 from textual import on
 from textual.app import ComposeResult
@@ -15,10 +14,9 @@ from textual.css.query import NoMatches
 from textual.widgets import (
     Button,
     Collapsible,
+    DataTable,
     Input,
     Label,
-    ListItem,
-    ListView,
     Static,
 )
 
@@ -26,7 +24,7 @@ from athar_dataops.schemas.registry import RecordDetail
 from athar_dataops.services.database import DatabaseService
 from athar_dataops.themes import DARK, LIGHT, is_dark_theme, themed_json
 from athar_dataops.ui.arabic import describe_error, format_arabic, format_arabic_obj
-from athar_dataops.ui.widgets.badges import review_badge, review_chip
+from athar_dataops.ui.widgets.badges import review_badge, review_cell
 from athar_dataops.ui.widgets.keyvalue import key_value
 
 
@@ -105,7 +103,7 @@ class InspectPane(Vertical):
                 with Horizontal(classes="count-row", id="records-count-row"):
                     yield Button("In review", id="records-review-filter")
                     yield Static("", id="records-count", classes="muted")
-                yield ListView(id="records-list")
+                yield DataTable(id="records-list", cursor_type="row", zebra_stripes=True)
                 with Horizontal(classes="pager", id="records-pager"):
                     yield Button("Prev (p)", id="records-prev", disabled=True)
                     yield Button("Next (n)", id="records-next", disabled=True)
@@ -143,6 +141,20 @@ class InspectPane(Vertical):
         # Nothing is read until the tab is first shown; both states stay hidden until then.
         self.query_one("#records-empty").display = False
         self.query_one("#records-content").display = False
+        self._fit_columns()
+
+    def on_resize(self) -> None:
+        self._fit_columns()
+
+    def _fit_columns(self) -> None:
+        """Name takes what the rail leaves after the review chip; rebuilt when the width changes."""
+        listing = self.query_one("#records-list", DataTable)
+        rail = self.query_one("#records-rail").size.width or 38
+        name_width = max(10, rail - 2 - len(" Decision ") - 4)
+        if listing.columns and next(iter(listing.columns.values())).width == name_width:
+            return
+        self._name_width = name_width
+        self._sync_listing(listing, rebuild=True)
 
     async def on_show(self) -> None:
         if self._loaded:
@@ -178,7 +190,7 @@ class InspectPane(Vertical):
         async with self._render_lock:
             if generation != self._search_generation:
                 return
-            listing = self.query_one("#records-list", ListView)
+            listing = self.query_one("#records-list", DataTable)
             self._records = page.records if page else []
             self.query_one("#retry-records").display = error is not None
             self.query_one("#go-collect").display = error is None
@@ -213,10 +225,10 @@ class InspectPane(Vertical):
             self.query_one("#records-empty-message", Static).update(
                 "Run Collect registry to get started."
             )
-            await self._sync_listing(listing)
+            self._sync_listing(listing)
             self.query_one("#source-disclosure", Collapsible).collapsed = True
             if self._records:
-                listing.index = 0
+                listing.move_cursor(row=0, animate=False)
                 self._show_detail(self._records[0])
             else:
                 # Hidden stale evidence must not reappear when the user opens Source.
@@ -244,36 +256,32 @@ class InspectPane(Vertical):
             self.query_one("#records-next", Button).disabled = not has_more
             self.query_one("#records-pager").display = self._offset > 0 or has_more
 
-    def _record_label(self, detail: RecordDetail) -> str:
-        label = escape(format_arabic(detail.normalized.name or "Unnamed row"))
-        if detail.needs_review:
-            label += f"  {review_chip(dark=self._is_dark(), decision=detail.needs_decision)}"
-        return label
+    def _record_cells(self, detail: RecordDetail) -> tuple[Text, Text]:
+        name = Text(format_arabic(detail.normalized.name or "Unnamed row"), no_wrap=True, overflow="ellipsis")
+        review = (
+            review_cell(dark=self._is_dark(), decision=detail.needs_decision)
+            if detail.needs_review
+            else Text("")
+        )
+        return name, review
 
-    def _record_item(self, detail: RecordDetail) -> ListItem:
-        return ListItem(Label(self._record_label(detail), markup=True))
-
-    async def _sync_listing(self, listing: ListView) -> None:
-        """Update existing rows in place; mount or remove only the difference.
-
-        Clearing and remounting 100 rows cost 250 to 500 ms per page; a label
-        update costs almost nothing.
-        """
-        items = list(listing.children)
-        for index, detail in enumerate(self._records):
-            if index < len(items):
-                items[index].query_one(Label).update(self._record_label(detail))
-        if len(self._records) > len(items):
-            await listing.extend(
-                [self._record_item(detail) for detail in self._records[len(items):]]
-            )
-        elif len(items) > len(self._records):
-            await listing.remove_items(range(len(self._records), len(items)))
+    def _sync_listing(self, listing: DataTable, *, rebuild: bool = False) -> None:
+        """Rows are cheap to rebuild; keep the cursor row across a rebuild."""
+        cursor = listing.cursor_row
+        if rebuild or not listing.columns:
+            listing.clear(columns=True)
+            listing.add_column(Text("Name"), width=getattr(self, "_name_width", 24), key="name")
+            listing.add_column(Text("Review"), width=len(" Decision "), key="review")
+        else:
+            listing.clear()
+        if self._records:
+            listing.add_rows(self._record_cells(detail) for detail in self._records)
+            listing.move_cursor(row=min(cursor, len(self._records) - 1), animate=False)
 
     @on(Input.Submitted, "#records-search")
     def on_search_submitted(self) -> None:
         if self._records:
-            self.query_one("#records-list", ListView).focus()
+            self.query_one("#records-list", DataTable).focus()
 
     @on(Input.Changed, "#records-search")
     def filter_records(self, event: Input.Changed) -> None:
@@ -305,7 +313,7 @@ class InspectPane(Vertical):
             0, self._offset + (100 if event.button.id == "records-next" else -100)
         )
         await self.refresh_records(reset=False)
-        self.query_one("#records-list", ListView).focus()
+        self.query_one("#records-list", DataTable).focus()
 
     @on(Button.Pressed, "#records-review-filter")
     async def toggle_review_filter(self, event: Button.Pressed) -> None:
@@ -313,7 +321,7 @@ class InspectPane(Vertical):
         event.button.set_class(self._review_only, "in-review")
         await self.refresh_records()
 
-    @on(ListView.Selected, "#records-list")
+    @on(DataTable.RowSelected, "#records-list")
     def open_record(self) -> None:
         """Enter on a record moves into the detail so arrows scroll it."""
         self.query_one("#records-detail", VerticalScroll).focus()
@@ -327,25 +335,24 @@ class InspectPane(Vertical):
                 disclosure.collapsed = True
                 return True
         if focused is not None and focused.id in ("records-detail", "records-search", "records-prev", "records-next", "records-review-filter"):
-            self.query_one("#records-list", ListView).focus()
+            self.query_one("#records-list", DataTable).focus()
             return True
         return False
 
-    @on(ListView.Highlighted, "#records-list")
-    def highlight_record(self, event: ListView.Highlighted) -> None:
-        index = event.list_view.index
-        if index is not None and 0 <= index < len(self._records):
+    @on(DataTable.RowHighlighted, "#records-list")
+    def highlight_record(self, event: DataTable.RowHighlighted) -> None:
+        index = event.cursor_row
+        if 0 <= index < len(self._records):
             self._show_detail(self._records[index])
 
     def _is_dark(self) -> bool:
         return is_dark_theme(self.app)
 
     def on_theme_changed(self) -> None:
-        listing = self.query_one("#records-list", ListView)
-        for item, detail in zip(listing.children, self._records):
-            item.query_one(Label).update(self._record_label(detail))
-        index = listing.index
-        if index is not None and index < len(self._records):
+        listing = self.query_one("#records-list", DataTable)
+        self._sync_listing(listing)
+        index = listing.cursor_row
+        if self._records and index < len(self._records):
             disclosure = self.query_one("#source-disclosure", Collapsible)
             collapsed = disclosure.collapsed
             detail_view = self.query_one("#records-detail", VerticalScroll)

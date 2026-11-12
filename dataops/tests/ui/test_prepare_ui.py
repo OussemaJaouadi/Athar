@@ -5,7 +5,7 @@ import tempfile
 from pathlib import Path
 from unittest import IsolatedAsyncioTestCase
 
-from support import PreparationFixture, registry_row, render_text
+from support import PreparationFixture, registry_row, render_text, wait_until
 from textual.widgets import Static
 
 from athar_dataops.app import DataOpsApp
@@ -20,20 +20,18 @@ class PrepareWorkspaceTests(PreparationFixture):
     async def test_configured_profiles_visible_before_first_seeding(self):
         app = DataOpsApp(self.pipeline, self.db, self.config)
         async with app.run_test() as pilot:
-            async with asyncio.timeout(5):
-                while "profile" not in str(
-                    app.query_one("#run-profiles-summary", Static).render()
-                ):
-                    await pilot.pause(0.05)
+            await wait_until(
+                pilot, lambda: "profile" in str(app.query_one("#run-profiles-summary", Static).render())
+            )
             summary = str(app.query_one("#run-profiles-summary", Static).render())
             self.assertIn("1 profile", summary)
             self.assertNotIn("registered", summary)
             self.assertIn("account-a", summary)
             app.action_navigate("settings")
             await pilot.pause()
-            async with asyncio.timeout(5):
-                while "Loading" in render_text(app.query_one("#settings-usage", Static).render()):
-                    await pilot.pause(0.05)
+            await wait_until(
+                pilot, lambda: "Loading" not in render_text(app.query_one("#settings-usage", Static).render())
+            )
             usage = render_text(app.query_one("#settings-usage", Static).render())
             self.assertRegex(usage, r"account-a\s+Not used yet")
 
@@ -72,9 +70,9 @@ class PrepareWorkspaceTests(PreparationFixture):
             self.assertIn("account-a", prepared)
             app.action_navigate("settings")
             await pilot.pause()
-            async with asyncio.timeout(10):
-                while "Loading" in render_text(app.query_one("#settings-usage", Static).render()):
-                    await pilot.pause(0.05)
+            await wait_until(
+                pilot, lambda: "Loading" not in render_text(app.query_one("#settings-usage", Static).render())
+            )
             usage = render_text(app.query_one("#settings-usage", Static).render())
             self.assertIn("account-a", usage.splitlines()[2])
             self.assertNotIn("fake-secret", render_text(app.query_one("#settings-env-table", Static).render()))
@@ -90,7 +88,7 @@ class PrepareWorkspaceTests(PreparationFixture):
         app = DataOpsApp(self.pipeline, self.db, self.config)
         async with app.run_test(size=(120, 50)) as pilot:
             app.action_navigate("inspect")
-            await pilot.pause()
+            await wait_until(pilot, lambda: app.query_one("#records-content").display)
             self.assertIn("Software for schools",
                           render_text(app.query_one("#detail-secondary", Static).render()))
             self.assertIn("Combined English summary",

@@ -4,6 +4,8 @@ A decision is a warning: attention needed. A gap is information: context,
 no urgency. Both are text on a tint, never a fill.
 """
 
+from rich.text import Text
+
 from athar_dataops.themes import DARK, LIGHT
 
 
@@ -26,3 +28,9 @@ def review_chip(dark: bool = True, *, decision: bool = True) -> str:
     bg, fg = _pair(dark, decision)
     label = "Decision" if decision else "Gap"
     return f"[bold {fg} on {bg}] {label} [/]"
+
+
+def review_cell(dark: bool = True, *, decision: bool = True) -> Text:
+    """The chip as a Text cell for a DataTable row."""
+    bg, fg = _pair(dark, decision)
+    return Text(f" {'Decision' if decision else 'Gap'} ", style=f"bold {fg} on {bg}")

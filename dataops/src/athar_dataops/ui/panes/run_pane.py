@@ -13,12 +13,12 @@ from typing import Any
 
 import httpx
 import turso
-from rich.markup import escape
+from rich.text import Text
 from textual import on
 from textual.containers import Horizontal, Vertical
 from textual.css.query import NoMatches
 from textual.message import Message
-from textual.widgets import Button, Input, Label, ListItem, ListView, Static
+from textual.widgets import Button, DataTable, Input, Label, Static
 from textual.worker import Worker, WorkerCancelled
 
 from athar_dataops.schemas.logs import LogEntry
@@ -26,6 +26,7 @@ from athar_dataops.schemas.pipeline import StageProgress
 from athar_dataops.services.database import DatabaseService
 from athar_dataops.services.metrics import ProcessSampler, StepMetrics
 from athar_dataops.services.orchestrator import PipelineOrchestrator
+from athar_dataops.themes import palette_for
 from athar_dataops.ui.arabic import describe_error, sanitize_display
 from athar_dataops.ui.dialogs.prepare import PrepareConfirmScreen
 from athar_dataops.ui.dialogs.wipe import WipeConfirmScreen
@@ -61,6 +62,9 @@ def _timestamp(value: str | None) -> datetime | None:
         return datetime.fromisoformat(value) if value else None
     except ValueError:
         return None
+
+
+_RUN_STATUS_WORDS = {"completed": "done", "failed": "failed", "cancelled": "cancelled", "running": "running"}
 
 
 def _short_time(value: str | None) -> str:
@@ -139,7 +143,7 @@ class RunPane(Vertical):
                 yield Static("Loading…", id="run-profiles-summary", classes="muted", markup=False)
                 yield Label("Runs", classes="section-label")
                 yield Input(placeholder="Filter runs…", id="history-search")
-                yield ListView(id="history-list")
+                yield DataTable(id="history-list", cursor_type="row", zebra_stripes=True)
             with Vertical(id="run-context"):
                 with Horizontal(id="run-context-header"):
                     yield Label("Run", classes="heading", id="run-heading")
@@ -218,32 +222,33 @@ class RunPane(Vertical):
             self.app.log_workspace_event(f"Could not load saved runs: {describe_error(exc)}", "error")
             return
         self._runs = [run for run in runs if self._run_matches(run)]
-        listing = self.query_one("#history-list", ListView)
-        await listing.clear()
-        items = []
+        listing = self.query_one("#history-list", DataTable)
+        if not listing.columns:
+            listing.add_column(Text("Operation"), width=8, key="operation")
+            listing.add_column(Text("Status"), width=9, key="status")
+            listing.add_column(Text("Started"), width=11, key="started")
+            listing.add_column(Text("Rows"), width=4, key="rows")
+        listing.clear()
         for run in self._runs:
             status = str(run.get("status") or "unknown").lower()
-            operation = _OPERATION_NAMES.get(str(run.get("operation") or ""), "Unknown")
-            item = ListItem(
-                Label(escape(f"{operation} · {status.upper()}"), classes="history-item-title"),
-                Label(
-                    escape(
-                        f"{_short_time(run.get('started_at'))} · "
-                        f"{run.get('records_processed', 0)} records · "
-                        f"{run.get('review_count', 0)} in review"
-                    ),
-                    classes="history-item-meta",
-                ),
+            listing.add_row(
+                Text(_OPERATION_NAMES.get(str(run.get("operation") or ""), "Unknown")),
+                Text(_RUN_STATUS_WORDS.get(status, status), style=self._status_style(status)),
+                Text(_short_time(run.get("started_at"))[5:]),
+                Text(str(run.get("records_processed", 0)), justify="right"),
+                key=run["id"],
             )
-            item.data = run["id"]
-            item.add_class(f"history-{status}")
-            items.append(item)
-        if items:
-            await listing.extend(items)
         if self._shown_run and not self.collecting:
             index = next((i for i, run in enumerate(self._runs) if run["id"] == self._shown_run), None)
             if index is not None:
-                listing.index = index
+                listing.move_cursor(row=index, animate=False)
+
+    def _status_style(self, status: str) -> str:
+        palette = palette_for(self.app)
+        return {
+            "completed": palette.success, "failed": palette.error, "cancelled": palette.warning,
+            "running": palette.variables["link-ink"],
+        }.get(status, palette.variables["muted"])
 
     def _run_matches(self, run: dict[str, Any]) -> bool:
         if not self._runs_query:
@@ -258,9 +263,9 @@ class RunPane(Vertical):
         self._runs_query = event.value.strip().lower()
         self.run_worker(self.refresh_runs(), exclusive=True, group="runs", exit_on_error=False)
 
-    @on(ListView.Highlighted, "#history-list")
-    async def highlight_run(self, event: ListView.Highlighted) -> None:
-        run_id = getattr(event.item, "data", None)
+    @on(DataTable.RowHighlighted, "#history-list")
+    async def highlight_run(self, event: DataTable.RowHighlighted) -> None:
+        run_id = event.row_key.value if event.row_key is not None else None
         if run_id and run_id != self._shown_run and not self.collecting:
             await self.show_saved_run(run_id)
 

@@ -78,6 +78,17 @@ def registry_row(**changes):
     return row | changes
 
 
+async def wait_until(pilot, predicate, timeout=20.0):
+    """Poll the app until ``predicate()`` holds; fail loudly after ``timeout`` seconds.
+
+    Tests wait on the state they assert, never on a fixed sleep, so they stay
+    correct under a loaded machine and fast on an idle one.
+    """
+    async with asyncio.timeout(timeout):
+        while not predicate():
+            await pilot.pause(0.02)
+
+
 def render_text(renderable):
     # Textual 8 wraps a Static's content in a RichVisual; print what it wraps.
     renderable = getattr(renderable, "_renderable", renderable)

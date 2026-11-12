@@ -318,21 +318,21 @@ class CheckpointTests(IsolatedAsyncioTestCase):
                 app.query_one("#records-count", Static).render()
             )
             await self.wait_until(pilot, lambda: "of 3" in count())
-            self.assertEqual(len(app.query_one("#records-list").children), 3)
+            self.assertEqual(app.query_one("#records-list").row_count, 3)
 
             await self._press(pilot, "#records-review-filter")
             await self.wait_until(pilot, lambda: "1–2 of 2" in count())
             self.assertTrue(
                 app.query_one("#records-review-filter").has_class("in-review")
             )
-            self.assertEqual(len(app.query_one("#records-list").children), 2)
+            self.assertEqual(app.query_one("#records-list").row_count, 2)
 
             await self._press(pilot, "#records-review-filter")
             await self.wait_until(pilot, lambda: "1–3 of 3" in count())
             self.assertFalse(
                 app.query_one("#records-review-filter").has_class("in-review")
             )
-            self.assertEqual(len(app.query_one("#records-list").children), 3)
+            self.assertEqual(app.query_one("#records-list").row_count, 3)
 
     async def test_prepare_checkpoint_disabled_without_profiles(self):
         bare = Settings(
@@ -597,8 +597,8 @@ class CheckpointTests(IsolatedAsyncioTestCase):
             )
             await self.wait_until(
                 pilot,
-                lambda: len(app.query_one("#records-list").children) == 0
-                and len(app.query_one("#history-list").children) == 0,
+                lambda: app.query_one("#records-list").row_count == 0
+                and app.query_one("#history-list").row_count == 0,
             )
             self.assertFalse(app.query_one("#run-pipeline", Button).disabled)
             self.assertEqual(len((await self.db.table_page("source_rows")).rows), 0)

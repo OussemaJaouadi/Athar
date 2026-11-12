@@ -20,7 +20,7 @@ uv run --project dataops dataops/tests/run.py ui -j 1              # one process
 uvx ruff check dataops/src dataops/tests --no-cache
 ```
 
-The runner spreads tests across processes (up to eight, one test per task), because every test owns a temporary database and shares nothing. A module that fails to import is reported with its traceback before anything runs. Budget on a 12-core machine: unit about 8 s, ui about 35 s; the same layers take 52 s and 195 s in one process.
+The runner spreads tests across processes (up to eight, one test per task), because every test owns a temporary database and shares nothing. A module that fails to import is reported with its traceback before anything runs. Measured on a 12-core machine: unit 7 to 16 s and ui 34 to 91 s depending on what else the machine is doing (wall time is roughly the slowest test under load); the same layers took 52 s and 195 s in one process.
 
 One file, with the layer directory as the start and `tests` as the top level:
 

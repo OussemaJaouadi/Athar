@@ -72,6 +72,12 @@ def _short_time(value: str | None) -> str:
     return parsed.strftime("%Y-%m-%d %H:%M") if parsed else "unknown time"
 
 
+def _day_time(value: str | None) -> str:
+    """Month-day and clock for a narrow table column; unknown stays a word, not a slice."""
+    parsed = _timestamp(value)
+    return parsed.strftime("%m-%d %H:%M") if parsed else "unknown"
+
+
 def _duration(started: str | None, completed: str | None) -> float | None:
     start, end = _timestamp(started), _timestamp(completed)
     return (end - start).total_seconds() if start and end else None
@@ -234,7 +240,7 @@ class RunPane(Vertical):
             listing.add_row(
                 Text(_OPERATION_NAMES.get(str(run.get("operation") or ""), "Unknown")),
                 Text(_RUN_STATUS_WORDS.get(status, status), style=self._status_style(status)),
-                Text(_short_time(run.get("started_at"))[5:]),
+                Text(_day_time(run.get("started_at"))),
                 Text(str(run.get("records_processed", 0)), justify="right"),
                 key=run["id"],
             )

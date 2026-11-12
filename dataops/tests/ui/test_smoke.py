@@ -412,13 +412,19 @@ class WorkspaceTests(IsolatedAsyncioTestCase):
                 render_text(app.query_one("#masthead-status", Static).render()),
             )
 
-    async def test_every_visible_button_label_fits_its_box(self):
+    async def test_every_visible_button_label_fits_its_box_at_80x24(self):
+        await self._assert_button_labels_fit((80, 24))
+
+    async def test_every_visible_button_label_fits_its_box_at_120x40(self):
+        await self._assert_button_labels_fit((120, 40))
+
+    async def _assert_button_labels_fit(self, size):
         self.fixture_rows = [
             registry_row(name=f"Startup {i}", website=f"https://s{i}.example")
             for i in range(150)
         ]
         await self.orchestrator.run_pipeline()
-        for size in ((80, 24), (120, 40)):
+        if True:  # one app per size; the two sizes are separate tests so they run in parallel
             app = self.app()
             async with app.run_test(size=size) as pilot:
                 await pilot.pause()

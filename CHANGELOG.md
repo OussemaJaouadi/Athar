@@ -2,8 +2,6 @@
 
 ## Unreleased
 
-- Built the [DataOps terminal workspace](dataops/CHANGELOG.md#unreleased) for collecting, cleaning, reviewing, and preparing registry records.
-- Added record search and review, run history, logs, database inspection, and probes for checking individual inputs.
-- Added Groq preparation with a call preview, cached results, multiple profiles, and visible usage limits.
-- Improved data integrity, display safety, large-dataset performance, and use on small terminals.
-- Added [data](docs/DATA.md), [pipeline](docs/dataops/PIPELINE.md), [design](docs/DESIGN.md), and [testing](docs/dataops/TEST_SUITE.md) guides.
+- Removed the Python DataOps terminal workspace and its pipeline (collection, review, Groq preparation, probes). The maintainer surface moves into the Athar application and the data work into a worker; both are unbuilt.
+- Earlier: built a DataOps terminal workspace for collecting, cleaning, reviewing, and preparing registry records, with Groq preparation, run history, database inspection, and probes.
+- Added [data](docs/DATA.md) and [design](docs/DESIGN.md) guides.

@@ -1,0 +1,68 @@
+/* Athar tokens from docs/DESIGN.md: Qallaline palette, 60-30-10, light and dark. */
+:root {
+  --color-canvas: #f8f6f1;
+  --color-surface: #eeeae2;
+  --color-surface-raised: #e4dfd5;
+  --color-text-primary: #2a211c;
+  --color-text-secondary: #6b5f55;
+  --color-link: #0f7a66;
+  --color-border-subtle: #d6d0c4;
+  --color-border-control: #8a8076;
+  --color-action-bg: #0f7a66;
+  --color-action-fg: #ffffff;
+  --color-action-hover: #0d6e5c;
+  --color-accent-data: #b07a0c;
+  --color-accent-data-text: #875d08;
+
+  --font-display: 'Readex Pro', 'El Messiri', system-ui, sans-serif;
+  --font-body: 'IBM Plex Sans', 'IBM Plex Sans Arabic', 'Noto Sans', system-ui, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, monospace;
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-canvas: #171412;
+    --color-surface: #211c18;
+    --color-surface-raised: #2b251f;
+    --color-text-primary: #f8f6f1;
+    --color-text-secondary: #a89c90;
+    --color-link: #6fcdb4;
+    --color-border-subtle: #3a332d;
+    --color-border-control: #7a7066;
+    --color-action-bg: #6fcdb4;
+    --color-action-fg: #171412;
+    --color-action-hover: #86d8c3;
+    --color-accent-data: #e4b64a;
+    --color-accent-data-text: #e4b64a;
+    color-scheme: dark;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--color-canvas);
+  color: var(--color-text-primary);
+  font: 400 1rem/1.5rem var(--font-body);
+}
+
+h1,
+h2 {
+  font-family: var(--font-display);
+  font-weight: 600;
+}
+
+a {
+  color: var(--color-link);
+}
+
+a:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--color-link);
+  outline-offset: 2px;
+}

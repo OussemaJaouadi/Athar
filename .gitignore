@@ -1,4 +1,5 @@
-# Local runtime data and credentials must not enter source control.
+# Local runtime data and secrets
+data/
 *.db
 *.db-wal
 *.db-shm
@@ -6,6 +7,13 @@
 .env
 .env.*
 !.env.example
-!.env.profiles.example.toml
-.kilo/
-.ruff_cache/
+
+# Dependencies and build output
+node_modules
+dist
+dist-ssr
+.output
+.nitro
+.tanstack
+*.local
+.DS_Store

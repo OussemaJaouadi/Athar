@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1254 1254" width="1254" height="1254">
+  <title>Athar</title>
+  <defs>
+    <mask id="underTop" maskUnits="userSpaceOnUse">
+      <rect width="1254" height="1254" fill="#fff"/>
+      <polygon points="627,280 907,420 627,560 347,420" fill="#000" stroke="#000" stroke-width="76" stroke-linejoin="round"/>
+    </mask>
+    <mask id="underMid" maskUnits="userSpaceOnUse">
+      <rect width="1254" height="1254" fill="#fff"/>
+      <polygon points="627,460 907,600 627,740 347,600" fill="#000" stroke="#000" stroke-width="76" stroke-linejoin="round"/>
+    </mask>
+  </defs>
+  
+  <polygon points="627,640 907,780 627,920 347,780" fill="#2A211C" stroke="#2A211C" stroke-width="44" stroke-linejoin="round" mask="url(#underMid)"/>
+  <polygon points="627,460 907,600 627,740 347,600" fill="#0F7A66" stroke="#0F7A66" stroke-width="44" stroke-linejoin="round" mask="url(#underTop)"/>
+  <polygon points="627,280 907,420 627,560 347,420" fill="#2A211C" stroke="#2A211C" stroke-width="44" stroke-linejoin="round"/>
+  <polyline points="627,372 627,446 707,486 707,646 547,726 547,846" fill="none" stroke="#E4B64A" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="627" cy="372" r="36" fill="#E4B64A"/>
+  <circle cx="547" cy="846" r="24" fill="#E4B64A"/>
+</svg>

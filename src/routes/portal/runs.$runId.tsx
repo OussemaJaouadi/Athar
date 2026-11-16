@@ -1,79 +1,140 @@
-import { Link, createFileRoute, notFound, useRouter } from '@tanstack/react-router'
+import {
+  Link,
+  createFileRoute,
+  notFound,
+  useRouter,
+} from '@tanstack/react-router'
 import { useEffect } from 'react'
-
-import { RunStatus } from '@/components/athar/run-status'
-import { ValueFlash } from '@/components/interior/value-flash'
+import {
+  findingName,
+  labDuration,
+  labTime,
+  operationName,
+  statusName,
+} from '@/components/athar/lab'
 import { getRun } from '#/server/api/portal'
 
 export const Route = createFileRoute('/portal/runs/$runId')({
   loader: async ({ params }) => {
-    const run = await getRun({ data: params.runId })
-    if (!run) throw notFound()
-    return run
+    const data = await getRun({ data: params.runId })
+    if (!data) throw notFound()
+    return data
   },
   component: RunPage,
 })
 
-const seconds = (a: string | null, b: string | null) => (a && b ? `${((Date.parse(b) - Date.parse(a)) / 1000).toFixed(1)} s` : '')
-
-// Macro view: the whole snapshot through every step. Counts flash as they change.
 function RunPage() {
   const { run, steps, reviews, sampleRowId } = Route.useLoaderData()
   const router = useRouter()
-
   useEffect(() => {
     if (run.status !== 'running') return
     const timer = setInterval(() => router.invalidate(), 1000)
     return () => clearInterval(timer)
   }, [run.status, router])
-
+  const failure = run.error
+    ?.replace(/^.*?failed:\s*/i, '')
+    .replace(/[.\s]+$/, '')
   return (
-    <main className="grid grid-cols-[minmax(0,1fr)] gap-4 p-4 lg:p-6">
-      <Link to="/portal/runs">All runs</Link>
-      <header className="flex flex-wrap items-center gap-3">
-        <h1 className="text-xl font-semibold">{run.operation}</h1>
-        <RunStatus status={run.status} />
-        <span className="font-mono text-[0.6875rem] text-ink-2">{run.id}</span>
+    <main className="grid gap-6 p-4 lg:p-6">
+      <Link to="/portal/runs" className="text-glaze underline">
+        All runs
+      </Link>
+      <header>
+        <div className="flex flex-wrap items-baseline gap-4">
+          <h1 className="font-display text-[1.75rem] leading-9 font-medium">
+            {operationName(run.operation)} run{' '}
+            <span className="font-mono text-[1.375rem]" title={run.id}>
+              {run.id.slice(-4)}
+            </span>
+          </h1>
+          <span
+            className={
+              run.status === 'failed' ? 'text-destructive' : 'text-ink-2'
+            }
+          >
+            {statusName(run.status)}
+          </span>
+        </div>
+        <p className="mt-2 text-ink-2">
+          Started {labTime(run.started_at)}
+          {run.finished_at
+            ? ` · ${labDuration(run.started_at, run.finished_at)}`
+            : ''}
+          {run.status !== 'running' &&
+            (run.operation === 'prepare' ? ' · Finished work is saved.' : ' · Stored rows are kept.')}
+        </p>
       </header>
-      {run.error && <p className="border-s-2 border-destructive ps-3 text-destructive">{run.error}</p>}
-
-      <ol className="grid gap-px border border-hairline bg-hairline md:grid-cols-[repeat(auto-fit,minmax(14rem,1fr))]">
-        {steps.map((s) => (
-          <li key={s.position} className="grid gap-3 bg-canvas p-4">
-            <div className="flex items-center justify-between gap-2">
-              <span className="font-mono text-[0.6875rem] text-ink-2">
-                STEP {s.position + 1} · {s.step}
-              </span>
-              <RunStatus status={s.status} />
-            </div>
-            <div className="flex items-baseline gap-4 font-mono tabular-nums">
-              <span className="text-2xl">
-                <ValueFlash value={s.items_out ?? 0} label={`${s.step} output`} />
-              </span>
-              <span className="text-ink-2">from {s.items_in ?? 0}</span>
-              <span className="ms-auto text-ink-2">{seconds(s.started_at, s.finished_at)}</span>
-            </div>
-            <p className="text-ink-2">{s.message ?? '—'}</p>
-          </li>
-        ))}
+      {failure && (
+        <p role="alert" className="text-destructive">
+          {operationName(run.operation)} failed: {failure}.{' '}
+          <Link to="/portal/runs" className="underline">
+            Try {operationName(run.operation)} again
+          </Link>
+          .
+        </p>
+      )}
+      <ol className="grid divide-y divide-hairline border-y border-hairline">
+        {steps.map((step) => {
+          const result =
+            step.message === 'Not built yet'
+              ? 'not built yet'
+              : step.items_out === null
+                ? 'no result yet'
+                : step.step === 'collect'
+                  ? `${step.items_out} source rows stored`
+                  : step.step === 'clean'
+                    ? `${step.items_out} of ${step.items_in ?? step.items_out} records cleaned`
+                    : step.step === 'merge'
+                      ? `${step.items_out} startups from ${step.items_in ?? '?'} records`
+                      : `${step.items_out} done`
+          return (
+            <li key={step.position} className="grid gap-1 py-3">
+              <p className="tabular-nums">
+                <span className="font-medium">{operationName(step.step)}</span>
+                <span className="text-ink-2">: </span>
+                {step.status === 'running' ? 'running…' : result}
+                {step.status !== 'running' && step.finished_at && (
+                  <span className="text-ink-2">, {labDuration(step.started_at, step.finished_at)}</span>
+                )}
+                {step.status !== 'done' && step.status !== 'running' && <span className="text-ink-2"> · {statusName(step.status)}</span>}
+              </p>
+              {step.status === 'failed' && (
+                <p className="text-destructive">
+                  {operationName(step.step)} failed: {step.message?.replace(/[.\s]+$/, '') ?? 'The operation stopped'}. Check the source and try Collect again.
+                </p>
+              )}
+            </li>
+          )
+        })}
       </ol>
-
       {reviews.length > 0 && (
-        <section className="grid gap-2">
-          <h2 className="text-base font-semibold">Needs review</h2>
-          <ul className="flex flex-wrap gap-2">
-            {reviews.map((r) => (
-              <li key={r.code} className="rounded-sm border border-hairline bg-canvas px-2 py-1 font-mono text-[0.6875rem]">
-                {r.code} <span className="text-ink-2">×{r.count}</span>
+        <section>
+          <h2 className="mb-3 text-xl font-medium">In review</h2>
+          <ul className="grid gap-2">
+            {reviews.map((finding) => (
+              <li key={finding.code}>
+                <Link
+                  to="/portal/review"
+                  search={{ code: finding.code }}
+                  className="text-glaze underline"
+                >
+                  {findingName(finding.code)}
+                </Link>
+                <span className="ms-3 text-ink-2 tabular-nums">
+                  {finding.count} findings
+                </span>
               </li>
             ))}
           </ul>
         </section>
       )}
-
       {sampleRowId && (
-        <Link to="/portal/trace/$rowId" params={{ rowId: sampleRowId }}>
-          Trace a row through this run
+        <Link
+          to="/portal/trace/$rowId"
+          params={{ rowId: sampleRowId }}
+          className="text-glaze underline"
+        >
+          Trace a source row from this run
         </Link>
       )}
     </main>

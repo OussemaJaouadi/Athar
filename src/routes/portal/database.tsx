@@ -15,7 +15,9 @@ export const Route = createFileRoute('/portal/database')({
   loader: async ({ deps }) => {
     const tables = await listTables()
     const table = deps.table ?? 'startups'
-    const data = tables.some((t) => t.name === table) ? await getTableRows({ data: { table, page: deps.page } }) : null
+    const data = tables.some((t) => t.name === table)
+      ? await getTableRows({ data: { table, page: deps.page } })
+      : null
     return { tables, table, data }
   },
   component: DatabasePage,
@@ -42,46 +44,82 @@ function DatabasePage() {
   const { tables, table, data } = Route.useLoaderData()
   return (
     <main className="grid grid-cols-[minmax(0,1fr)] gap-4 p-4 lg:p-6">
-      <PageHeader eyebrow="Database" title="One SQLite file, read-only">
-        Raw evidence, derived records, runs and keys side by side. Key values never leave the server.
+      <PageHeader title="Database">
+        Source rows, cleaned records, startups, runs and keys side by side. Key
+        values never leave the server.
       </PageHeader>
       <div className="grid items-start gap-4 lg:grid-cols-[14rem_minmax(0,1fr)]">
-        <nav aria-label="Tables" className="grid border border-hairline bg-canvas lg:sticky lg:top-4">
+        <nav
+          aria-label="Tables"
+          className="grid border border-hairline bg-surface lg:sticky lg:top-4"
+        >
           {tables.map((t) => (
             <Link
               key={t.name}
               to="/portal/database"
               search={{ table: t.name }}
-              className={cn('grid grid-cols-[1fr_auto] gap-x-2 border-s-2 border-b border-b-hairline px-3 py-2 no-underline last:border-b-0', t.name === table ? 'border-s-ochre bg-surface' : 'border-s-transparent hover:bg-surface')}
+              className={cn(
+                'grid grid-cols-[1fr_auto] gap-x-2 border-s-2 border-b border-b-hairline min-h-10 px-3 py-2 no-underline last:border-b-0',
+                t.name === table
+                  ? 'border-s-glaze bg-surface-raised'
+                  : 'border-s-transparent hover:bg-surface',
+              )}
             >
-              <span className="truncate font-mono text-xs text-ink">{t.name}</span>
-              <span className="font-mono text-xs text-ink-2 tabular-nums">{t.rows}</span>
-              <span className="text-[0.6875rem] text-ink-2">{SHELF[t.name] ?? ''}</span>
+              <span className="truncate font-mono text-sm text-ink">
+                {t.name}
+              </span>
+              <span className="text-sm text-ink-2 tabular-nums">{t.rows}</span>
+              <span className="text-sm text-ink-2">{SHELF[t.name] ?? ''}</span>
             </Link>
           ))}
         </nav>
         {data && (
           <div className="grid min-w-0 gap-2">
-            <div className="max-h-[78dvh] overflow-auto border border-hairline bg-canvas">
+            <div className="max-h-[78dvh] overflow-auto border border-hairline bg-surface">
               <table className="w-full tabular-nums">
-                <thead className="sticky top-0 bg-canvas">
+                <thead className="sticky top-0 bg-surface">
                   <tr>
-                    <th className="border-b border-hairline px-2.5 py-2 text-start font-mono text-[0.6875rem] font-medium text-ink-2">#</th>
+                    <th className="border-b border-hairline px-2.5 py-2 text-start font-mono text-sm font-medium text-ink-2">
+                      #
+                    </th>
                     {data.columns.map((c) => (
-                      <th key={c} className="border-b border-hairline px-2.5 py-2 text-start font-mono text-[0.6875rem] font-medium whitespace-nowrap text-ink-2">{c}</th>
+                      <th
+                        key={c}
+                        className="border-b border-hairline px-2.5 py-2 text-start font-mono text-sm font-medium whitespace-nowrap text-ink-2"
+                      >
+                        {c}
+                      </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {data.rows.map((r, i) => (
-                    <tr key={i} className="border-b border-hairline last:border-0 hover:bg-surface">
-                      <td className="px-2.5 py-1.5 font-mono text-[0.6875rem] text-ink-2">{data.page * 50 + i + 1}</td>
+                    <tr
+                      key={i}
+                      className="border-b border-hairline last:border-0 hover:bg-surface"
+                    >
+                      <td className="px-2.5 py-1.5 text-sm text-ink-2">
+                        {data.page * 50 + i + 1}
+                      </td>
                       {data.columns.map((c) => {
                         const v = r[c]
                         const text = v === null ? '' : String(v)
                         return (
-                          <td key={c} className={cn('max-w-72 truncate px-2.5 py-1.5 font-mono text-xs', v === null && 'text-ink-2')} title={text}>
-                            {v === null ? 'null' : text.length > 80 ? `${text.slice(0, 80)}…` : text}
+                          <td
+                            key={c}
+                            className={cn(
+                              'max-w-72 truncate px-2.5 py-1.5 text-sm',
+                              v === null && 'text-ink-2',
+                            )}
+                            title={text}
+                          >
+                            {v === null
+                              ? 'Empty'
+                              : /^[0-9a-f]{8}-[0-9a-f]{4}-/.test(text)
+                                ? `…${text.slice(-4)}`
+                                : text.length > 80
+                                ? `${text.slice(0, 80)}…`
+                                : text}
                           </td>
                         )
                       })}
@@ -90,10 +128,24 @@ function DatabasePage() {
                 </tbody>
               </table>
             </div>
-            <div className="flex items-center gap-4 text-xs">
-              <span className="text-ink-2">page {data.page + 1}</span>
-              {data.page > 0 && <Link to="/portal/database" search={{ table, page: data.page - 1 }}>Previous</Link>}
-              {data.rows.length === 50 && <Link to="/portal/database" search={{ table, page: data.page + 1 }}>Next</Link>}
+            <div className="flex items-center gap-4 text-sm">
+              <span className="text-ink-2">Page {data.page + 1}</span>
+              {data.page > 0 && (
+                <Link
+                  to="/portal/database"
+                  search={{ table, page: data.page - 1 }}
+                >
+                  Previous
+                </Link>
+              )}
+              {data.rows.length === 50 && (
+                <Link
+                  to="/portal/database"
+                  search={{ table, page: data.page + 1 }}
+                >
+                  Next
+                </Link>
+              )}
             </div>
           </div>
         )}

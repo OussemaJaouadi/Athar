@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils'
 import type { WallTile } from '#/server/api/app'
 
 // Older cohorts glaze darker, like tiles that have been on the wall longest.
-const SHADES = ['bg-zinc-900', 'bg-zinc-800', 'bg-zinc-700', 'bg-zinc-600', 'bg-zinc-500', 'bg-zinc-400']
+const SHADES = ['bg-tile-1', 'bg-tile-2', 'bg-tile-3', 'bg-tile-4', 'bg-tile-5', 'bg-tile-6']
 
 export function shade(year: number | null, min: number, max: number) {
   if (!year || max === min) return SHADES[2]
@@ -28,8 +28,8 @@ export function Tile({ t, min, max, marked, dim, size = 'sm' }: { t: WallTile; m
     <span
       title={t.described ? `${t.name}${t.year ? ` · ${t.year}` : ''}` : `${t.name}: no description in the registry`}
       className={cn(
-        size === 'xs' ? 'size-[5px]' : 'size-2',
-        !t.described && 'outline outline-1 -outline-offset-1 outline-dashed outline-zinc-400',
+        size === 'xs' ? 'size-[5px]' : 'size-2.5',
+        !t.described && 'outline outline-1 -outline-offset-1 outline-dashed outline-tile-gap',
         t.described && (marked ? 'bg-ochre' : shade(t.year, min, max)),
         dim && t.described && 'opacity-25',
       )}
@@ -94,7 +94,7 @@ export function TileStrip({ tiles, min, max, empty = 0, linked = true, className
         ),
       )}
       {Array.from({ length: empty }, (_, i) => (
-        <span key={`e${i}`} aria-hidden className="size-2 outline outline-1 -outline-offset-1 outline-dashed outline-ochre" />
+        <span key={`e${i}`} aria-hidden className="size-2.5 outline outline-1 -outline-offset-1 outline-dashed outline-ochre" />
       ))}
     </span>
   )

@@ -1,5 +1,4 @@
 import { createServerFn } from '@tanstack/react-start'
-import { getCookie } from '@tanstack/react-start/server'
 
 import { getDatabase } from '../db'
 import { newId, now } from '../ids'
@@ -211,77 +210,3 @@ export const removeIdeaCheck = createServerFn({ method: 'POST' })
     const i = checks.findIndex((c) => c.id === data)
     if (i >= 0) checks.splice(i, 1)
   })
-
-// ---------- The lab: pipeline overview, AI usage per key ----------
-
-function requireOperator() {
-  if (getCookie('athar_role') !== 'operator') throw new Error('Operator role required')
-}
-
-export const getLabOverview = createServerFn().handler(async () => {
-  requireOperator()
-  const db = getDatabase()
-  const n = (sql: string) => db.query<{ n: number }, []>(sql).get()?.n ?? 0
-  const snapshot = db
-    .query<{ fetched_at: string; content_hash: string; row_count: number; byte_size: number }, []>('SELECT fetched_at, content_hash, row_count, byte_size FROM source_snapshots ORDER BY fetched_at DESC LIMIT 1')
-    .get()
-  const startups = n('SELECT COUNT(*) AS n FROM startups')
-  const records = n('SELECT COUNT(*) AS n FROM records')
-  const changed = n("SELECT COUNT(*) AS n FROM records WHERE changes_json != '[]'")
-  const openReviews = n("SELECT COUNT(*) AS n FROM review_items WHERE status = 'open'")
-  const prepared = n('SELECT COUNT(*) AS n FROM prepared_texts')
-  const embedded = n('SELECT COUNT(*) AS n FROM embedding_meta')
-  const reviewCodes = db.query<{ code: string; count: number }, []>("SELECT code, COUNT(*) AS count FROM review_items WHERE status = 'open' GROUP BY code ORDER BY count DESC").all()
-  const runs = db.query<{ id: string; operation: string; status: string; started_at: string; finished_at: string | null }, []>('SELECT id, operation, status, started_at, finished_at FROM runs ORDER BY started_at DESC LIMIT 6').all()
-  const keys = n('SELECT COUNT(*) AS n FROM ai_keys')
-  // Sample: what Prepare and Embed would report once built.
-  const usage = Array.from({ length: 14 }, (_, i) => {
-    const day = new Date(Date.now() - (13 - i) * 864e5).toISOString().slice(5, 10)
-    const busy = hash(`u${i}`) > 0.55
-    return { day, input: busy ? Math.round(20000 + hash(`in${i}`) * 90000) : Math.round(hash(`in${i}`) * 4000), output: busy ? Math.round(4000 + hash(`out${i}`) * 18000) : Math.round(hash(`out${i}`) * 900) }
-  })
-  return {
-    snapshot,
-    stations: [
-      { id: 'collect', label: 'Collect', value: snapshot?.row_count ?? 0, unit: 'rows', note: snapshot ? `snapshot ${snapshot.content_hash.slice(0, 8)}` : 'never run', sample: false },
-      { id: 'clean', label: 'Clean', value: changed, unit: 'rows edited', note: `${openReviews} open for review`, sample: false },
-      { id: 'merge', label: 'Merge', value: startups, unit: 'startups', note: `${records - startups} rows merged`, sample: false },
-      { id: 'prepare', label: 'Prepare', value: prepared || Math.round(startups * 0.62), unit: 'texts', note: prepared ? 'prepared' : 'sample: 62% done', sample: !prepared },
-      { id: 'embed', label: 'Embed', value: embedded || Math.round(startups * 0.41), unit: 'vectors', note: embedded ? 'Qwen3 0.6B' : 'sample: Qwen3 0.6B', sample: !embedded },
-    ],
-    reviewCodes,
-    openReviews,
-    runs,
-    keys,
-    usage,
-  }
-})
-
-export const getKeyUsage = createServerFn().handler(async () => {
-  requireOperator()
-  const keys = getDatabase().query<{ id: string; name: string }, []>('SELECT id, name FROM ai_keys ORDER BY created_at').all()
-  // With no real key yet, two example profiles show what the table will hold. Never stored.
-  const examples = keys.length
-    ? []
-    : [
-        { id: 'example-groq', name: 'groq-free', provider: 'groq', model: 'llama-3.3-70b-versatile', hint: '…a41f', status: 'active' },
-        { id: 'example-openrouter', name: 'openrouter-free', provider: 'openrouter', model: 'meta-llama/llama-3.3-70b-instruct:free', hint: '…9c02', status: 'limited' },
-      ]
-  return {
-    sample: true as const,
-    examples,
-    perKey: Object.fromEntries(
-      [...keys, ...examples].map((k, i) => [
-        k.id,
-        {
-          order: i + 1,
-          tokens7d: Math.round(hash(`${k.id}:t`) * 380000),
-          requests7d: Math.round(hash(`${k.id}:r`) * 900),
-          failures7d: Math.round(hash(`${k.id}:f`) * 12),
-          lastUsed: new Date(Date.now() - hash(`${k.id}:l`) * 3 * 864e5).toISOString(),
-          limitLeft: Math.round(30 + hash(`${k.id}:q`) * 70),
-        },
-      ]),
-    ),
-  }
-})

@@ -1,61 +1,79 @@
 import { Link, Outlet, createFileRoute, redirect } from '@tanstack/react-router'
-import { Database, Gauge, KeyRound, ListChecks, Play, Route as RouteIcon, type LucideIcon } from 'lucide-react'
+import { KeyRound } from 'lucide-react'
 
 import { LabInstruments } from '@/components/athar/lab'
+import { ThemeToggle } from '@/components/athar/theme'
 import { getViewer } from '#/server/auth'
+import { listKeys } from '#/server/api/portal'
 
-// The conservation lab: dense and instrument-like; raw rows are cleaned, matched and catalogued.
 export const Route = createFileRoute('/portal')({
   beforeLoad: async () => {
     const viewer = await getViewer()
     if (viewer.role !== 'operator') throw redirect({ to: '/sign-in' })
   },
+  loader: () => listKeys(),
   component: Lab,
 })
 
-const NAV: { to: '/portal' | '/portal/runs' | '/portal/review' | '/portal/trace' | '/portal/database' | '/portal/keys'; label: string; icon: LucideIcon; exact?: boolean }[] = [
-  { to: '/portal', label: 'Overview', icon: Gauge, exact: true },
-  { to: '/portal/runs', label: 'Runs', icon: Play },
-  { to: '/portal/review', label: 'Review queue', icon: ListChecks },
-  { to: '/portal/trace', label: 'Trace a row', icon: RouteIcon },
-  { to: '/portal/database', label: 'Database', icon: Database },
-  { to: '/portal/keys', label: 'AI keys', icon: KeyRound },
-]
+const NAV = [
+  { to: '/portal', label: 'Overview' },
+  { to: '/portal/runs', label: 'Runs' },
+  { to: '/portal/review', label: 'In review' },
+  { to: '/portal/trace', label: 'Trace' },
+  { to: '/portal/database', label: 'Database' },
+  { to: '/portal/keys', label: 'Keys' },
+] as const
 
 function Lab() {
+  const keys = Route.useLoaderData()
+  const active = keys.find((key) => key.status === 'active')
   return (
     <LabInstruments>
-      <div className="min-h-dvh bg-surface text-sm md:grid md:grid-cols-[13rem_minmax(0,1fr)]">
-        <aside className="sticky top-0 z-30 flex flex-col border-e border-hairline bg-canvas md:h-dvh">
-          <Link to="/portal" className="flex items-center gap-2 px-4 py-3 text-ink no-underline md:py-4">
-            <img src="/athar.svg" alt="" width={22} height={22} />
-            <span className="grid leading-tight">
-              <span className="font-display font-semibold">Conservation lab</span>
-              <span className="font-mono text-[0.625rem] text-ink-2">Athar · operator</span>
+      <div className="min-h-dvh bg-canvas text-sm text-ink [&_a]:underline-offset-4 [&_main]:mx-auto [&_main]:w-full [&_main]:max-w-[1440px] [&_main]:content-start [&_main]:pb-20">
+        <header className="flex min-h-14 flex-wrap items-center gap-x-5 border-b border-hairline bg-surface px-4 lg:px-6">
+          <Link
+            to="/portal"
+            className="flex h-14 shrink-0 items-center gap-2 text-ink no-underline"
+          >
+            <img src="/athar.svg" alt="" width={26} height={26} />
+            <span className="font-display text-lg font-semibold">Athar</span>
+            <span className="ms-1 border-s border-hairline ps-3 text-sm text-ink-2">
+              Operator
             </span>
           </Link>
-          <nav aria-label="Lab" className="flex gap-0.5 overflow-x-auto border-b border-hairline px-2 pb-2 md:grid md:border-0">
-            {NAV.map(({ to, label, icon: Icon, exact }) => (
+          <nav
+            aria-label="Operator"
+            className="order-3 -mx-4 flex w-[calc(100%+2rem)] lg:order-none lg:mx-0 lg:w-auto"
+          >
+            {NAV.map(({ to, label }) => (
               <Link
                 key={to}
                 to={to}
-                activeOptions={{ exact: Boolean(exact) }}
-                className="flex items-center gap-2 rounded-sm px-2.5 py-1.5 whitespace-nowrap text-ink-2 no-underline hover:bg-surface hover:text-ink data-[status=active]:bg-surface-raised data-[status=active]:text-ink"
+                activeOptions={{ exact: to === '/portal' }}
+                className="flex h-11 flex-1 items-center justify-center border-b-2 border-transparent px-1 text-[0.8125rem] whitespace-nowrap sm:text-sm lg:h-14 lg:flex-none lg:px-3 text-ink-2 no-underline hover:text-ink data-[status=active]:border-glaze data-[status=active]:text-ink"
               >
-                <Icon className="size-3.5" aria-hidden />
                 {label}
               </Link>
             ))}
           </nav>
-          <div className="mt-auto hidden border-t border-hairline px-4 py-3 md:block">
-            <Link to="/search" className="text-xs">
-              ← Reading room
+          <div className="ms-auto flex items-center gap-4">
+            <span className="hidden max-w-80 items-center gap-2 text-ink-2 xl:inline-flex">
+              <KeyRound className="size-3.5 shrink-0" aria-hidden />
+              <span className="truncate">
+                {active
+                  ? `Key ${active.name} active · ${keys.length} ${keys.length === 1 ? 'key' : 'keys'}`
+                  : keys.length
+                    ? `No active key · ${keys.length} ${keys.length === 1 ? 'key' : 'keys'}`
+                    : 'No AI key yet'}
+              </span>
+            </span>
+            <Link to="/search" className="text-glaze underline">
+              Reading room
             </Link>
+            <ThemeToggle className="size-10" />
           </div>
-        </aside>
-        <div className="min-w-0">
-          <Outlet />
-        </div>
+        </header>
+        <Outlet />
       </div>
     </LabInstruments>
   )

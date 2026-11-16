@@ -75,7 +75,10 @@ export const searchStartups = createServerFn()
     return { rows, matched, sectors, years, total, read }
   })
 
-export type ChainInfo = { rowNumber: number; fetchedAt: string; snapshot: string; changes: { field: string; why: string }[] }
+export type Change = { field: string; from: string | null; to: string | null; why: string }
+export type ChainInfo = { rowNumber: number; fetchedAt: string; snapshot: string; changes: Change[] }
+
+const text = (v: unknown) => (v === null || v === undefined ? null : typeof v === 'string' ? v : Array.isArray(v) ? v.join(', ') : JSON.stringify(v))
 
 // Profile: the startup, the source rows behind it, and the chain behind its fields.
 export const getStartup = createServerFn()
@@ -114,10 +117,19 @@ export const getStartup = createServerFn()
           rowNumber: primary.row_number,
           fetchedAt: primary.fetched_at,
           snapshot: primary.content_hash.slice(0, 8),
-          changes: (JSON.parse(primary.changes_json) as { field: string; why: string }[]).map(({ field, why }) => ({ field, why })),
+          changes: (JSON.parse(primary.changes_json) as { field: string; from: unknown; to: unknown; why: string }[]).map((c) => ({ field: c.field, from: text(c.from), to: text(c.to), why: c.why })),
         }
       : null
-    return { startup: { ...startup, founders: JSON.parse(startup.founders_json) as string[] }, sources, chain, reviews }
+    // Neighbours are facts, not guesses: same sector, closest labelling year first.
+    const neighbours = startup.sector
+      ? db
+          .query<StartupRow, [string, string, string | null]>(
+            `SELECT ${COLUMNS} FROM startups s WHERE s.sector = ? AND s.id != ?
+             ORDER BY abs(CAST(substr(s.cohort, 4, 4) AS INTEGER) - CAST(substr(?, 4, 4) AS INTEGER)), s.name LIMIT 5`,
+          )
+          .all(startup.sector, id, startup.cohort)
+      : []
+    return { startup: { ...startup, founders: JSON.parse(startup.founders_json) as string[] }, sources, chain, reviews, neighbours }
   })
 
 export type WallTile = { id: string; name: string; sector: string | null; year: number | null; described: boolean }

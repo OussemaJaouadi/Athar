@@ -1,6 +1,18 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
 
+/* dark: follows the theme choice, and the system only when no choice was made. */
+@custom-variant dark {
+  &:where([data-theme='dark'], [data-theme='dark'] *) {
+    @slot;
+  }
+  @media (prefers-color-scheme: dark) {
+    &:where(:root:not([data-theme='light']), :root:not([data-theme='light']) *) {
+      @slot;
+    }
+  }
+}
+
 
 /*
  * Athar: an archive of Tunisian ventures that shows the chain behind every fact.
@@ -20,6 +32,20 @@
   --ochre: #b07a0c;
   --ochre-text: #875d08;
   --error: #b3261e;
+  --warn: #7a5f00;
+  --warn-bg: #f7edd6;
+  --field: #2a211c;
+  --field-ink: #f8f6f1;
+  --field-ink-2: #a89c90;
+  --field-rule: #7a7066;
+  --field-well: #171412;
+  --tile-1: #2a211c;
+  --tile-2: #4a3f37;
+  --tile-3: #6b5f55;
+  --tile-4: #8a8076;
+  --tile-5: #a89c90;
+  --tile-6: #c4bbb0;
+  --tile-gap: #8a8076;
 
   /* shadcn roles mapped onto Athar's tokens */
   --background: var(--canvas);
@@ -43,22 +69,70 @@
   --radius: 0.25rem;
 }
 
+/* Light and dark are each designed; an explicit choice (data-theme) beats the system. */
+:root[data-theme="dark"] {
+  --canvas: #171412;
+  --surface: #211c18;
+  --surface-raised: #2b251f;
+  --ink: #f8f6f1;
+  --ink-2: #b4a89c;
+  --hairline: #3a332d;
+  --control: #7a7066;
+  --glaze: #6fcdb4;
+  --glaze-ink: #171412;
+  --glaze-hover: #86d8c3;
+  --ochre: #e4b64a;
+  --ochre-text: #e4b64a;
+  --error: #f08a80;
+  --warn: #e0b84a;
+  --warn-bg: #332a12;
+  --field: #2e231e;
+  --field-ink: #f8f6f1;
+  --field-ink-2: #ddd0c4;
+  --field-rule: #6f5f54;
+  --field-well: #1d1714;
+  /* the wall: older tiles carry more glaze; in dark they glow lighter instead of sinking */
+  --tile-1: #e8ddd1;
+  --tile-2: #cdbcab;
+  --tile-3: #ad9a88;
+  --tile-4: #8c7a6a;
+  --tile-5: #6d5d50;
+  --tile-6: #54473d;
+  --tile-gap: #7a7066;
+  color-scheme: dark;
+}
+
+
 @media (prefers-color-scheme: dark) {
-  :root {
-    --canvas: #171412;
-    --surface: #211c18;
-    --surface-raised: #2b251f;
-    --ink: #f8f6f1;
-    --ink-2: #a89c90;
-    --hairline: #3a332d;
-    --control: #7a7066;
-    --glaze: #6fcdb4;
-    --glaze-ink: #171412;
-    --glaze-hover: #86d8c3;
-    --ochre: #e4b64a;
-    --ochre-text: #e4b64a;
-    --error: #f08a80;
-    color-scheme: dark;
+  :root:not([data-theme="light"]) {
+  --canvas: #171412;
+  --surface: #211c18;
+  --surface-raised: #2b251f;
+  --ink: #f8f6f1;
+  --ink-2: #b4a89c;
+  --hairline: #3a332d;
+  --control: #7a7066;
+  --glaze: #6fcdb4;
+  --glaze-ink: #171412;
+  --glaze-hover: #86d8c3;
+  --ochre: #e4b64a;
+  --ochre-text: #e4b64a;
+  --error: #f08a80;
+  --warn: #e0b84a;
+  --warn-bg: #332a12;
+  --field: #2e231e;
+  --field-ink: #f8f6f1;
+  --field-ink-2: #ddd0c4;
+  --field-rule: #6f5f54;
+  --field-well: #1d1714;
+  --tile-1: #e8ddd1;
+  --tile-2: #cdbcab;
+  --tile-3: #ad9a88;
+  --tile-4: #8c7a6a;
+  --tile-5: #6d5d50;
+  --tile-6: #54473d;
+  --tile-gap: #7a7066;
+  color-scheme: dark;
   }
 }
 
@@ -95,6 +169,20 @@
   --color-glaze: var(--glaze);
   --color-ochre: var(--ochre);
   --color-ochre-text: var(--ochre-text);
+  --color-warn: var(--warn);
+  --color-warn-bg: var(--warn-bg);
+  --color-field: var(--field);
+  --color-field-ink: var(--field-ink);
+  --color-field-ink-2: var(--field-ink-2);
+  --color-field-rule: var(--field-rule);
+  --color-field-well: var(--field-well);
+  --color-tile-1: var(--tile-1);
+  --color-tile-2: var(--tile-2);
+  --color-tile-3: var(--tile-3);
+  --color-tile-4: var(--tile-4);
+  --color-tile-5: var(--tile-5);
+  --color-tile-6: var(--tile-6);
+  --color-tile-gap: var(--tile-gap);
 
   --radius-sm: calc(var(--radius) - 1px);
   --radius-md: var(--radius);
@@ -128,6 +216,20 @@
   * {
     @apply border-border;
   }
+  html {
+    background: var(--canvas);
+  }
+  a {
+    color: var(--glaze);
+    text-underline-offset: 3px;
+    text-decoration-thickness: 1px;
+  }
+  a:hover {
+    text-decoration-thickness: 2px;
+  }
+  body {
+    font-feature-settings: 'tnum' 1;
+  }
   body {
     @apply bg-background text-foreground font-sans antialiased;
   }
@@ -135,6 +237,8 @@
   h2,
   h3 {
     @apply font-display;
+    font-weight: 500;
+    text-wrap: balance;
   }
   :focus-visible {
     outline: 2px solid var(--glaze);

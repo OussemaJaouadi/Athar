@@ -1,39 +1,55 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { ArrowRight } from 'lucide-react'
 
-import { Button } from '@/components/ui/button'
+import { ThemeToggle } from '@/components/athar/theme'
 import { signIn } from '#/server/auth'
 
 export const Route = createFileRoute('/sign-in')({ component: SignInPage })
 
-// Placeholder: choose a room. How the first operator is created is still open.
+const ROOMS = [
+  { role: 'user' as const, to: '/search' as const, title: 'Search the registry', body: 'Look up startups, read each one with its source, and check an idea against all of them.' },
+  { role: 'operator' as const, to: '/portal' as const, title: 'Run the operator portal', body: 'Collect the registry, follow a row through every step, and settle what is in review.' },
+]
+
+// Entering a self-hosted install. Accounts are not decided yet, so this picks the role for this browser.
 function SignInPage() {
   const navigate = useNavigate()
   return (
-    <main className="mx-auto grid min-h-dvh max-w-xl content-center gap-6 px-6">
-      <img src="/athar.svg" alt="" width={48} height={48} />
-      <h1 className="text-3xl font-semibold">Enter Athar</h1>
-      <p className="text-ink-2">Placeholder sign-in until the first-operator setup is decided.</p>
-      <div className="flex flex-wrap gap-3">
-        <Button
-          className="h-10 px-5"
-          onClick={async () => {
-            await signIn({ data: 'user' })
-            navigate({ to: '/search' })
-          }}
-        >
-          Reading room
-        </Button>
-        <Button
-          variant="outline"
-          className="h-10 px-5"
-          onClick={async () => {
-            await signIn({ data: 'operator' })
-            navigate({ to: '/portal' })
-          }}
-        >
-          Conservation lab
-        </Button>
-      </div>
-    </main>
+    <div className="flex min-h-dvh flex-col">
+      <header className="flex h-14 items-center justify-between px-4 sm:px-8">
+        <span className="flex items-center gap-2 font-display text-lg font-semibold">
+          <img src="/athar.svg" alt="" width={28} height={28} />
+          Athar
+        </span>
+        <ThemeToggle />
+      </header>
+      <main className="mx-auto grid w-full max-w-[44rem] flex-1 content-start gap-10 px-4 pt-16 pb-16 sm:px-8 sm:pt-28">
+        <div>
+          <h1 className="text-[2.25rem] leading-[2.75rem] tracking-[-0.015em]">
+            Tunisian startups, <span className="text-ochre-text">each with the registry row it came from.</span>
+          </h1>
+          <p className="mt-4 max-w-[56ch] text-ink-2">Choose how you use this install. You can switch at any time from the top bar.</p>
+        </div>
+        <ul className="m-0 grid list-none border-t border-control p-0">
+          {ROOMS.map((r) => (
+            <li key={r.role} className="border-b border-hairline">
+              <button
+                type="button"
+                onClick={async () => {
+                  await signIn({ data: r.role })
+                  navigate({ to: r.to })
+                }}
+                className="group grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-6 gap-y-1 py-5 text-start"
+              >
+                <span className="font-display text-xl font-medium group-hover:text-glaze">{r.title}</span>
+                <ArrowRight className="row-span-2 size-5 text-ink-2 transition-transform duration-150 group-hover:translate-x-1 group-hover:text-glaze" aria-hidden />
+                <span className="text-sm text-ink-2">{r.body}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+        <p className="text-[0.8125rem] text-ink-2">Accounts are not set up on this install yet, so anyone using this browser can choose either role.</p>
+      </main>
+    </div>
   )
 }

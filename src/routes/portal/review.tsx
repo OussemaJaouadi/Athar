@@ -1,128 +1,218 @@
 import { Link, createFileRoute, useRouter } from '@tanstack/react-router'
 import { useState } from 'react'
-
-import { useLabToaster } from '@/components/athar/lab'
-import { PageHeader } from '@/components/athar/kit'
-import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
+import {
+  findingName,
+  findingSentence,
+  labControl,
+  labPrimary,
+  useLabToaster,
+} from '@/components/athar/lab'
 import { listReviews, setReviewStatus } from '#/server/api/portal'
 
 type Search = { status?: string; code?: string }
-
 export const Route = createFileRoute('/portal/review')({
   validateSearch: (s: Record<string, unknown>): Search => ({
-    status: typeof s.status === 'string' ? s.status : undefined,
+    status: ['open', 'resolved', 'dismissed'].includes(String(s.status))
+      ? String(s.status)
+      : undefined,
     code: typeof s.code === 'string' ? s.code : undefined,
   }),
   loaderDeps: ({ search }) => search,
   loader: ({ deps }) => listReviews({ data: deps }),
   component: ReviewPage,
 })
+const labels = {
+  open: 'Open',
+  resolved: 'Resolved',
+  dismissed: 'Dismissed',
+} as const
 
-const STATUSES = ['open', 'resolved', 'dismissed'] as const
-
-// The review queue: what Clean and Merge could not settle alone. Resolve or dismiss in bulk.
 function ReviewPage() {
   const { items, counts, status, code } = Route.useLoaderData()
   const router = useRouter()
   const toaster = useLabToaster()
   const [picked, setPicked] = useState<Set<string>>(new Set())
-  const codes = [...new Set(counts.map((c) => c.code))]
-  const count = (s: string, c?: string) => counts.filter((x) => x.status === s && (!c || x.code === c)).reduce((a, b) => a + b.count, 0)
-
+  const [saving, setSaving] = useState(false)
+  const groups = [...new Set(items.map((item) => item.code))]
+  const selected = items.filter((item) => picked.has(item.id))
   const act = (next: 'resolved' | 'dismissed' | 'open') => {
-    const ids = [...picked]
+    setSaving(true)
     toaster.show(
       async () => {
-        await setReviewStatus({ data: { ids, status: next } })
-        setPicked(new Set())
-        await router.invalidate()
+        try {
+          await setReviewStatus({
+            data: { ids: selected.map((item) => item.id), status: next },
+          })
+          setPicked(new Set())
+          await router.invalidate()
+        } finally {
+          setSaving(false)
+        }
       },
-      { loading: `Marking ${ids.length} as ${next}`, success: [`${ids.length} marked ${next}`, 'The queue is updated'], error: (e) => ['Not saved', String(e)] },
+      {
+        loading: 'Updating findings',
+        success: ['Findings updated', 'The review list is updated.'],
+        error: (error) => ['Changes could not be saved', String(error)],
+      },
     )
   }
-
   return (
-    <main className="grid grid-cols-[minmax(0,1fr)] gap-4 p-4 lg:p-6">
-      <PageHeader eyebrow="Review queue" title="What the pipeline could not settle alone">
-        Missing descriptions stay as missing tiles in the reading room; an unrepairable website stays out of the condition checks.
-      </PageHeader>
-
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="flex border border-hairline bg-canvas p-0.5">
-          {STATUSES.map((s) => (
-            <Link key={s} to="/portal/review" search={{ status: s, code }} className={cn('rounded-sm px-2.5 py-1 no-underline', s === status ? 'bg-surface-raised text-ink' : 'text-ink-2')}>
-              {s} <span className="font-mono text-[0.6875rem]">{count(s, code || undefined)}</span>
+    <main className="grid gap-6 p-4 lg:p-6">
+      <header>
+        <h1 className="font-display text-[1.75rem] leading-9 font-medium">
+          In review
+        </h1>
+        <p className="mt-1 text-ink-2">
+          Each record is listed under its finding. A name opens the trace of its source row.
+        </p>
+      </header>
+      <div className="flex flex-wrap items-center gap-3">
+        <nav aria-label="Finding status" className="flex flex-wrap gap-2">
+          {(Object.keys(labels) as Array<keyof typeof labels>).map((value) => (
+            <Link
+              key={value}
+              to="/portal/review"
+              search={{ status: value, code }}
+              aria-current={status === value ? 'page' : undefined}
+              onClick={() => setPicked(new Set())}
+              className={`${labControl} inline-flex items-center gap-2 no-underline ${status === value ? 'border-glaze text-glaze' : 'text-ink-2'}`}
+            >
+              {labels[value]}
+              <span className="tabular-nums">
+                {counts
+                  .filter(
+                    (c) => c.status === value && (!code || c.code === code),
+                  )
+                  .reduce((total, c) => total + c.count, 0)}
+              </span>
             </Link>
           ))}
-        </div>
-        <div className="flex flex-wrap gap-1">
-          <Link to="/portal/review" search={{ status }} className={cn('rounded-sm border px-2 py-1 font-mono text-[0.6875rem] no-underline', !code ? 'border-ink text-ink' : 'border-hairline text-ink-2')}>
-            all codes
+        </nav>
+        {code && (
+          <Link
+            to="/portal/review"
+            search={{ status }}
+            className="text-glaze underline"
+          >
+            Show all findings
           </Link>
-          {codes.map((c) => (
-            <Link key={c} to="/portal/review" search={{ status, code: c }} className={cn('rounded-sm border px-2 py-1 font-mono text-[0.6875rem] no-underline', code === c ? 'border-ink text-ink' : 'border-hairline text-ink-2')}>
-              {c} {count(status, c)}
-            </Link>
-          ))}
-        </div>
-        <div className="ms-auto flex items-center gap-2">
-          <span className="text-xs text-ink-2">{picked.size} selected</span>
+        )}
+      </div>
+      <div className="flex flex-wrap items-center gap-3 border-y border-hairline py-3">
+        <label className="flex min-h-10 items-center gap-2">
+          <input
+            type="checkbox"
+            className="size-4 accent-glaze"
+            checked={items.length > 0 && selected.length === items.length}
+            onChange={(event) =>
+              setPicked(
+                event.target.checked
+                  ? new Set(items.map((item) => item.id))
+                  : new Set(),
+              )
+            }
+          />
+          Select all
+        </label>
+        <span className="text-ink-2">{selected.length} selected</span>
+        <div className="ms-auto flex flex-wrap gap-2">
           {status === 'open' ? (
             <>
-              <Button size="sm" variant="outline" disabled={!picked.size} onClick={() => act('dismissed')}>Dismiss</Button>
-              <Button size="sm" disabled={!picked.size} onClick={() => act('resolved')}>Mark resolved</Button>
+              <button
+                className={labControl}
+                disabled={!selected.length || saving}
+                onClick={() => act('dismissed')}
+              >
+                Dismiss findings
+              </button>
+              <button
+                className={labPrimary}
+                disabled={!selected.length || saving}
+                onClick={() => act('resolved')}
+              >
+                Resolve findings
+              </button>
             </>
           ) : (
-            <Button size="sm" variant="outline" disabled={!picked.size} onClick={() => act('open')}>Reopen</Button>
+            <button
+              className={labControl}
+              disabled={!selected.length || saving}
+              onClick={() => act('open')}
+            >
+              Reopen findings
+            </button>
           )}
         </div>
       </div>
-
-      <div className="overflow-x-auto border border-hairline bg-canvas">
-        <table className="w-full">
-          <thead className="text-ink-2">
-            <tr className="border-b border-hairline">
-              <th className="w-8 px-3 py-2">
-                <input
-                  type="checkbox"
-                  aria-label="Select all"
-                  checked={items.length > 0 && picked.size === items.length}
-                  onChange={(e) => setPicked(e.target.checked ? new Set(items.map((i) => i.id)) : new Set())}
-                />
-              </th>
-              {['Row', 'Startup', 'Step', 'Code', 'What happened', ''].map((h) => (
-                <th key={h} className="px-3 py-2 text-start font-medium">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((i) => (
-              <tr key={i.id} className={cn('border-b border-hairline last:border-0', picked.has(i.id) && 'bg-surface')}>
-                <td className="px-3 py-1.5">
-                  <input
-                    type="checkbox"
-                    aria-label={`Select row ${i.row_number}`}
-                    checked={picked.has(i.id)}
-                    onChange={(e) => setPicked((p) => { const n = new Set(p); if (e.target.checked) n.add(i.id); else n.delete(i.id); return n })}
-                  />
-                </td>
-                <td className="px-3 py-1.5 font-mono text-xs tabular-nums">{i.row_number ?? '—'}</td>
-                <td className="px-3 py-1.5">{i.startup_id ? <Link to="/startups/$id" params={{ id: i.startup_id }}>{i.name}</Link> : <span className="text-ink-2">—</span>}</td>
-                <td className="px-3 py-1.5 font-mono text-xs">{i.step}</td>
-                <td className="px-3 py-1.5 font-mono text-xs text-ochre-text">{i.code}</td>
-                <td className="px-3 py-1.5 text-ink-2">{i.message}</td>
-                <td className="px-3 py-1.5 text-end">
-                  {i.source_row_id && (
-                    <Link to="/portal/trace/$rowId" params={{ rowId: i.source_row_id }} className="text-xs">trace</Link>
+      {groups.map((finding) => {
+        const rows = items.filter((item) => item.code === finding)
+        return (
+          <section key={finding}>
+            <div className="mb-3">
+              <h2 className="text-xl font-medium">
+                {findingName(finding)}{' '}
+                <span className="ms-2 text-base font-normal text-ink-2 tabular-nums">
+                  {rows.length} findings
+                </span>
+              </h2>
+              <p className="mt-1 text-ink-2">{findingSentence(finding)}</p>
+            </div>
+            <ul className="divide-y divide-hairline border-y border-hairline">
+              {rows.map((item) => (
+                <li
+                  key={item.id}
+                  className={`grid grid-cols-[2.5rem_minmax(0,1fr)] gap-x-2 px-1 py-0.5 sm:grid-cols-[2.5rem_5rem_16rem_minmax(0,1fr)] sm:items-center ${picked.has(item.id) ? 'bg-surface' : ''}`}
+                >
+                  <label className="row-span-3 flex min-h-10 items-center justify-center sm:row-span-1">
+                    <input
+                      type="checkbox"
+                      aria-label={`Select source row ${item.row_number ?? item.name ?? 'without a number'}`}
+                      className="size-4 accent-glaze"
+                      checked={picked.has(item.id)}
+                      onChange={(event) =>
+                        setPicked((previous) => {
+                          const next = new Set(previous)
+                          if (event.target.checked) next.add(item.id)
+                          else next.delete(item.id)
+                          return next
+                        })
+                      }
+                    />
+                                      </label>
+                  <span className="tabular-nums text-ink-2">
+                    {item.row_number !== null
+                      ? `Row ${item.row_number}`
+                      : 'No source row'}
+                  </span>
+                  {item.source_row_id ? (
+                    <Link to="/portal/trace/$rowId" params={{ rowId: item.source_row_id }} className="truncate text-glaze underline" title="Trace this source row">
+                      {item.name || 'Unnamed startup'}
+                    </Link>
+                  ) : (
+                    <span className="truncate">{item.name || 'Startup not matched yet'}</span>
                   )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {items.length === 0 && <p className="px-3 py-8 text-center text-ink-2">Nothing {status} here.</p>}
-      </div>
+                  <span className="truncate pb-2 text-sm text-ink-2 sm:pb-0">
+                    {item.code === 'website_unrepairable'
+                      ? <>Registry wrote <span className="font-mono text-ink">{item.raw_website ?? 'nothing'}</span></>
+                      : [item.sector, item.cohort && `labelled ${item.cohort.slice(3)}`].filter(Boolean).join(' · ') || 'No sector in the registry'}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )
+      })}
+      {!items.length && (
+        <p className="py-6 text-ink-2">
+          No{' '}
+          {status === 'open'
+            ? 'open'
+            : status === 'resolved'
+              ? 'resolved'
+              : 'dismissed'}{' '}
+          findings.
+        </p>
+      )}
     </main>
   )
 }

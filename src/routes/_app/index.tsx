@@ -247,6 +247,15 @@ function Answer({ report, cards }: { report: Report; cards: RegistryCard[] }) {
                 : `${n} ${n === 1 ? 'startup shares' : 'startups share'} two or more words with your idea. The closest are below, each with the registry row it rests on.`}
             </p>
           </div>
+          {report.area && (
+            <p className="text-sm text-ink-2 lg:col-span-2 lg:-mt-4">
+              This idea sits in{' '}
+              <Link to="/openings" search={{ area: report.area.id }}>
+                {report.area.name}
+              </Link>
+              , {report.area.count === 0 ? 'with none in the registry' : report.area.count === 1 ? '1 startup' : `${report.area.count} startups`}.
+            </p>
+          )}
           <dl className="grid grid-cols-3 gap-px self-end overflow-hidden rounded-md border border-hairline bg-hairline text-center">
             {[
               [n, 'close'],
@@ -302,7 +311,7 @@ function Answer({ report, cards }: { report: Report; cards: RegistryCard[] }) {
       {n === 0 && (
         <div className="mt-12 max-w-[64ch] rounded-md bg-surface px-6 py-5 leading-7">
           <strong className="font-medium">What a no-match means.</strong> No labelled startup in the Startup Tunisia registry describes this. Startups outside the registry are not here, so ask around before you count on being first.{' '}
-          <Link to="/themes">See where few tried</Link>
+          <Link to="/openings" search={{ order: 'open' }}>See where there is room</Link>
         </div>
       )}
 

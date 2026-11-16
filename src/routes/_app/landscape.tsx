@@ -3,10 +3,12 @@ import { Chart } from '@tanstack/charts/react'
 import { scaleBand } from '@tanstack/charts/scales/band'
 import { scaleLinear } from '@tanstack/charts/scales/linear'
 import { tooltip } from '@tanstack/charts/tooltip'
-import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
+import { Link, createFileRoute, getRouteApi, useNavigate } from '@tanstack/react-router'
 import { useMemo } from 'react'
 
 import { getLandscape } from '#/server/api/app'
+
+const shell = getRouteApi('/_app')
 
 export const Route = createFileRoute('/_app/landscape')({
   loader: () => getLandscape(),
@@ -21,6 +23,8 @@ const pct = (a: number, b: number) => Math.round((a / Math.max(1, b)) * 100)
 // Landscape: what the registry holds, said in sentences first, then counted. Every bar and cell opens its startups.
 function LandscapePage() {
   const { byYear, bySector, grid, facts } = Route.useLoaderData()
+  const { wall } = shell.useLoaderData()
+  const missing = wall.filter((t) => !t.described)
   const navigate = useNavigate()
 
   const yearChart = useMemo(
@@ -85,6 +89,28 @@ function LandscapePage() {
           <Chart definition={sectorChart} height={Math.max(320, bySector.length * 24)} initialWidth={640} ariaLabel="Startups per sector" onSelect={(p) => p && navigate({ to: '/search', search: { sector: p.datum.sector } })} />
         </section>
       </div>
+
+      <section aria-labelledby="w-h" className="mt-16">
+        <h2 id="w-h" className="text-xl">
+          {missing.length} of {wall.length} have no description
+        </h2>
+        <p className="mt-1 mb-5 text-[0.8125rem] text-ink-2">One tile per startup. An open tile is a startup the registry lists without saying what it does. Choose one to open it.</p>
+        <div className="flex flex-wrap gap-[3px]">
+          {wall.map((t) => (
+            <Link
+              key={t.id}
+              to="/startups/$id"
+              params={{ id: t.id }}
+              title={t.described ? t.name : `${t.name}: no description`}
+              aria-label={t.name}
+              className={t.described ? 'size-2.5 bg-control/60 hover:bg-ink' : 'size-2.5 outline outline-1 -outline-offset-1 outline-ochre hover:bg-ochre'}
+            />
+          ))}
+        </div>
+        <Link to="/search" search={{ described: 'no' }} className="mt-4 inline-block text-sm">
+          See the {missing.length} in the Archive
+        </Link>
+      </section>
 
       <section aria-labelledby="g-h" className="mt-16">
         <h2 id="g-h" className="text-xl">Each sector, year by year</h2>

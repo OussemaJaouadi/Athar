@@ -226,7 +226,7 @@ function Report({ report }: { report: IdeaCheck }) {
             <strong className="font-medium">What a no-match means.</strong> No labelled startup in the Startup Tunisia registry describes this in these words. Startups outside the registry are not here, and a match by meaning may still exist once the archive is indexed, so ask around before you count on being first.
           </div>
           <p className="mt-8 text-sm">
-            <Link to="/themes">See the gaps in the registry</Link>
+            <Link to="/openings" search={{ order: 'open' }}>See where there is room</Link>
           </p>
         </>
       ) : (

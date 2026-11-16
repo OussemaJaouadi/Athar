@@ -167,6 +167,7 @@
   --color-destructive: var(--destructive);
   --color-border: var(--border);
   --color-input: var(--input);
+  --color-control: var(--control);
   --color-ring: var(--ring);
 
   --color-canvas: var(--canvas);

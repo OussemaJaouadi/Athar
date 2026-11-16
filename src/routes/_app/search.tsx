@@ -11,6 +11,9 @@ import { createFilterQuery, createFilterRule, flattenFilterConditions } from '@/
 import type { FilterField, FilterQuery } from '@/components/reui/filters/filters-types'
 import { cn } from '@/lib/utils'
 import { PAGE_SIZE, getStartup, searchStartups, type SearchInput } from '#/server/api/app'
+import { AREAS } from '#/shared/areas'
+
+const areaName = (id: string) => AREAS.find((a) => a.id === id)?.name ?? id
 
 type Search = Omit<SearchInput, 'open'> & { open?: string }
 
@@ -30,6 +33,7 @@ export const Route = createFileRoute('/_app/search')({
     to: num(s.to),
     website: s.website === 'yes' || s.website === 'no' ? s.website : undefined,
     described: s.described === 'yes' || s.described === 'no' ? s.described : undefined,
+    area: str(s.area),
     page: int(s.page),
     open: str(s.open),
   }),
@@ -169,6 +173,12 @@ function ArchivePage() {
             }}
           />
         </div>
+        {search.area && (
+          <Link to="/search" search={(p: Search) => ({ ...p, area: undefined, page: undefined })} className="inline-flex h-9 shrink-0 items-center gap-2 rounded-[4px] border border-control px-3 text-sm text-ink no-underline hover:bg-surface">
+            Area: {areaName(search.area)} <span aria-hidden className="text-ink-2">×</span>
+            <span className="sr-only">remove</span>
+          </Link>
+        )}
         <p className="shrink-0 border-s border-hairline ps-5 text-sm text-ink-2" aria-live="polite">
           {matched === total ? `${total} startups` : `${matched} of ${total}`}
         </p>

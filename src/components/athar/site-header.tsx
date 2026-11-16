@@ -5,7 +5,7 @@ import { ThemeToggle } from '@/components/athar/theme'
 export const NAV = [
   { to: '/', label: 'Ask' },
   { to: '/search', label: 'Archive' },
-  { to: '/themes', label: 'Themes' },
+  { to: '/openings', label: 'Openings' },
   { to: '/landscape', label: 'Landscape' },
 ] as const
 

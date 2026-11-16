@@ -2,6 +2,7 @@ import { createServerFn } from '@tanstack/react-start'
 
 import { getDatabase } from '../db'
 import { newId, now } from '../ids'
+import { areaForWords } from '../areas-query'
 
 /*
  * Idea check on shared words: FTS5 over each startup's name, description and sector.
@@ -37,6 +38,8 @@ export type IdeaCheck = {
   matches: IdeaMatch[]
   weak: IdeaMatch[]
   weakTotal: number
+  /** The Openings area the idea's words fall in most, if any. */
+  area: { id: string; name: string; count: number } | null
   saved: boolean
 }
 
@@ -70,7 +73,7 @@ function run(idea: string, saved = false): IdeaCheck {
     .sort((x, y) => y.score - x.score || x.name.localeCompare(y.name))
   const isStrong = (m: IdeaMatch) => m.shared.length >= 2 || m.shared.length / Math.max(1, words.length) >= 0.4
   const strong = scored.filter(isStrong)
-  return { id: newId(), idea, checkedAt: now(), snapshotAt, against, words, strong: strong.length, any, matches: strong.slice(0, 8), weak: scored.filter((m) => !isStrong(m)).slice(0, 12), weakTotal: scored.filter((m) => !isStrong(m)).length, saved }
+  return { id: newId(), idea, checkedAt: now(), snapshotAt, against, words, strong: strong.length, any, matches: strong.slice(0, 8), weak: scored.filter((m) => !isStrong(m)).slice(0, 12), weakTotal: scored.filter((m) => !isStrong(m)).length, area: areaForWords(words), saved }
 }
 
 function seed() {

@@ -155,20 +155,21 @@ function ArchivePage() {
   const pageLink = (n: number) => ({ to: '/search' as const, search: (p: Search) => ({ ...p, open: p.open ?? selected, page: n === 1 ? undefined : n }), resetScroll: false, preload: 'intent' as const })
 
   return (
-    <div className="mx-auto grid w-full max-w-[100rem] flex-1 grid-rows-[auto_minmax(0,1fr)] px-4 sm:px-8 xl:h-[calc(100dvh-57px)] xl:flex-none xl:overflow-hidden">
-      <div className="-mx-4 flex items-center gap-4 border-b border-hairline px-4 py-3 sm:-mx-8 sm:px-8">
+    <div className="grid w-full flex-1 grid-rows-[auto_minmax(0,1fr)] px-4 sm:px-8 xl:h-[calc(100dvh-57px)] xl:flex-none xl:overflow-hidden">
+      <div className="-mx-4 flex items-center gap-5 border-b border-hairline px-4 py-3.5 sm:-mx-8 sm:px-8">
         <div className="min-w-0 flex-1">
           <Filters
             fields={filterFields(sectors, years)}
             query={query}
             showClear
+            className="gap-3 [&_[role=toolbar]]:gap-3"
             onQueryChange={(next) => {
               setQuery(next)
               navigate({ search: { ...fromQuery(next) }, resetScroll: false })
             }}
           />
         </div>
-        <p className="shrink-0 text-sm text-ink-2" aria-live="polite">
+        <p className="shrink-0 border-s border-hairline ps-5 text-sm text-ink-2" aria-live="polite">
           {matched === total ? `${total} startups` : `${matched} of ${total}`}
         </p>
       </div>

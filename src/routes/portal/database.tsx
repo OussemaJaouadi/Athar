@@ -23,35 +23,41 @@ export const Route = createFileRoute('/portal/database')({
 function DatabasePage() {
   const { tables, table, data } = Route.useLoaderData()
   return (
-    <main className="page">
-      <h1>Database</h1>
-      <nav className="row" aria-label="Tables">
+    <main className="mx-auto grid max-w-7xl gap-5 px-5 py-6">
+      <h1 className="text-xl font-semibold">Database</h1>
+      <nav aria-label="Tables" className="flex flex-wrap gap-1.5">
         {tables.map((t) => (
-          <Link key={t.name} to="/portal/database" search={{ table: t.name }}>
-            {t.name} ({t.rows})
+          <Link
+            key={t.name}
+            to="/portal/database"
+            search={{ table: t.name }}
+            className={`rounded-sm border px-2 py-1 font-mono text-[0.6875rem] no-underline ${t.name === table ? 'border-ink text-ink' : 'border-hairline text-ink-2 hover:text-ink'}`}
+          >
+            {t.name} <span className="text-ink-2">{t.rows}</span>
           </Link>
         ))}
       </nav>
       {data && (
         <>
-          <h2>{table}</h2>
-          <div className="table-wrap">
-            <table>
+          <div className="overflow-x-auto border border-hairline bg-canvas">
+            <table className="w-full tabular-nums">
               <thead>
                 <tr>
                   {data.columns.map((c) => (
-                    <th key={c}>{c}</th>
+                    <th key={c} className="border-b border-hairline px-2.5 py-2 text-start font-mono text-[0.6875rem] font-medium whitespace-nowrap text-ink-2">
+                      {c}
+                    </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {data.rows.map((r, i) => (
-                  <tr key={i}>
+                  <tr key={i} className="border-b border-hairline last:border-0">
                     {data.columns.map((c) => {
                       const v = r[c]
                       const text = v === null ? '' : String(v)
                       return (
-                        <td key={c} className="mono" title={text}>
+                        <td key={c} className="max-w-72 truncate px-2.5 py-1.5 font-mono text-xs" title={text}>
                           {text.length > 80 ? `${text.slice(0, 80)}…` : text}
                         </td>
                       )
@@ -61,7 +67,7 @@ function DatabasePage() {
               </tbody>
             </table>
           </div>
-          <div className="row">
+          <div className="flex gap-4">
             {data.page > 0 && (
               <Link to="/portal/database" search={{ table, page: data.page - 1 }}>
                 Previous

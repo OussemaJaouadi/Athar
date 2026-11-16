@@ -53,8 +53,40 @@ export const getStartup = createServerFn()
          WHERE r.startup_id = ? ORDER BY ss.fetched_at DESC, sr.row_number`,
       )
       .all(id)
-    return { startup: { ...startup, founders: JSON.parse(startup.founders_json) as string[] }, sources }
+    // The chain behind each field: which snapshot and row it came from, and what Clean did to it.
+    const primary = startup.primary_row_id
+      ? db
+          .query<{ row_number: number; fetched_at: string; content_hash: string; changes_json: string }, [string]>(
+            `SELECT sr.row_number, ss.fetched_at, ss.content_hash, r.changes_json FROM records r
+             JOIN source_rows sr ON sr.id = r.source_row_id JOIN source_snapshots ss ON ss.id = r.snapshot_id
+             WHERE r.source_row_id = ?`,
+          )
+          .get(startup.primary_row_id)
+      : null
+    const changes = primary
+      ? (JSON.parse(primary.changes_json) as { field: string; why: string }[]).map(({ field, why }) => ({ field, why }))
+      : []
+    return {
+      startup: { ...startup, founders: JSON.parse(startup.founders_json) as string[] },
+      sources,
+      chain: primary
+        ? { rowNumber: primary.row_number, fetchedAt: primary.fetched_at, snapshot: primary.content_hash.slice(0, 8), changes }
+        : null,
+    }
   })
+
+export type WallTile = { id: string; name: string; sector: string | null; year: number | null; described: boolean }
+
+// The wall: one tile per startup, in sector order, for the archive overview and the palette.
+export const getWall = createServerFn().handler(async () => {
+  return getDatabase()
+    .query<{ id: string; name: string; sector: string | null; year: number | null; described: number }, []>(
+      `SELECT id, name, sector, CAST(substr(cohort, 4, 4) AS INTEGER) AS year, description IS NOT NULL AS described
+       FROM startups ORDER BY sector, year, name`,
+    )
+    .all()
+    .map((t): WallTile => ({ ...t, described: t.described === 1 }))
+})
 
 // Landscape: counts that open the startups behind them.
 export const getLandscape = createServerFn().handler(async () => {

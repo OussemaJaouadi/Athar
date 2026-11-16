@@ -31,6 +31,17 @@ export const listRuns = createServerFn().handler(async () => {
   return { runs, operations: OPERATIONS.map(({ id, label, description }) => ({ id, label, description })) }
 })
 
+// The run in flight (or the last one to finish), for the lab's status island.
+export const getActiveRun = createServerFn().handler(async () => {
+  requireOperator()
+  recoverInterrupted()
+  const db = getDatabase()
+  const run = db.query<RunRow, []>('SELECT * FROM runs ORDER BY started_at DESC LIMIT 1').get()
+  if (!run) return null
+  const steps = db.query<StepRow, [string]>('SELECT * FROM run_steps WHERE run_id = ? ORDER BY position').all(run.id)
+  return { run, steps }
+})
+
 export const getRun = createServerFn()
   .validator((id: string) => id)
   .handler(async ({ data: id }) => {

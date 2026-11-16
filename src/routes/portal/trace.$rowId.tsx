@@ -11,91 +11,102 @@ export const Route = createFileRoute('/portal/trace/$rowId')({
   component: TracePage,
 })
 
-const show = (v: string | null) => v ?? '—'
-
-// Micro view: one registry row, what each step did to it, and why.
+// Micro view: one row's isnad, the chain from the registry to the catalogue, step by step.
 function TracePage() {
   const { row, changes, startup, siblings, reviews, prepared } = Route.useLoaderData()
+
   return (
-    <main className="page">
-      <h1>Row {row.row_number}</h1>
-      <div className="split">
-        <section className="list">
-          <div className="panel">
-            <h2>Collect</h2>
-            <p>
-              Snapshot of {new Date(row.fetched_at).toLocaleString()} · <span className="mono">{row.content_hash.slice(0, 12)}</span>
-            </p>
-          </div>
+    <main className="mx-auto grid max-w-7xl gap-6 px-5 py-6">
+      <header className="grid gap-1">
+        <span className="font-mono text-[0.6875rem] text-ink-2">TRACE · registry row {row.row_number}</span>
+        <h1 className="text-xl font-semibold">{startup?.name ?? 'Unmatched row'}</h1>
+      </header>
 
-          <div className="panel">
-            <h2>Clean</h2>
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_24rem]">
+        <ol className="relative grid gap-5 ps-7 before:absolute before:inset-y-2 before:start-2 before:w-0.5 before:bg-ochre">
+          <Station n={1} title="Collect">
+            Snapshot of {new Date(row.fetched_at).toLocaleString('en-GB')} · <span className="font-mono">{row.content_hash.slice(0, 12)}</span>
+          </Station>
+
+          <Station n={2} title="Clean">
             {changes.length === 0 ? (
-              <p className="muted">No field changed.</p>
+              <span className="text-ink-2">No field changed.</span>
             ) : (
-              <table>
-                <thead>
-                  <tr>
-                    <th>Field</th>
-                    <th>Before</th>
-                    <th>After</th>
-                    <th>Why</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {changes.map((c) => (
-                    <tr key={c.field}>
-                      <td>{c.field}</td>
-                      <td className="mono">{show(c.from)}</td>
-                      <td className="mono">{show(c.to)}</td>
-                      <td>{c.why}</td>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="text-ink-2">
+                    <tr className="border-b border-hairline">
+                      {['Field', 'Before', 'After', 'Why'].map((h) => (
+                        <th key={h} className="py-1.5 pe-3 text-start font-medium">
+                          {h}
+                        </th>
+                      ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {changes.map((c) => (
+                      <tr key={c.field} className="border-b border-hairline align-top last:border-0">
+                        <td className="py-1.5 pe-3 font-mono">{c.field}</td>
+                        <td className="max-w-56 py-1.5 pe-3 font-mono break-words text-ink-2 line-through decoration-zinc-400">{c.from ?? '—'}</td>
+                        <td className="max-w-56 py-1.5 pe-3 font-mono break-words">{c.to ?? '—'}</td>
+                        <td className="py-1.5 text-ink-2">{c.why}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
-          </div>
+          </Station>
 
-          <div className="panel">
-            <h2>Merge</h2>
+          <Station n={3} title="Merge">
             {startup ? (
-              <p>
-                Startup{' '}
+              <>
+                Catalogued as{' '}
                 <Link to="/startups/$id" params={{ id: startup.id }}>
                   {startup.name}
                 </Link>{' '}
-                by <span className="mono">{startup.identity_key}</span>
-                {siblings.length > 0 && ` · merged with ${siblings.length} other row(s)`}
-              </p>
+                by <span className="font-mono">{startup.identity_key}</span>
+                {siblings.length > 0 && <span className="text-ink-2"> · merged with {siblings.length} other row{siblings.length > 1 ? 's' : ''}</span>}
+              </>
             ) : (
-              <p className="muted">Not matched yet.</p>
+              <span className="text-ink-2">Not matched yet.</span>
             )}
-          </div>
+          </Station>
 
-          <div className="panel">
-            <h2>Prepare</h2>
-            {prepared ? <p>{prepared.text}</p> : <p className="muted">Not prepared yet.</p>}
-          </div>
+          <Station n={4} title="Prepare">
+            {prepared ? prepared.text : <span className="text-ink-2">Not prepared yet.</span>}
+          </Station>
 
           {reviews.length > 0 && (
-            <div className="panel">
-              <h2>Review</h2>
-              <ul className="list">
+            <Station n={5} title="Review">
+              <ul className="grid gap-1">
                 {reviews.map((r, i) => (
                   <li key={i}>
-                    {r.step} · {r.code}: {r.message} ({r.status})
+                    <span className="font-mono">{r.code}</span> <span className="text-ink-2">· {r.message} · {r.status}</span>
                   </li>
                 ))}
               </ul>
-            </div>
+            </Station>
           )}
-        </section>
+        </ol>
 
-        <section className="panel">
-          <h2>As downloaded</h2>
-          <pre className="mono">{JSON.stringify(JSON.parse(row.raw_json), null, 2)}</pre>
-        </section>
+        <aside className="grid content-start gap-2">
+          <h2 className="font-mono text-[0.6875rem] text-ink-2">AS DOWNLOADED</h2>
+          <pre className="overflow-x-auto border border-hairline bg-canvas p-3 font-mono text-xs leading-5 whitespace-pre-wrap">{JSON.stringify(JSON.parse(row.raw_json), null, 2)}</pre>
+        </aside>
       </div>
     </main>
+  )
+}
+
+function Station({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
+  return (
+    <li className="relative grid gap-2 border border-hairline bg-canvas p-4">
+      <span aria-hidden className="absolute top-5 -start-[1.6rem] size-3 rounded-full border-2 border-ochre bg-ochre" />
+      <h2 className="font-mono text-[0.6875rem] text-ink-2">
+        {String(n).padStart(2, '0')} · {title.toUpperCase()}
+      </h2>
+      <div>{children}</div>
+    </li>
   )
 }

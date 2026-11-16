@@ -3,7 +3,7 @@ import { HeadContent, Scripts, createRootRoute } from '@tanstack/react-router'
 import appCss from '../styles.css?url'
 
 const FONTS =
-  'https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500&family=IBM+Plex+Sans:wght@400;500&family=Readex+Pro:wght@500;600&display=swap'
+  'https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Arabic:wght@400;500&family=IBM+Plex+Sans:wght@400;500&family=Readex+Pro:wght@500;600&display=swap'
 
 export const Route = createRootRoute({
   head: () => ({

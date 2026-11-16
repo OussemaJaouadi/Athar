@@ -1,260 +1,143 @@
-/* Athar tokens from docs/DESIGN.md: Qallaline palette, 60-30-10, light and dark. */
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+
+/*
+ * Athar: an archive of Tunisian ventures that shows the chain behind every fact.
+ * Tokens from docs/DESIGN.md (Qallaline palette, 60-30-10), light and dark.
+ */
 :root {
-  --color-canvas: #f8f6f1;
-  --color-surface: #eeeae2;
-  --color-surface-raised: #e4dfd5;
-  --color-text-primary: #2a211c;
-  --color-text-secondary: #6b5f55;
-  --color-link: #0f7a66;
-  --color-border-subtle: #d6d0c4;
-  --color-border-control: #8a8076;
-  --color-action-bg: #0f7a66;
-  --color-action-fg: #ffffff;
-  --color-action-hover: #0d6e5c;
-  --color-accent-data: #b07a0c;
-  --color-accent-data-text: #875d08;
+  --canvas: #f8f6f1;
+  --surface: #eeeae2;
+  --surface-raised: #e4dfd5;
+  --ink: #2a211c;
+  --ink-2: #6b5f55;
+  --hairline: #d6d0c4;
+  --control: #8a8076;
+  --glaze: #0f7a66;
+  --glaze-ink: #ffffff;
+  --glaze-hover: #0d6e5c;
+  --ochre: #b07a0c;
+  --ochre-text: #875d08;
+  --error: #b3261e;
 
-  --font-display: 'Readex Pro', 'El Messiri', system-ui, sans-serif;
-  --font-body: 'IBM Plex Sans', 'IBM Plex Sans Arabic', 'Noto Sans', system-ui, sans-serif;
-  --font-mono: ui-monospace, 'SF Mono', Menlo, monospace;
-
-  color-scheme: light;
+  /* shadcn roles mapped onto Athar's tokens */
+  --background: var(--canvas);
+  --foreground: var(--ink);
+  --card: var(--surface);
+  --card-foreground: var(--ink);
+  --popover: var(--canvas);
+  --popover-foreground: var(--ink);
+  --primary: var(--glaze);
+  --primary-foreground: var(--glaze-ink);
+  --secondary: var(--surface);
+  --secondary-foreground: var(--ink);
+  --muted: var(--surface);
+  --muted-foreground: var(--ink-2);
+  --accent: var(--surface-raised);
+  --accent-foreground: var(--ink);
+  --destructive: var(--error);
+  --border: var(--hairline);
+  --input: var(--control);
+  --ring: var(--glaze);
+  --radius: 0.25rem;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --color-canvas: #171412;
-    --color-surface: #211c18;
-    --color-surface-raised: #2b251f;
-    --color-text-primary: #f8f6f1;
-    --color-text-secondary: #a89c90;
-    --color-link: #6fcdb4;
-    --color-border-subtle: #3a332d;
-    --color-border-control: #7a7066;
-    --color-action-bg: #6fcdb4;
-    --color-action-fg: #171412;
-    --color-action-hover: #86d8c3;
-    --color-accent-data: #e4b64a;
-    --color-accent-data-text: #e4b64a;
+    --canvas: #171412;
+    --surface: #211c18;
+    --surface-raised: #2b251f;
+    --ink: #f8f6f1;
+    --ink-2: #a89c90;
+    --hairline: #3a332d;
+    --control: #7a7066;
+    --glaze: #6fcdb4;
+    --glaze-ink: #171412;
+    --glaze-hover: #86d8c3;
+    --ochre: #e4b64a;
+    --ochre-text: #e4b64a;
+    --error: #f08a80;
     color-scheme: dark;
   }
 }
 
-* {
-  box-sizing: border-box;
+@theme inline {
+  --font-display: 'Readex Pro', 'El Messiri', system-ui, sans-serif;
+  --font-sans: 'IBM Plex Sans', 'IBM Plex Sans Arabic', 'Noto Sans', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-hairline: var(--hairline);
+  --color-glaze: var(--glaze);
+  --color-ochre: var(--ochre);
+  --color-ochre-text: var(--ochre-text);
+
+  --radius-sm: calc(var(--radius) - 1px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) * 2);
+  --radius-xl: calc(var(--radius) * 2);
 }
 
-body {
-  margin: 0;
-  background: var(--color-canvas);
-  color: var(--color-text-primary);
-  font: 400 1rem/1.5rem var(--font-body);
+/*
+ * Library components hard-code Tailwind's zinc, emerald and rose. Remapping them here
+ * turns every kokonut/interior component into Qallaline without editing vendor files.
+ */
+@theme {
+  --color-zinc-50: #f8f6f1;
+  --color-zinc-100: #eeeae2;
+  --color-zinc-200: #e4dfd5;
+  --color-zinc-300: #d6d0c4;
+  --color-zinc-400: #a89c90;
+  --color-zinc-500: #8a8076;
+  --color-zinc-600: #6b5f55;
+  --color-zinc-700: #4a3f37;
+  --color-zinc-800: #2b251f;
+  --color-zinc-900: #211c18;
+  --color-zinc-950: #171412;
+  --color-emerald-400: #6fcdb4;
+  --color-emerald-500: #0f7a66;
+  --color-emerald-600: #0d6e5c;
+  --color-rose-500: #b3261e;
 }
 
-h1,
-h2 {
-  font-family: var(--font-display);
-  font-weight: 600;
-}
-
-a {
-  color: var(--color-link);
-}
-
-a:focus-visible,
-button:focus-visible {
-  outline: 2px solid var(--color-link);
-  outline-offset: 2px;
-}
-
-/* Layout skeleton: shells and building blocks shared by both areas. Refine with impeccable. */
-button,
-input,
-select,
-textarea {
-  font: inherit;
-  color: inherit;
-}
-
-.shell-header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 1.5rem;
-  padding: 0.75rem 1.5rem;
-  border-bottom: 1px solid var(--color-border-subtle);
-}
-
-.shell-header nav {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
-}
-
-.shell-header .brand {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-family: var(--font-display);
-  font-weight: 600;
-  color: inherit;
-  text-decoration: none;
-}
-
-.shell-header .spacer {
-  flex: 1;
-}
-
-.shell-header a[data-status='active'] {
-  color: var(--color-text-primary);
-  font-weight: 500;
-}
-
-.page {
-  max-width: 72rem;
-  margin: 0 auto;
-  padding: 1.5rem;
-  display: grid;
-  gap: 1.5rem;
-}
-
-.portal {
-  font-size: 0.875rem;
-  line-height: 1.25rem;
-}
-
-.muted {
-  color: var(--color-text-secondary);
-}
-
-.panel {
-  background: var(--color-surface);
-  padding: 1rem;
-}
-
-.row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  align-items: center;
-}
-
-.btn {
-  min-height: 2.5rem;
-  padding: 0 1rem;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  background: var(--color-action-bg);
-  color: var(--color-action-fg);
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.btn:hover {
-  background: var(--color-action-hover);
-}
-
-.btn.secondary {
-  background: var(--color-canvas);
-  color: var(--color-text-primary);
-  border-color: var(--color-border-control);
-}
-
-.btn:disabled {
-  cursor: not-allowed;
-  opacity: 0.6;
-}
-
-.field {
-  min-height: 2.5rem;
-  padding: 0 0.75rem;
-  border: 1px solid var(--color-border-control);
-  border-radius: 4px;
-  background: var(--color-canvas);
-}
-
-textarea.field {
-  padding: 0.5rem 0.75rem;
-  min-height: 6rem;
-}
-
-.table-wrap {
-  overflow-x: auto;
-}
-
-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-variant-numeric: tabular-nums;
-}
-
-th,
-td {
-  text-align: start;
-  padding: 0.5rem;
-  border-bottom: 1px solid var(--color-border-subtle);
-  vertical-align: top;
-}
-
-th {
-  font-weight: 500;
-  color: var(--color-text-secondary);
-}
-
-.portal th,
-.portal td {
-  padding: 0.375rem 0.5rem;
-}
-
-.mono {
-  font-family: var(--font-mono);
-  font-size: 0.8125rem;
-}
-
-pre.mono {
-  white-space: pre-wrap;
-  word-break: break-word;
-  margin: 0;
-}
-
-.status {
-  display: inline-block;
-  padding: 0 0.5rem;
-  border-radius: 4px;
-  border: 1px solid var(--color-border-control);
-  font-size: 0.75rem;
-}
-
-.status[data-status='failed'] {
-  border-color: #b3261e;
-  color: #b3261e;
-}
-
-.list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 0.75rem;
-}
-
-.split {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 1rem;
-}
-
-@media (max-width: 48rem) {
-  .split {
-    grid-template-columns: minmax(0, 1fr);
+@layer base {
+  * {
+    @apply border-border;
   }
-}
-
-.bar {
-  height: 0.75rem;
-  background: var(--color-accent-data);
-}
-
-.error {
-  color: #b3261e;
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+  h1,
+  h2,
+  h3 {
+    @apply font-display;
+  }
+  :focus-visible {
+    outline: 2px solid var(--glaze);
+    outline-offset: 2px;
+  }
 }

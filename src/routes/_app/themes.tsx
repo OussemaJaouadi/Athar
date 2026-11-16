@@ -1,8 +1,8 @@
 import { createFileRoute, redirect } from '@tanstack/react-router'
 
-// Themes became Openings; old links keep working.
+// Themes was cut; old links land on Landscape.
 export const Route = createFileRoute('/_app/themes')({
   beforeLoad: () => {
-    throw redirect({ to: '/openings' })
+    throw redirect({ to: '/landscape' })
   },
 })

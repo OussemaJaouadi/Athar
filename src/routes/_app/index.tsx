@@ -247,27 +247,7 @@ function Answer({ report, cards }: { report: Report; cards: RegistryCard[] }) {
                 : `${n} ${n === 1 ? 'startup shares' : 'startups share'} two or more words with your idea. The closest are below, each with the registry row it rests on.`}
             </p>
           </div>
-          {report.area && (
-            <p className="text-sm text-ink-2 lg:col-span-2 lg:-mt-4">
-              This idea sits in{' '}
-              <Link to="/openings" search={{ area: report.area.id }}>
-                {report.area.name}
-              </Link>
-              , {report.area.count === 0 ? 'with none in the registry' : report.area.count === 1 ? '1 startup' : `${report.area.count} startups`}.
-            </p>
-          )}
-          <dl className="grid grid-cols-3 gap-px self-end overflow-hidden rounded-md border border-hairline bg-hairline text-center">
-            {[
-              [n, 'close'],
-              [report.weakTotal, 'one word'],
-              [report.against - n - report.weakTotal, 'unrelated'],
-            ].map(([v, k]) => (
-              <div key={k} className="bg-surface px-3 py-3">
-                <dt className="text-xs text-ink-2">{k}</dt>
-                <dd className={cn('m-0 font-display text-3xl font-bold', k === 'close' && n > 0 && 'text-ochre-text')}>{v}</dd>
-              </div>
-            ))}
-          </dl>
+          <Crowd report={report} />
         </div>
       </section>
 
@@ -311,7 +291,7 @@ function Answer({ report, cards }: { report: Report; cards: RegistryCard[] }) {
       {n === 0 && (
         <div className="mt-12 max-w-[64ch] rounded-md bg-surface px-6 py-5 leading-7">
           <strong className="font-medium">What a no-match means.</strong> No labelled startup in the Startup Tunisia registry describes this. Startups outside the registry are not here, so ask around before you count on being first.{' '}
-          <Link to="/openings" search={{ order: 'open' }}>See where there is room</Link>
+          <Link to="/landscape">See the registry by sector and year</Link>
         </div>
       )}
 
@@ -320,5 +300,51 @@ function Answer({ report, cards }: { report: Report; cards: RegistryCard[] }) {
         <AskForm compact />
       </div>
     </main>
+  )
+}
+
+const YEARS = [2019, 2020, 2021, 2022, 2023, 2024, 2025]
+
+/** How crowded and how recent, from the close matches' real sector and labelled year. */
+function Crowd({ report }: { report: Report }) {
+  const close = report.matches
+  if (close.length === 0) return null
+  const years = close.map((m) => Number(m.cohort?.slice(3))).filter((y) => y > 0)
+  const per = new Map<number, number>()
+  for (const y of years) per.set(y, (per.get(y) ?? 0) + 1)
+  const peak = Math.max(...per.values(), 1)
+  const first = Math.min(...years)
+  const last = Math.max(...years)
+  const inSector = report.sector ? close.filter((m) => m.sector === report.sector!.name).length : 0
+  return (
+    <aside aria-label="How crowded" className="grid content-end gap-3 self-end">
+      <p className="text-sm leading-6">
+        {close.length === report.strong ? `${close.length} close matches.` : `The ${close.length} closest.`}{' '}
+        {report.sector && inSector > 1 && <>{inSector} are {report.sector.name}. </>}
+        {years.length > 0 && (first === last ? `All labelled in ${first}.` : `Labelled between ${first} and ${last}${last < YEARS[YEARS.length - 1] ? ', none since' : ''}.`)}
+      </p>
+      <ol className="grid grid-cols-7 gap-[3px]" aria-label="Close matches by year labelled">
+        {YEARS.map((y) => {
+          const c = per.get(y) ?? 0
+          return (
+            <li key={y} className="grid gap-1 text-center">
+              <span
+                title={`${y}: ${c}`}
+                className={cn('grid h-9 place-content-center rounded-[2px] font-mono text-xs', c === 0 && 'outline outline-1 -outline-offset-1 outline-dashed outline-hairline text-ink-2')}
+                style={c ? { background: `color-mix(in oklab, var(--ochre) ${Math.round(20 + (c / peak) * 80)}%, var(--canvas))`, color: c / peak > 0.5 ? 'var(--canvas)' : 'var(--ink)' } : undefined}
+              >
+                {c || ''}
+              </span>
+              <span className="font-mono text-[0.6875rem] text-ink-2">{String(y).slice(2)}</span>
+            </li>
+          )
+        })}
+      </ol>
+      {report.sector && (
+        <Link to="/landscape" search={{ sector: report.sector.name }} className="text-sm">
+          {report.sector.name} in the registry: {report.sector.total} startups, {report.sector.recent} since {report.sector.since}
+        </Link>
+      )}
+    </aside>
   )
 }

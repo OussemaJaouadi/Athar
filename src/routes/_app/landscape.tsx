@@ -1,149 +1,115 @@
-import { barX, barY, defineChart, text } from '@tanstack/charts'
-import { Chart } from '@tanstack/charts/react'
-import { scaleBand } from '@tanstack/charts/scales/band'
-import { scaleLinear } from '@tanstack/charts/scales/linear'
-import { tooltip } from '@tanstack/charts/tooltip'
-import { Link, createFileRoute, getRouteApi, useNavigate } from '@tanstack/react-router'
-import { useMemo } from 'react'
+import { Link, createFileRoute } from '@tanstack/react-router'
 
-import { getLandscape } from '#/server/api/app'
+import { Scroller } from '@/components/athar/scroller'
+import { TileMark } from '@/components/athar/tile-mark'
+import { cn } from '@/lib/utils'
+import { getLandscape, searchStartups } from '#/server/api/app'
 
-const shell = getRouteApi('/_app')
+type Search = { sector?: string; year?: number }
 
 export const Route = createFileRoute('/_app/landscape')({
-  loader: () => getLandscape(),
+  validateSearch: (s: Record<string, unknown>): Search => ({
+    sector: typeof s.sector === 'string' && s.sector ? s.sector : undefined,
+    year: typeof s.year === 'number' ? s.year : typeof s.year === 'string' && /^\d{4}$/.test(s.year) ? Number(s.year) : undefined,
+  }),
+  loaderDeps: ({ search }) => search,
+  loader: async ({ deps }) => {
+    const land = await getLandscape()
+    // Default selection: the largest sector, all years.
+    const sector = deps.sector ?? (deps.year ? undefined : land.bySector[0]?.sector)
+    const picked = await searchStartups({ data: { sector, from: deps.year, to: deps.year } })
+    return { ...land, sector, year: deps.year, picked }
+  },
   component: LandscapePage,
 })
 
-// Single-series counts take ochre, the data accent; green stays for actions.
-const SLOT_A = 'var(--ochre)'
-const SLOT_B = 'var(--ochre)'
 const pct = (a: number, b: number) => Math.round((a / Math.max(1, b)) * 100)
 
-// Landscape: what the registry holds, said in sentences first, then counted. Every bar and cell opens its startups.
+// Landscape: one table of sectors by year labelled. Any cell, row or year opens the startups behind it.
 function LandscapePage() {
-  const { byYear, bySector, grid, facts } = Route.useLoaderData()
-  const { wall } = shell.useLoaderData()
-  const missing = wall.filter((t) => !t.described)
-  const navigate = useNavigate()
-
-  const yearChart = useMemo(
-    () =>
-      defineChart({
-        marks: [
-          barY(byYear, { x: 'year', y: 'count', fill: SLOT_A, inset: 6 }),
-          text(byYear, { x: 'year', y: 'count', text: 'count', dy: -8, fontSize: 13, fill: 'currentColor' }),
-        ],
-        scales: { x: { scale: () => scaleBand<string>().padding(0.25) }, y: { scale: scaleLinear, nice: true } },
-        tooltip,
-      }),
-    [byYear],
-  )
-  const sectorChart = useMemo(
-    () =>
-      defineChart({
-        marks: [
-          barX(bySector, { x: 'count', y: 'sector', fill: SLOT_B, inset: 3 }),
-          text(bySector, { x: 'count', y: 'sector', text: 'count', dx: 8, anchor: 'start', fontSize: 13, fill: 'currentColor' }),
-        ],
-        scales: { x: { scale: scaleLinear, nice: true }, y: { scale: () => scaleBand<string>().domain(bySector.map((r) => r.sector)).padding(0.25) } },
-        tooltip,
-      }),
-    [bySector],
-  )
-
+  const { byYear, bySector, grid, facts, sector, year, picked } = Route.useLoaderData()
   if (!facts || facts.total === 0) {
     return (
-      <main className="px-4 py-16 sm:px-10 lg:px-16">
-        <h1 className="text-[1.75rem] leading-9">Nothing to count yet</h1>
+      <main className="px-4 py-16 sm:px-8">
+        <h1 className="text-[2.75rem] leading-[3rem]">Nothing to count yet</h1>
         <p className="mt-2 text-ink-2">The registry has not been collected. An operator runs Collect first.</p>
       </main>
     )
   }
 
-  const years = byYear.map((y) => y.year)
+  const years = byYear.map((y) => Number(y.year))
   const cell = new Map(grid.map((g) => [`${g.sector}|${g.year}`, g.count]))
   const peak = Math.max(...grid.map((g) => g.count), 1)
   const busiest = [...byYear].sort((a, b) => b.count - a.count)[0]
   const last = byYear[byYear.length - 1]
+  const top = bySector[0]?.count ?? 1
+  const title = `${sector ?? 'All sectors'}, ${year ?? 'all years'}`
+  const missing = facts.total - facts.described
+
+  const shade = (c: number) => ({ background: `color-mix(in oklab, var(--ochre) ${Math.round(14 + (c / peak) * 86)}%, var(--canvas))`, color: c / peak > 0.5 ? 'var(--canvas)' : 'var(--ink)' })
+  const isOn = (s?: string, y?: number) => s === sector && y === year
 
   return (
-    <main className="max-w-[90rem] px-4 py-10 text-ink sm:px-10 lg:px-16 lg:py-14">
-      <h1 className="text-[1.75rem] leading-9">Landscape</h1>
-      <p className="mt-4 max-w-[62ch] font-display text-xl leading-8">
-        {facts.total} startups from {facts.rows} registry rows. Labelling peaked in {busiest?.year} with {busiest?.count} startups and fell to {last?.count} in {last?.year}. {bySector[0]?.sector} is the largest sector, with {bySector[0]?.count}.
-      </p>
-      <p className="mt-3 max-w-[62ch] text-sm text-ink-2">
-        {pct(facts.described, facts.total)}% describe what they do and {pct(facts.websites, facts.total)}% list a website. These counts describe the registry, not the market: a startup that was never labelled is not here.
-      </p>
+    <main className="grid flex-1 grid-cols-[minmax(0,1fr)] gap-x-12 px-4 py-10 sm:px-8 xl:grid-cols-12">
+      <div className="xl:col-span-8">
+        <h1 className="text-[2.75rem] leading-[3rem]">Landscape</h1>
+        <p className="mt-4 max-w-[62ch] font-display text-xl leading-8">
+          {facts.total} startups from {facts.rows} registry rows. Labelling peaked in {busiest?.year} with {busiest?.count} startups and fell to {last?.count} in {last?.year}. {bySector[0]?.sector} is the largest sector, with {bySector[0]?.count}.
+        </p>
+        <p className="mt-2 text-sm text-ink-2">These counts describe the registry, not the market: a startup that was never labelled is not here.</p>
 
-      <div className="mt-12 grid gap-x-16 gap-y-12 xl:grid-cols-2">
-        <section aria-labelledby="y-h">
-          <h2 id="y-h" className="text-xl">Startups labelled each year</h2>
-          <p className="mt-1 mb-4 text-[0.8125rem] text-ink-2">Choose a year to see its startups.</p>
-          <Chart definition={yearChart} height={320} initialWidth={640} ariaLabel="Startups labelled each year" onSelect={(p) => p && navigate({ to: '/search', search: { from: Number(p.datum.year), to: Number(p.datum.year) } })} />
-        </section>
-        <section aria-labelledby="s-h">
-          <h2 id="s-h" className="text-xl">Startups per sector</h2>
-          <p className="mt-1 mb-4 text-[0.8125rem] text-ink-2">Choose a sector to see its startups.</p>
-          <Chart definition={sectorChart} height={Math.max(320, bySector.length * 24)} initialWidth={640} ariaLabel="Startups per sector" onSelect={(p) => p && navigate({ to: '/search', search: { sector: p.datum.sector } })} />
-        </section>
-      </div>
-
-      <section aria-labelledby="w-h" className="mt-16">
-        <h2 id="w-h" className="text-xl">
-          {missing.length} of {wall.length} have no description
-        </h2>
-        <p className="mt-1 mb-5 text-[0.8125rem] text-ink-2">One tile per startup. An open tile is a startup the registry lists without saying what it does. Choose one to open it.</p>
-        <div className="flex flex-wrap gap-[3px]">
-          {wall.map((t) => (
-            <Link
-              key={t.id}
-              to="/startups/$id"
-              params={{ id: t.id }}
-              title={t.described ? t.name : `${t.name}: no description`}
-              aria-label={t.name}
-              className={t.described ? 'size-2.5 bg-control/60 hover:bg-ink' : 'size-2.5 outline outline-1 -outline-offset-1 outline-ochre hover:bg-ochre'}
-            />
-          ))}
-        </div>
-        <Link to="/search" search={{ described: 'no' }} className="mt-4 inline-block text-sm">
-          See the {missing.length} in the Archive
-        </Link>
-      </section>
-
-      <section aria-labelledby="g-h" className="mt-16">
-        <h2 id="g-h" className="text-xl">Each sector, year by year</h2>
-        <p className="mt-1 mb-5 text-[0.8125rem] text-ink-2">Deeper ochre means more startups labelled; an open cell means none. Choose a cell to see them.</p>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[44rem] border-separate border-spacing-[3px] text-sm">
+        <div className="mt-10 overflow-x-auto">
+          <table className="w-full min-w-[48rem] border-separate border-spacing-[3px] text-sm">
             <thead>
               <tr>
-                <th className="w-60" />
+                <th className="w-64 pb-1 text-start text-xs font-normal text-ink-2">Sector · labelled</th>
                 {years.map((y) => (
-                  <th key={y} className="pb-1 text-[0.8125rem] font-normal text-ink-2">{y}</th>
+                  <th key={y} className="pb-1 font-normal">
+                    <Link to="/landscape" search={{ year: y }} resetScroll={false} className={cn('font-mono text-xs no-underline', isOn(undefined, y) ? 'text-glaze' : 'text-ink-2 hover:text-ink')}>
+                      {y}
+                    </Link>
+                  </th>
                 ))}
-                <th className="pb-1 text-[0.8125rem] font-normal text-ink-2">All</th>
+                <th className="w-40 pb-1 text-end text-xs font-normal text-ink-2">All years</th>
               </tr>
             </thead>
             <tbody>
+              <tr>
+                <th className="pe-3 text-start font-medium">
+                  <Link to="/landscape" search={{ sector: undefined, year: undefined }} className="text-ink no-underline">
+                    All sectors
+                  </Link>
+                </th>
+                {byYear.map((y) => (
+                  <td key={y.year} className="p-0">
+                    <Link to="/landscape" search={{ year: Number(y.year) }} resetScroll={false} className={cn('grid h-9 place-content-center rounded-[2px] bg-surface-raised font-mono text-xs text-ink no-underline', isOn(undefined, Number(y.year)) && 'ring-2 ring-glaze')}>
+                      {y.count}
+                    </Link>
+                  </td>
+                ))}
+                <td className="pe-1 text-end font-mono text-sm">{facts.total}</td>
+              </tr>
               {bySector.map((s) => (
                 <tr key={s.sector}>
-                  <th className="pe-3 text-start font-normal">{s.sector}</th>
+                  <th className="pe-3 text-start font-normal">
+                    <Link to="/landscape" search={{ sector: s.sector }} resetScroll={false} className={cn('no-underline', isOn(s.sector, undefined) ? 'text-glaze' : 'text-ink hover:text-glaze')}>
+                      {s.sector}
+                    </Link>
+                  </th>
                   {years.map((y) => {
                     const c = cell.get(`${s.sector}|${y}`) ?? 0
-                    const t = c / peak
                     return (
                       <td key={y} className="p-0">
                         {c === 0 ? (
-                          <span className="block h-8 rounded-[2px] outline outline-1 -outline-offset-1 outline-dashed outline-hairline" title={`${s.sector}, ${y}: none`} />
+                          <span className="block h-9 rounded-[2px] outline outline-1 -outline-offset-1 outline-dashed outline-hairline" title={`${s.sector}, ${y}: none`} />
                         ) : (
                           <Link
-                            to="/search"
-                            search={{ sector: s.sector, from: Number(y), to: Number(y) }}
-                            title={`${s.sector}, ${y}: ${c} startups`}
-                            className="grid h-8 place-content-center rounded-[2px] text-[0.8125rem] no-underline"
-                            style={{ background: `color-mix(in oklab, var(--ochre) ${Math.round(14 + t * 86)}%, var(--canvas))`, color: t > 0.5 ? 'var(--canvas)' : 'var(--ink)' }}
+                            to="/landscape"
+                            search={{ sector: s.sector, year: y }}
+                            resetScroll={false}
+                            title={`${s.sector}, ${y}: ${c}`}
+                            className={cn('grid h-9 place-content-center rounded-[2px] font-mono text-xs no-underline', isOn(s.sector, y) && 'ring-2 ring-glaze')}
+                            style={shade(c)}
                           >
                             {c}
                           </Link>
@@ -151,13 +117,55 @@ function LandscapePage() {
                       </td>
                     )
                   })}
-                  <td className="text-center text-ink-2">{s.count}</td>
+                  <td className="ps-3">
+                    <span className="flex items-center justify-end gap-2">
+                      <span className="h-1.5 bg-ochre/60" style={{ width: `${Math.round((s.count / top) * 80)}px` }} aria-hidden />
+                      <span className="w-8 text-end font-mono text-sm">{s.count}</span>
+                    </span>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-      </section>
+
+        <p className="mt-6 text-sm text-ink-2">
+          {pct(facts.described, facts.total)}% describe what they do and {pct(facts.websites, facts.total)}% list a website.{' '}
+          <Link to="/search" search={{ described: 'no' }}>
+            See the {missing} without a description
+          </Link>
+        </p>
+      </div>
+
+      <aside aria-labelledby="sel-h" className="mt-12 flex min-h-0 flex-col xl:sticky xl:top-[4.5rem] xl:col-span-4 xl:mt-0 xl:h-[calc(100dvh-5.5rem)] xl:self-start">
+        <h2 id="sel-h" className="text-[1.75rem] leading-9">
+          {title}
+        </h2>
+        <p className="mt-1 text-sm text-ink-2">{picked.matched === 1 ? '1 startup' : `${picked.matched} startups`}</p>
+        <Scroller className="mt-4 min-h-0 flex-1 border-t border-hairline" label={`Startups in ${title}`}>
+          <ul>
+            {picked.rows.map((r) => (
+              <li key={r.id} className="border-b border-hairline">
+                <Link to="/startups/$id" params={{ id: r.id }} className="grid h-10 grid-cols-[1.25rem_minmax(0,1fr)_auto] items-center gap-3 px-1 no-underline hover:bg-surface/60">
+                  <TileMark id={r.id} sector={r.sector} size={20} />
+                  <span className="truncate text-sm text-ink">{r.name}</span>
+                  <span className="font-mono text-xs text-ink-2">{r.cohort?.slice(3)}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </Scroller>
+        <p className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-sm">
+          <Link to="/search" search={{ sector, from: year, to: year }}>
+            {picked.matched > picked.rows.length ? `See all ${picked.matched} in the Archive` : 'Open them in the Archive'}
+          </Link>
+          {sector && (
+            <Link to="/" search={{ draft: `${sector}: ` }}>
+              Check an idea in {sector}
+            </Link>
+          )}
+        </p>
+      </aside>
     </main>
   )
 }

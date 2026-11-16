@@ -15,7 +15,6 @@ import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppIdeaRouteImport } from './routes/_app/idea'
 import { Route as AppLandscapeRouteImport } from './routes/_app/landscape'
-import { Route as AppOpeningsRouteImport } from './routes/_app/openings'
 import { Route as AppSearchRouteImport } from './routes/_app/search'
 import { Route as AppThemesRouteImport } from './routes/_app/themes'
 import { Route as PortalIndexRouteImport } from './routes/portal/index'
@@ -55,11 +54,6 @@ const AppIdeaRoute = AppIdeaRouteImport.update({
 const AppLandscapeRoute = AppLandscapeRouteImport.update({
   id: '/landscape',
   path: '/landscape',
-  getParentRoute: () => AppRouteRoute,
-} as any)
-const AppOpeningsRoute = AppOpeningsRouteImport.update({
-  id: '/openings',
-  path: '/openings',
   getParentRoute: () => AppRouteRoute,
 } as any)
 const AppSearchRoute = AppSearchRouteImport.update({
@@ -124,7 +118,6 @@ export interface FileRoutesByFullPath {
   '/sign-in': typeof SignInRoute
   '/idea': typeof AppIdeaRoute
   '/landscape': typeof AppLandscapeRoute
-  '/openings': typeof AppOpeningsRoute
   '/search': typeof AppSearchRoute
   '/themes': typeof AppThemesRoute
   '/portal/database': typeof PortalDatabaseRoute
@@ -141,7 +134,6 @@ export interface FileRoutesByTo {
   '/sign-in': typeof SignInRoute
   '/idea': typeof AppIdeaRoute
   '/landscape': typeof AppLandscapeRoute
-  '/openings': typeof AppOpeningsRoute
   '/search': typeof AppSearchRoute
   '/themes': typeof AppThemesRoute
   '/portal/database': typeof PortalDatabaseRoute
@@ -162,7 +154,6 @@ export interface FileRoutesById {
   '/sign-in': typeof SignInRoute
   '/_app/idea': typeof AppIdeaRoute
   '/_app/landscape': typeof AppLandscapeRoute
-  '/_app/openings': typeof AppOpeningsRoute
   '/_app/search': typeof AppSearchRoute
   '/_app/themes': typeof AppThemesRoute
   '/portal/database': typeof PortalDatabaseRoute
@@ -184,7 +175,6 @@ export interface FileRouteTypes {
     | '/sign-in'
     | '/idea'
     | '/landscape'
-    | '/openings'
     | '/search'
     | '/themes'
     | '/portal/database'
@@ -201,7 +191,6 @@ export interface FileRouteTypes {
     | '/sign-in'
     | '/idea'
     | '/landscape'
-    | '/openings'
     | '/search'
     | '/themes'
     | '/portal/database'
@@ -221,7 +210,6 @@ export interface FileRouteTypes {
     | '/sign-in'
     | '/_app/idea'
     | '/_app/landscape'
-    | '/_app/openings'
     | '/_app/search'
     | '/_app/themes'
     | '/portal/database'
@@ -284,13 +272,6 @@ declare module '@tanstack/react-router' {
       path: '/landscape'
       fullPath: '/landscape'
       preLoaderRoute: typeof AppLandscapeRouteImport
-      parentRoute: typeof AppRouteRoute
-    }
-    '/_app/openings': {
-      id: '/_app/openings'
-      path: '/openings'
-      fullPath: '/openings'
-      preLoaderRoute: typeof AppOpeningsRouteImport
       parentRoute: typeof AppRouteRoute
     }
     '/_app/search': {
@@ -376,7 +357,6 @@ declare module '@tanstack/react-router' {
 interface AppRouteRouteChildren {
   AppIdeaRoute: typeof AppIdeaRoute
   AppLandscapeRoute: typeof AppLandscapeRoute
-  AppOpeningsRoute: typeof AppOpeningsRoute
   AppSearchRoute: typeof AppSearchRoute
   AppThemesRoute: typeof AppThemesRoute
   AppIndexRoute: typeof AppIndexRoute
@@ -386,7 +366,6 @@ interface AppRouteRouteChildren {
 const AppRouteRouteChildren: AppRouteRouteChildren = {
   AppIdeaRoute: AppIdeaRoute,
   AppLandscapeRoute: AppLandscapeRoute,
-  AppOpeningsRoute: AppOpeningsRoute,
   AppSearchRoute: AppSearchRoute,
   AppThemesRoute: AppThemesRoute,
   AppIndexRoute: AppIndexRoute,

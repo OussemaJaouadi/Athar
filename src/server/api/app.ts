@@ -1,8 +1,6 @@
 import { createServerFn } from '@tanstack/react-start'
 
 import { getDatabase } from '../db'
-import { AREAS } from '#/shared/areas'
-import { areaFts } from '../areas-query'
 import { readAsk } from './ask'
 
 export type StartupRow = {
@@ -24,8 +22,6 @@ export type SearchInput = {
   to?: number
   website?: 'yes' | 'no'
   described?: 'yes' | 'no'
-  /** An area from the Openings page: startups whose descriptions use any of its words. */
-  area?: string
   /** 1-based page of PAGE_SIZE rows. Out of range is clamped to the last page. */
   page?: number
   /** With no page given, return the page that holds this startup, so a shared link lands on its row. */
@@ -71,8 +67,6 @@ export const searchStartups = createServerFn()
     if (f.to) (where.push(`${LABELLED} <= $to`), (params.$to = f.to))
     if (f.website) where.push(f.website === 'yes' ? 's.website IS NOT NULL' : 's.website IS NULL')
     if (f.described) where.push(f.described === 'yes' ? 's.description IS NOT NULL' : 's.description IS NULL')
-    const area = f.area ? AREAS.find((a) => a.id === f.area) : undefined
-    if (area) (where.push('s.id IN (SELECT startup_id FROM startups_fts WHERE startups_fts MATCH $area)'), (params.$area = areaFts(area)))
 
     let from = 'startups s'
     // A total order: without the id tie-break, rows could repeat or vanish between pages.

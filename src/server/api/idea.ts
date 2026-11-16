@@ -2,7 +2,6 @@ import { createServerFn } from '@tanstack/react-start'
 
 import { getDatabase } from '../db'
 import { newId, now } from '../ids'
-import { areaForWords } from '../areas-query'
 
 /*
  * Idea check on shared words: FTS5 over each startup's name, description and sector.
@@ -38,8 +37,8 @@ export type IdeaCheck = {
   matches: IdeaMatch[]
   weak: IdeaMatch[]
   weakTotal: number
-  /** The Openings area the idea's words fall in most, if any. */
-  area: { id: string; name: string; count: number } | null
+  /** The sector most of the close matches share, counted across the whole registry. */
+  sector: { name: string; total: number; recent: number; since: number } | null
   saved: boolean
 }
 
@@ -73,7 +72,20 @@ function run(idea: string, saved = false): IdeaCheck {
     .sort((x, y) => y.score - x.score || x.name.localeCompare(y.name))
   const isStrong = (m: IdeaMatch) => m.shared.length >= 2 || m.shared.length / Math.max(1, words.length) >= 0.4
   const strong = scored.filter(isStrong)
-  return { id: newId(), idea, checkedAt: now(), snapshotAt, against, words, strong: strong.length, any, matches: strong.slice(0, 8), weak: scored.filter((m) => !isStrong(m)).slice(0, 12), weakTotal: scored.filter((m) => !isStrong(m)).length, area: areaForWords(words), saved }
+  // Real registry fields only: the sector most close matches share, and how many joined it lately.
+  const bySector = new Map<string, number>()
+  for (const m of strong.slice(0, 8)) if (m.sector) bySector.set(m.sector, (bySector.get(m.sector) ?? 0) + 1)
+  const top = [...bySector.entries()].sort((p, q) => q[1] - p[1])[0]?.[0]
+  const since = 2023
+  const sector = top
+    ? {
+        name: top,
+        since,
+        total: db.query<{ n: number }, [string]>('SELECT COUNT(*) AS n FROM startups WHERE sector = ?').get(top)?.n ?? 0,
+        recent: db.query<{ n: number }, [string, number]>('SELECT COUNT(*) AS n FROM startups WHERE sector = ? AND CAST(substr(cohort, 4, 4) AS INTEGER) >= ?').get(top, since)?.n ?? 0,
+      }
+    : null
+  return { id: newId(), idea, checkedAt: now(), snapshotAt, against, words, strong: strong.length, any, matches: strong.slice(0, 8), weak: scored.filter((m) => !isStrong(m)).slice(0, 12), weakTotal: scored.filter((m) => !isStrong(m)).length, sector, saved }
 }
 
 function seed() {

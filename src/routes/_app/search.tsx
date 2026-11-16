@@ -174,12 +174,11 @@ function ArchivePage() {
                         e.preventDefault()
                         open(r.id)
                       }}
-                      className={cn('grid h-12 grid-cols-[1.25rem_minmax(0,1fr)_auto] items-center gap-3 px-3 no-underline outline-none transition-colors duration-150 focus-visible:bg-surface', on ? 'bg-surface' : 'hover:bg-surface/60')}
+                      className={cn('grid h-11 grid-cols-[1.25rem_minmax(0,1fr)_auto] items-center gap-3 px-3 no-underline outline-none transition-colors duration-150 focus-visible:bg-surface', on ? 'bg-surface' : 'hover:bg-surface/60')}
                     >
-                      {r.description ? <TileMark id={r.id} sector={r.sector} size={20} /> : <span aria-label="No description" className="size-5 border border-dashed border-control" />}
+                      {r.description ? <TileMark id={r.id} sector={r.sector} size={20} title={r.sector ?? undefined} /> : <span aria-label="No description" className="size-5 border border-dashed border-control" />}
                       <span className="min-w-0">
                         <span className="block truncate text-sm font-medium text-ink">{r.name}</span>
-                        <span className="block truncate text-xs text-ink-2">{r.sector ?? 'No sector'}</span>
                       </span>
                       <span className="font-mono text-xs text-ink-2">{r.cohort?.slice(3)}</span>
                     </Link>

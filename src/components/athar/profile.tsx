@@ -1,8 +1,10 @@
 import { Link } from '@tanstack/react-router'
-import { ArrowUpRight, Lightbulb } from 'lucide-react'
+import { ArrowUpRight } from 'lucide-react'
 import { useState } from 'react'
 
 import { SectorSwatch, TileMark } from '@/components/athar/tile-mark'
+import { CopyButton } from '@/components/interior/copy-button'
+import { Mark, MarkerText } from '@/components/kokonutui/marker-text'
 import { cn } from '@/lib/utils'
 import type { getStartup } from '#/server/api/app'
 
@@ -10,162 +12,183 @@ export type ProfileData = NonNullable<Awaited<ReturnType<typeof getStartup>>>
 
 export const longDate = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 export const yearOf = (cohort: string | null) => (cohort ? cohort.slice(3) : null)
+export const catalogueNo = (row: number | null | undefined) => (row === null || row === undefined ? 'ATH-—' : `ATH-${String(row).padStart(4, '0')}`)
 
 const decode = (t: string) => t.replace(/&amp;/g, '&').replace(/&#39;|&apos;/g, "'").replace(/&quot;/g, '"')
-const LANG = (t: string) => (/[؀-ۿ]/.test(t) ? 'Arabic' : /\b(le|la|les|des|une|est|pour|avec|qui)\b/i.test(t) ? 'French' : 'English')
+const show = (v: unknown) => (v === null || v === undefined || v === '' ? null : Array.isArray(v) ? (v.length ? v.join(', ') : null) : String(v))
 
-type Fact = { key: string; label: string; value: React.ReactNode; wide?: boolean }
+type Field = {
+  key: string
+  label: string
+  /** The registry column this value was read from; derived fields have none. */
+  raw?: string
+  value: React.ReactNode
+  derived?: string
+}
+
+type Group = { title: string; fields: Field[] }
 
 /**
- * A startup as a fact sheet: one tile, the facts every record shares, what it told the registry,
- * the chain from download to record, and its neighbours. A missing fact is an open tile.
+ * A startup as a catalogue record: number and name, then a definition table in four groups.
+ * Every value carries an ochre source mark; choosing it shows that value's chain beside the table,
+ * from the registry snapshot to this record. A missing value is said, never hidden.
  */
-export function Profile({ data, compact, operator }: { data: ProfileData; compact?: boolean; operator?: boolean }) {
+export function Profile({ data, operator }: { data: ProfileData; compact?: boolean; operator?: boolean }) {
   const { startup, sources, chain, neighbours } = data
-  const [showRow, setShowRow] = useState(false)
-  const site = startup.website?.replace(/^https?:\/\//, '').replace(/\/$/, '')
+  const raw = sources[0] ? (JSON.parse(sources[0].raw_json) as Record<string, unknown>) : {}
   const row = chain?.rowNumber ?? sources[0]?.row_number
-  const changed = new Set(chain?.changes.map((c) => c.field))
+  const site = startup.website?.replace(/^https?:\/\//, '').replace(/\/$/, '')
 
-  const facts: Fact[] = [
-    { key: 'sector', label: 'Sector', value: startup.sector && <span className="inline-flex items-center gap-2"><SectorSwatch sector={startup.sector} />{startup.sector}</span> },
-    { key: 'cohort', label: 'Labelled', value: startup.cohort },
-    { key: 'creation_year', label: 'Created', value: startup.creation_year },
-    { key: 'website', label: 'Website', value: site && <a href={startup.website ?? undefined} target="_blank" rel="noreferrer" className="break-all">{site}</a> },
-    { key: 'founders', label: 'Founders', value: startup.founders.length ? startup.founders.join(', ') : null, wide: true },
+  const groups: Group[] = [
+    {
+      title: 'Identification',
+      fields: [
+        { key: 'sector', label: 'Sector', raw: 'sector', value: startup.sector && <span className="inline-flex items-center gap-2"><SectorSwatch sector={startup.sector} />{startup.sector}</span> },
+        { key: 'cohort', label: 'Labelled', raw: 'label', value: startup.cohort },
+        { key: 'creation_year', label: 'Created', raw: 'creation_year', value: startup.creation_year },
+        { key: 'row', label: 'Registry row', value: row !== undefined ? <span className="font-mono text-sm">row {row}</span> : null, derived: 'Athar numbers each record after the registry row it was read from.' },
+      ],
+    },
+    { title: 'Description', fields: [{ key: 'description', label: 'What it does', raw: 'desc', value: startup.description && <span dir="auto">{decode(startup.description)}</span> }] },
+    { title: 'People', fields: [{ key: 'founders', label: 'Founders', raw: 'founders', value: startup.founders.length ? startup.founders.join(', ') : null }] },
+    {
+      title: 'Condition',
+      fields: [
+        { key: 'website', label: 'Website', raw: 'website', value: site && <a href={startup.website ?? undefined} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 break-all">{site}<ArrowUpRight className="size-3.5 shrink-0" aria-hidden /></a> },
+        { key: 'reachable', label: 'Reachable', value: <span className="text-ink-2">Not checked yet</span>, derived: 'Athar has not checked this website yet. A check records what it saw and when, never a verdict.' },
+      ],
+    },
   ]
+  const all = groups.flatMap((g) => g.fields)
+  const [active, setActive] = useState<string>('description')
+  const field = all.find((f) => f.key === active) ?? all[0]
 
   return (
-    <article className={cn('grid gap-10', compact ? 'px-6 py-8 xl:px-10' : 'px-4 py-8 sm:px-8 lg:px-12 lg:py-12')}>
-      <header className="flex flex-wrap items-start gap-x-6 gap-y-5">
-        <TileMark id={startup.id} sector={startup.sector} size={compact ? 64 : 80} />
+    <article className="@container">
+      <header className="flex flex-wrap items-end gap-x-6 gap-y-4 border-b border-hairline pb-6">
+        <TileMark id={startup.id} sector={startup.sector} size={56} />
         <div className="min-w-0 flex-1">
-          <p className="font-mono text-xs text-ink-2">
-            Startup Tunisia registry{row !== undefined && ` · row ${row}`}
-            {chain && ` · snapshot ${longDate(chain.fetchedAt)}`}
+          <p className="flex items-center gap-2 font-mono text-sm text-ink-2">
+            {catalogueNo(row)}
+            {row !== undefined && <CopyButton value={catalogueNo(row)} label="Copy number" className="text-xs" />}
           </p>
-          <h1 className="mt-1 text-[2.25rem] leading-[2.5rem] sm:text-[2.75rem] sm:leading-[3rem]">{startup.name}</h1>
+          <h1 className="mt-1 text-[2.25rem] leading-[2.5rem] @[56rem]:text-[2.75rem] @[56rem]:leading-[3rem]">{startup.name}</h1>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Link to="/" search={{ draft: startup.description ?? startup.name }} className="inline-flex h-10 items-center gap-2 rounded-full bg-glaze px-4 text-sm font-medium text-glaze-ink no-underline hover:bg-glaze-hover">
-            <Lightbulb className="size-4" aria-hidden /> Check an idea like this
-          </Link>
-          {startup.website && (
-            <a href={startup.website} target="_blank" rel="noreferrer" className="inline-flex h-10 items-center gap-2 rounded-full border border-control px-4 text-sm text-ink no-underline hover:bg-surface">
-              Website <ArrowUpRight className="size-4" aria-hidden />
-            </a>
-          )}
-        </div>
+        <Link to="/" search={{ draft: startup.description ?? startup.name }} className="inline-flex h-10 items-center rounded-full bg-glaze px-4 text-sm font-medium text-glaze-ink no-underline hover:bg-glaze-hover">
+          Check an idea against it
+        </Link>
       </header>
 
-      <dl className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4">
-        {facts.map((f) => {
-          const missing = f.value === null || f.value === undefined || f.value === ''
-          return (
-            <div key={f.key} className={cn('grid content-start gap-1.5 rounded-md px-4 py-3.5', f.wide && 'col-span-2', missing ? 'border border-dashed border-control' : 'bg-surface')}>
-              <dt className="flex items-center justify-between gap-2 text-xs text-ink-2">
-                {f.label}
-                {!missing && changed.has(f.key) && <span className="text-ochre-text">cleaned</span>}
-              </dt>
-              <dd className={cn('m-0', missing ? 'text-sm text-ink-2' : 'text-[0.9375rem]')}>{missing ? 'Not in the registry' : f.value}</dd>
-            </div>
-          )
-        })}
-      </dl>
+      <div className="grid gap-x-10 @[52rem]:grid-cols-[minmax(0,1fr)_17rem]">
+        <MarkerText as="div" className="min-w-0">
+          {groups.map((g) => (
+            <section key={g.title} aria-labelledby={`g-${g.title}`} className="border-b border-hairline py-5 last:border-b-0">
+              <h2 id={`g-${g.title}`} className="mb-2 font-sans text-sm font-medium text-ink-2">
+                {g.title}
+              </h2>
+              <dl className="m-0">
+                {g.fields.map((f) => {
+                  const missing = f.value === null || f.value === undefined || f.value === ''
+                  const on = f.key === field.key
+                  return (
+                    <div key={f.key} className={cn('grid grid-cols-[8.5rem_minmax(0,1fr)_auto] items-baseline gap-x-4 border-s-2 py-2.5 ps-3', on ? 'border-glaze bg-surface' : 'border-transparent')}>
+                      <dt className="text-sm text-ink-2">{f.label}</dt>
+                      <dd className={cn('m-0 min-w-0', f.key === 'description' && 'font-display text-xl leading-8')}>
+                        {missing ? (
+                          <Mark type="circle" color="var(--ochre)">
+                            <span className="text-ink-2">The registry doesn&apos;t say.</span>
+                          </Mark>
+                        ) : (
+                          f.value
+                        )}
+                      </dd>
+                      <dd className="m-0">
+                        <button
+                          type="button"
+                          onClick={() => setActive(f.key)}
+                          aria-pressed={on}
+                          aria-label={`Where ${f.label.toLowerCase()} comes from`}
+                          title="Where this comes from"
+                          className="grid size-7 place-content-center rounded-full hover:bg-surface-raised"
+                        >
+                          <span aria-hidden className={cn('block size-2.5 rotate-45', on ? 'bg-ochre' : missing ? 'border border-dashed border-control' : 'bg-ochre/55')} />
+                        </button>
+                      </dd>
+                    </div>
+                  )
+                })}
+              </dl>
+            </section>
+          ))}
+        </MarkerText>
 
-      <section aria-labelledby="told-h" className="grid gap-4">
-        <div className="flex flex-wrap items-baseline justify-between gap-3 border-t border-hairline pt-4">
-          <h2 id="told-h" className="text-xl">What it told the registry</h2>
-          {startup.description && <span className="text-xs text-ink-2">{LANG(startup.description)}, as written</span>}
-        </div>
-        {startup.description ? (
-          <blockquote dir="auto" className="m-0 max-w-[62ch] border-s-2 border-ochre ps-5 font-display text-[1.375rem] leading-9">
-            {decode(startup.description)}
-          </blockquote>
-        ) : (
-          <p className="max-w-[62ch] rounded-md border border-dashed border-control px-5 py-4 text-ink-2">The registry lists this startup without a description. It stays an open tile until a source fills it.</p>
-        )}
-      </section>
-
-      {chain && (
-        <section aria-labelledby="chain-h" className="grid gap-4">
-          <div className="flex flex-wrap items-baseline justify-between gap-3 border-t border-hairline pt-4">
-            <h2 id="chain-h" className="text-xl">Where every fact comes from</h2>
-            <button type="button" onClick={() => setShowRow((v) => !v)} aria-expanded={showRow} className="text-sm text-glaze underline underline-offset-4">
-              {showRow ? 'Hide the row' : `Show row ${chain.rowNumber} as downloaded`}
-            </button>
-          </div>
-          <ol className="grid gap-px overflow-hidden rounded-md border border-hairline bg-hairline sm:grid-cols-4">
-            {[
-              ['Downloaded', `Startup Tunisia registry, ${longDate(chain.fetchedAt)}`],
-              ['Kept as', `row ${chain.rowNumber} of snapshot ${chain.snapshot}`],
-              ['Cleaned', chain.changes.length ? `${chain.changes.length} ${chain.changes.length === 1 ? 'field' : 'fields'} changed, originals kept` : 'nothing needed changing'],
-              ['Catalogued', sources.length > 1 ? `${sources.length} rows merged into this record` : 'one row, one record'],
-            ].map(([k, v], i) => (
-              <li key={k} className="grid gap-1 bg-canvas px-4 py-3.5">
-                <span className="flex items-center gap-2 text-xs text-ink-2">
-                  <span aria-hidden className="grid size-5 place-content-center rounded-full bg-ochre font-mono text-[0.625rem] text-canvas">
-                    {i + 1}
-                  </span>
-                  {k}
-                </span>
-                <span className="text-sm">{v}</span>
-              </li>
-            ))}
-          </ol>
-          {chain.changes.length > 0 && (
-            <ul className="grid max-w-[70ch] gap-1.5 text-sm">
-              {chain.changes.map((c) => (
-                <li key={c.field} className="grid grid-cols-[7rem_minmax(0,1fr)] gap-3">
-                  <span className="text-ink-2">{c.field.replace('_', ' ')}</span>
-                  <span>
-                    {c.why}
-                    {c.from && <span className="block truncate font-mono text-xs text-ink-2">was: {c.from}</span>}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-          {showRow && sources[0] && (
-            <dl className="grid max-w-[70ch] grid-cols-[auto_minmax(0,1fr)] gap-x-6 gap-y-2 rounded-md bg-surface px-5 py-4 text-sm">
-              {Object.entries(JSON.parse(sources[0].raw_json) as Record<string, unknown>).map(([k, v]) => (
-                <div key={k} className="contents">
-                  <dt className="font-mono text-xs whitespace-nowrap text-ink-2">{k}</dt>
-                  <dd className="m-0 break-words">{v === null || v === '' ? <em className="text-ink-2">empty</em> : Array.isArray(v) ? v.join(', ') : String(v)}</dd>
-                </div>
-              ))}
-            </dl>
-          )}
+        <aside aria-label="Chain and neighbours" className="grid content-start gap-8 border-hairline py-5 @[52rem]:sticky @[52rem]:top-20 @[52rem]:self-start @[52rem]:border-s @[52rem]:ps-8">
+          <ChainRail field={field} raw={raw} chain={chain} row={row} />
           {operator && startup.primary_row_id && (
-            <Link to="/portal/trace/$rowId" params={{ rowId: startup.primary_row_id }} className="w-fit text-sm">
-              Open the full trace in the operator portal
+            <Link to="/portal/trace/$rowId" params={{ rowId: startup.primary_row_id }} className="-mt-4 text-sm">
+              Open the full trace
             </Link>
           )}
-        </section>
-      )}
-
-      {neighbours.length > 0 && (
-        <section aria-labelledby="near-h" className="grid gap-4">
-          <div className="flex flex-wrap items-baseline justify-between gap-3 border-t border-hairline pt-4">
-            <h2 id="near-h" className="text-xl">Near it in the registry</h2>
-            <span className="text-xs text-ink-2">Same sector, closest labelling year</span>
-          </div>
-          <ul className="grid gap-2 sm:grid-cols-2 2xl:grid-cols-5">
-            {neighbours.map((n) => (
-              <li key={n.id}>
-                <Link to="/startups/$id" params={{ id: n.id }} className="grid h-full content-start gap-2 rounded-md border border-hairline p-3.5 no-underline hover:border-control">
-                  <span className="flex items-center gap-2.5">
-                    <TileMark id={n.id} sector={n.sector} size={24} />
-                    <span className="truncate font-display font-bold text-ink">{n.name}</span>
-                  </span>
-                  <span className="line-clamp-2 text-xs leading-5 text-ink-2">{n.description ? decode(n.description) : 'No description in the registry.'}</span>
-                  <span className="font-mono text-[0.6875rem] text-ink-2">labelled {yearOf(n.cohort) ?? '—'}</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+          {neighbours.length > 0 && (
+            <section aria-labelledby="near-h">
+              <h2 id="near-h" className="font-sans text-sm font-medium text-ink-2">
+                Nearest records
+              </h2>
+              <p className="text-xs text-ink-2">Same sector, closest labelling year</p>
+              <ul className="mt-2 border-t border-hairline">
+                {neighbours.map((n) => (
+                  <li key={n.id} className="border-b border-hairline">
+                    <Link to="/startups/$id" params={{ id: n.id }} className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto] items-center gap-2.5 py-2.5 no-underline hover:bg-surface">
+                      <TileMark id={n.id} sector={n.sector} size={20} />
+                      <span className="truncate text-sm text-ink">{n.name}</span>
+                      <span className="font-mono text-xs text-ink-2">{yearOf(n.cohort)}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+        </aside>
+      </div>
     </article>
+  )
+}
+
+/** The chain for one value, as stops on a rail: registry snapshot, the row as downloaded, cleaning, this record. */
+function ChainRail({ field, raw, chain, row }: { field: Field; raw: Record<string, unknown>; chain: ProfileData['chain']; row: number | undefined }) {
+  const change = chain?.changes.find((c) => c.field === field.key)
+  const original = field.raw ? show(raw[field.raw]) : null
+  const missing = field.value === null || field.value === undefined || field.value === ''
+  const stops: { title: string; body: React.ReactNode; muted?: boolean }[] = field.derived
+    ? [
+        { title: 'Startup Tunisia registry', body: chain ? `Snapshot of ${longDate(chain.fetchedAt)}` : 'Not collected yet' },
+        { title: `Row ${row ?? '—'}`, body: 'The row this record was read from' },
+        { title: 'Athar', body: field.derived },
+      ]
+    : [
+        { title: 'Startup Tunisia registry', body: chain ? `Snapshot of ${longDate(chain.fetchedAt)}, ${chain.snapshot}` : 'Not collected yet' },
+        {
+          title: `Row ${row ?? '—'}, as downloaded`,
+          body: original ? <span dir="auto" className="line-clamp-6 break-words">“{original}”</span> : 'Empty in the row',
+          muted: !original,
+        },
+        { title: 'Cleaning', body: change ? change.why : missing ? 'Nothing to clean' : 'Kept exactly as written' },
+        { title: 'This record', body: missing ? 'Shown as missing, not guessed' : 'The value you see' },
+      ]
+  return (
+    <section aria-labelledby="chain-h">
+      <h2 id="chain-h" className="font-sans text-sm font-medium text-ink-2">
+        Where “{field.label.toLowerCase()}” comes from
+      </h2>
+      <ol className="relative mt-4 grid gap-5 ps-6 before:absolute before:inset-y-1.5 before:start-[5px] before:w-px before:bg-ochre">
+        {stops.map((s, i) => (
+          <li key={s.title} className="relative grid gap-0.5">
+            <span aria-hidden className={cn('absolute -start-6 top-1.5 size-[11px] rounded-full border-2 border-ochre', i === stops.length - 1 ? 'bg-ochre' : 'bg-canvas', s.muted && 'border-dashed border-control')} />
+            <span className="text-sm font-medium">{s.title}</span>
+            <span className={cn('text-sm', s.muted ? 'text-ink-2 italic' : 'text-ink-2')}>{s.body}</span>
+          </li>
+        ))}
+      </ol>
+    </section>
   )
 }

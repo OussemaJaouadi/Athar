@@ -20,8 +20,8 @@ function ProfilePage() {
   const data = Route.useLoaderData()
   const { viewer } = shell.useLoaderData()
   return (
-    <main className="mx-auto w-full max-w-[80rem]">
-      <div className="px-4 pt-5 sm:px-8 lg:px-12">
+    <main className="mx-auto w-full max-w-[100rem] px-4 pb-16 sm:px-8">
+      <div className="pt-5 pb-6">
         <Link to="/search" search={{ open: data.startup.id }} className="inline-flex items-center gap-1.5 text-sm">
           <ArrowLeft className="size-4" aria-hidden /> Back to search
         </Link>

@@ -11,6 +11,7 @@ export type StartupRow = {
   cohort: string | null
   creation_year: number | null
   website: string | null
+  row?: number | null
 }
 
 export type SearchInput = {
@@ -22,7 +23,7 @@ export type SearchInput = {
   flag?: 'no-description' | 'website' | 'no-website'
 }
 
-const COLUMNS = 's.id, s.name, s.description, s.sector, s.cohort, s.creation_year, s.website'
+const COLUMNS = 's.id, s.name, s.description, s.sector, s.cohort, s.creation_year, s.website, (SELECT row_number FROM source_rows WHERE id = s.primary_row_id) AS row'
 const LABELLED = 'CAST(substr(s.cohort, 4, 4) AS INTEGER)'
 
 /** FTS5 query from free words: every word must match, as a prefix. */

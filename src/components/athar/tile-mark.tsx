@@ -92,8 +92,11 @@ function Motif({ family, variant, ink }: { family: number; variant: number; ink:
 }
 
 export function TileMark({ id, sector, size = 32, className, title }: { id: string; sector: string | null; size?: number; className?: string; title?: string }) {
-  const { glaze, family } = sectorStyle(sector)
-  const variant = hash(id) % 6
+  const { glaze, family: base } = sectorStyle(sector)
+  // Colour says the sector; the motif belongs to the startup, so a sector still reads as many tiles.
+  const h = hash(id)
+  const family = id === sector ? base : (base + h) % 4
+  const variant = (h >>> 3) % 6
   const rotate = (variant % 2) * 45
   return (
     <svg

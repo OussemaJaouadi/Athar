@@ -184,3 +184,29 @@ export const getCorpus = createServerFn().handler(async () => {
   const embedded = db.query<{ n: number }, []>('SELECT COUNT(*) AS n FROM embedding_meta').get()?.n ?? 0
   return { startups, rows: snap?.row_count ?? 0, fetchedAt: snap?.fetched_at ?? null, embedded }
 })
+
+export type RegistryCard = { id: string; name: string; sector: string | null; row: number | null; cohort: string | null; description: string | null }
+
+const CARD_SQL = `SELECT s.id, s.name, s.sector, sr.row_number AS row, s.cohort, substr(s.description, 1, 320) AS description
+  FROM startups s LEFT JOIN source_rows sr ON sr.id = s.primary_row_id`
+
+// The wall on the home page: a few startups from every sector, the same ones on every visit.
+export const getWallCards = createServerFn()
+  .validator((input: { ids?: string[]; perSector?: number }) => input)
+  .handler(async ({ data }) => {
+    const db = getDatabase()
+    if (data.ids?.length) {
+      const all = db.query<RegistryCard, []>(`${CARD_SQL} WHERE s.id IN (${data.ids.map((id) => `'${id.replace(/'/g, '')}'`).join(',')})`).all()
+      const byId = new Map(all.map((c) => [c.id, c]))
+      return data.ids.map((id) => byId.get(id)).filter((c): c is RegistryCard => !!c)
+    }
+    const per = Math.min(8, Math.max(1, data.perSector ?? 3))
+    return db
+      .query<RegistryCard, [number]>(
+        `SELECT id, name, sector, row, cohort, description FROM (
+           SELECT c.*, ROW_NUMBER() OVER (PARTITION BY c.sector ORDER BY length(c.description) DESC, c.name) AS k
+           FROM (${CARD_SQL} WHERE s.description IS NOT NULL) c
+         ) WHERE k <= ? ORDER BY k, sector`,
+      )
+      .all(per)
+  })

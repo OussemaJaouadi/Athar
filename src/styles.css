@@ -137,9 +137,9 @@
 }
 
 @theme inline {
-  --font-display: 'Readex Pro', 'El Messiri', system-ui, sans-serif;
-  --font-sans: 'IBM Plex Sans', 'IBM Plex Sans Arabic', 'Noto Sans', system-ui, sans-serif;
-  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --font-display: 'Amiri', 'Noto Naskh Arabic', Georgia, serif;
+  --font-sans: 'Readex Pro', 'Noto Naskh Arabic', system-ui, sans-serif;
+  --font-mono: 'Fragment Mono', ui-monospace, monospace;
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -237,7 +237,7 @@
   h2,
   h3 {
     @apply font-display;
-    font-weight: 500;
+    font-weight: 700;
     text-wrap: balance;
   }
   :focus-visible {

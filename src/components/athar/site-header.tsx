@@ -3,8 +3,8 @@ import { Link } from '@tanstack/react-router'
 import { ThemeToggle } from '@/components/athar/theme'
 
 export const NAV = [
-  { to: '/search', label: 'Search' },
-  { to: '/idea', label: 'Idea check' },
+  { to: '/', label: 'Ask' },
+  { to: '/search', label: 'Archive' },
   { to: '/themes', label: 'Themes' },
   { to: '/landscape', label: 'Landscape' },
 ] as const
@@ -14,7 +14,7 @@ export function SiteHeader({ children }: { children?: React.ReactNode }) {
   return (
     <header className="sticky top-0 z-30 border-b border-hairline bg-canvas">
       <div className="flex flex-wrap items-center gap-x-4 px-4 sm:h-14 sm:flex-nowrap sm:gap-8 sm:px-8">
-        <Link to="/search" className="flex h-14 shrink-0 items-center gap-2 font-display text-lg font-semibold text-ink no-underline">
+        <Link to="/" className="flex h-14 shrink-0 items-center gap-2 font-display text-lg font-semibold text-ink no-underline">
           <img src="/athar.svg" alt="" width={28} height={28} />
           Athar
         </Link>
@@ -22,6 +22,7 @@ export function SiteHeader({ children }: { children?: React.ReactNode }) {
           {NAV.map((n) => (
             <Link
               key={n.to}
+              activeOptions={{ exact: n.to === '/' }}
               to={n.to}
               className="flex h-full flex-1 items-center justify-center px-2 text-sm font-medium whitespace-nowrap text-ink-2 no-underline hover:text-ink data-[status=active]:text-ink data-[status=active]:shadow-[inset_0_-2px_0_var(--glaze)] sm:flex-none sm:px-3"
             >

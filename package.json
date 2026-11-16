@@ -9,10 +9,15 @@
     "dev": "bun --bun vite dev --port 3000",
     "build": "bun --bun vite build",
     "start": "bun run server.ts",
-    "typecheck": "tsc --noEmit",
-    "test": "bun test"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@tanstack/ai": "1.4.0",
+    "@tanstack/ai-anthropic": "1.1.1",
+    "@tanstack/ai-gemini": "1.2.2",
+    "@tanstack/ai-groq": "1.0.2",
+    "@tanstack/ai-openai": "1.1.1",
+    "@tanstack/ai-openrouter": "1.1.2",
     "@tanstack/react-router": "1.170.46",
     "@tanstack/react-start": "1.169.5",
     "react": "19.3.1",

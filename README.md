@@ -12,7 +12,6 @@ because Apple's system SQLite cannot load the sqlite-vec extension.
 bun install
 bun run dev      # http://localhost:3000
 bun run build && bun run start
-bun test
 ```
 
 Data lives in one local SQLite file, `data/athar.db` (override with `ATHAR_DB_PATH`).

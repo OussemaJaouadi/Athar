@@ -1,4 +1,4 @@
-import { HeadContent, Link, Scripts, createRootRoute } from '@tanstack/react-router'
+import { HeadContent, Scripts, createRootRoute } from '@tanstack/react-router'
 
 import appCss from '../styles.css?url'
 
@@ -7,11 +7,7 @@ const FONTS =
 
 export const Route = createRootRoute({
   head: () => ({
-    meta: [
-      { charSet: 'utf-8' },
-      { name: 'viewport', content: 'width=device-width, initial-scale=1' },
-      { title: 'Athar' },
-    ],
+    meta: [{ charSet: 'utf-8' }, { name: 'viewport', content: 'width=device-width, initial-scale=1' }, { title: 'Athar' }],
     links: [
       { rel: 'icon', href: '/athar.svg', type: 'image/svg+xml' },
       { rel: 'stylesheet', href: FONTS },
@@ -28,14 +24,6 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         <HeadContent />
       </head>
       <body>
-        <header style={{ display: 'flex', gap: '1.5rem', alignItems: 'center', padding: '1rem 1.5rem' }}>
-          <img src="/athar.svg" alt="" width={32} height={32} />
-          <strong style={{ fontFamily: 'var(--font-display)' }}>Athar</strong>
-          <nav style={{ display: 'flex', gap: '1rem' }}>
-            <Link to="/">App</Link>
-            <Link to="/portal">Operator portal</Link>
-          </nav>
-        </header>
         {children}
         <Scripts />
       </body>

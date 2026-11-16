@@ -9,68 +9,361 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as IndexRouteImport } from './routes/index'
+import { Route as AppRouteRouteImport } from './routes/_app/route'
+import { Route as PortalRouteRouteImport } from './routes/portal/route'
+import { Route as SignInRouteImport } from './routes/sign-in'
+import { Route as AppIndexRouteImport } from './routes/_app/index'
+import { Route as AppIdeaRouteImport } from './routes/_app/idea'
+import { Route as AppLandscapeRouteImport } from './routes/_app/landscape'
+import { Route as AppSearchRouteImport } from './routes/_app/search'
+import { Route as AppThemesRouteImport } from './routes/_app/themes'
 import { Route as PortalIndexRouteImport } from './routes/portal/index'
+import { Route as PortalDatabaseRouteImport } from './routes/portal/database'
+import { Route as PortalKeysRouteImport } from './routes/portal/keys'
+import { Route as AppStartupsIdRouteImport } from './routes/_app/startups.$id'
+import { Route as PortalRunsIndexRouteImport } from './routes/portal/runs.index'
+import { Route as PortalRunsRunIdRouteImport } from './routes/portal/runs.$runId'
+import { Route as PortalTraceRowIdRouteImport } from './routes/portal/trace.$rowId'
 
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const AppRouteRoute = AppRouteRouteImport.update({
+  id: '/_app',
   getParentRoute: () => rootRouteImport,
 } as any)
-const PortalIndexRoute = PortalIndexRouteImport.update({
-  id: '/portal/',
-  path: '/portal/',
+const PortalRouteRoute = PortalRouteRouteImport.update({
+  id: '/portal',
+  path: '/portal',
   getParentRoute: () => rootRouteImport,
+} as any)
+const SignInRoute = SignInRouteImport.update({
+  id: '/sign-in',
+  path: '/sign-in',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppIndexRoute = AppIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppIdeaRoute = AppIdeaRouteImport.update({
+  id: '/idea',
+  path: '/idea',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppLandscapeRoute = AppLandscapeRouteImport.update({
+  id: '/landscape',
+  path: '/landscape',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppSearchRoute = AppSearchRouteImport.update({
+  id: '/search',
+  path: '/search',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppThemesRoute = AppThemesRouteImport.update({
+  id: '/themes',
+  path: '/themes',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const PortalIndexRoute = PortalIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => PortalRouteRoute,
+} as any)
+const PortalDatabaseRoute = PortalDatabaseRouteImport.update({
+  id: '/database',
+  path: '/database',
+  getParentRoute: () => PortalRouteRoute,
+} as any)
+const PortalKeysRoute = PortalKeysRouteImport.update({
+  id: '/keys',
+  path: '/keys',
+  getParentRoute: () => PortalRouteRoute,
+} as any)
+const AppStartupsIdRoute = AppStartupsIdRouteImport.update({
+  id: '/startups/$id',
+  path: '/startups/$id',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const PortalRunsIndexRoute = PortalRunsIndexRouteImport.update({
+  id: '/runs/',
+  path: '/runs/',
+  getParentRoute: () => PortalRouteRoute,
+} as any)
+const PortalRunsRunIdRoute = PortalRunsRunIdRouteImport.update({
+  id: '/runs/$runId',
+  path: '/runs/$runId',
+  getParentRoute: () => PortalRouteRoute,
+} as any)
+const PortalTraceRowIdRoute = PortalTraceRowIdRouteImport.update({
+  id: '/trace/$rowId',
+  path: '/trace/$rowId',
+  getParentRoute: () => PortalRouteRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof IndexRoute
+  '/': typeof AppIndexRoute
+  '/portal': typeof PortalRouteRouteWithChildren
+  '/sign-in': typeof SignInRoute
+  '/idea': typeof AppIdeaRoute
+  '/landscape': typeof AppLandscapeRoute
+  '/search': typeof AppSearchRoute
+  '/themes': typeof AppThemesRoute
+  '/portal/database': typeof PortalDatabaseRoute
+  '/portal/keys': typeof PortalKeysRoute
   '/portal/': typeof PortalIndexRoute
+  '/startups/$id': typeof AppStartupsIdRoute
+  '/portal/runs/$runId': typeof PortalRunsRunIdRoute
+  '/portal/trace/$rowId': typeof PortalTraceRowIdRoute
+  '/portal/runs/': typeof PortalRunsIndexRoute
 }
 export interface FileRoutesByTo {
-  '/': typeof IndexRoute
+  '/sign-in': typeof SignInRoute
+  '/idea': typeof AppIdeaRoute
+  '/landscape': typeof AppLandscapeRoute
+  '/search': typeof AppSearchRoute
+  '/themes': typeof AppThemesRoute
+  '/portal/database': typeof PortalDatabaseRoute
+  '/portal/keys': typeof PortalKeysRoute
+  '/': typeof AppIndexRoute
   '/portal': typeof PortalIndexRoute
+  '/startups/$id': typeof AppStartupsIdRoute
+  '/portal/runs/$runId': typeof PortalRunsRunIdRoute
+  '/portal/trace/$rowId': typeof PortalTraceRowIdRoute
+  '/portal/runs': typeof PortalRunsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
-  '/': typeof IndexRoute
+  '/_app': typeof AppRouteRouteWithChildren
+  '/portal': typeof PortalRouteRouteWithChildren
+  '/sign-in': typeof SignInRoute
+  '/_app/idea': typeof AppIdeaRoute
+  '/_app/landscape': typeof AppLandscapeRoute
+  '/_app/search': typeof AppSearchRoute
+  '/_app/themes': typeof AppThemesRoute
+  '/portal/database': typeof PortalDatabaseRoute
+  '/portal/keys': typeof PortalKeysRoute
+  '/_app/': typeof AppIndexRoute
   '/portal/': typeof PortalIndexRoute
+  '/_app/startups/$id': typeof AppStartupsIdRoute
+  '/portal/runs/$runId': typeof PortalRunsRunIdRoute
+  '/portal/trace/$rowId': typeof PortalTraceRowIdRoute
+  '/portal/runs/': typeof PortalRunsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/portal/'
+  fullPaths:
+    | '/'
+    | '/portal'
+    | '/sign-in'
+    | '/idea'
+    | '/landscape'
+    | '/search'
+    | '/themes'
+    | '/portal/database'
+    | '/portal/keys'
+    | '/portal/'
+    | '/startups/$id'
+    | '/portal/runs/$runId'
+    | '/portal/trace/$rowId'
+    | '/portal/runs/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/portal'
-  id: '__root__' | '/' | '/portal/'
+  to:
+    | '/sign-in'
+    | '/idea'
+    | '/landscape'
+    | '/search'
+    | '/themes'
+    | '/portal/database'
+    | '/portal/keys'
+    | '/'
+    | '/portal'
+    | '/startups/$id'
+    | '/portal/runs/$runId'
+    | '/portal/trace/$rowId'
+    | '/portal/runs'
+  id:
+    | '__root__'
+    | '/_app'
+    | '/portal'
+    | '/sign-in'
+    | '/_app/idea'
+    | '/_app/landscape'
+    | '/_app/search'
+    | '/_app/themes'
+    | '/portal/database'
+    | '/portal/keys'
+    | '/_app/'
+    | '/portal/'
+    | '/_app/startups/$id'
+    | '/portal/runs/$runId'
+    | '/portal/trace/$rowId'
+    | '/portal/runs/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute
-  PortalIndexRoute: typeof PortalIndexRoute
+  AppRouteRoute: typeof AppRouteRouteWithChildren
+  PortalRouteRoute: typeof PortalRouteRouteWithChildren
+  SignInRoute: typeof SignInRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/': {
-      id: '/'
+    '/_app': {
+      id: '/_app'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AppRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/portal': {
+      id: '/portal'
+      path: '/portal'
+      fullPath: '/portal'
+      preLoaderRoute: typeof PortalRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sign-in': {
+      id: '/sign-in'
+      path: '/sign-in'
+      fullPath: '/sign-in'
+      preLoaderRoute: typeof SignInRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_app/': {
+      id: '/_app/'
       path: '/'
       fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AppIndexRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/_app/idea': {
+      id: '/_app/idea'
+      path: '/idea'
+      fullPath: '/idea'
+      preLoaderRoute: typeof AppIdeaRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/_app/landscape': {
+      id: '/_app/landscape'
+      path: '/landscape'
+      fullPath: '/landscape'
+      preLoaderRoute: typeof AppLandscapeRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/_app/search': {
+      id: '/_app/search'
+      path: '/search'
+      fullPath: '/search'
+      preLoaderRoute: typeof AppSearchRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/_app/themes': {
+      id: '/_app/themes'
+      path: '/themes'
+      fullPath: '/themes'
+      preLoaderRoute: typeof AppThemesRouteImport
+      parentRoute: typeof AppRouteRoute
     }
     '/portal/': {
       id: '/portal/'
-      path: '/portal'
+      path: '/'
       fullPath: '/portal/'
       preLoaderRoute: typeof PortalIndexRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof PortalRouteRoute
+    }
+    '/portal/database': {
+      id: '/portal/database'
+      path: '/database'
+      fullPath: '/portal/database'
+      preLoaderRoute: typeof PortalDatabaseRouteImport
+      parentRoute: typeof PortalRouteRoute
+    }
+    '/portal/keys': {
+      id: '/portal/keys'
+      path: '/keys'
+      fullPath: '/portal/keys'
+      preLoaderRoute: typeof PortalKeysRouteImport
+      parentRoute: typeof PortalRouteRoute
+    }
+    '/_app/startups/$id': {
+      id: '/_app/startups/$id'
+      path: '/startups/$id'
+      fullPath: '/startups/$id'
+      preLoaderRoute: typeof AppStartupsIdRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/portal/runs/': {
+      id: '/portal/runs/'
+      path: '/runs'
+      fullPath: '/portal/runs/'
+      preLoaderRoute: typeof PortalRunsIndexRouteImport
+      parentRoute: typeof PortalRouteRoute
+    }
+    '/portal/runs/$runId': {
+      id: '/portal/runs/$runId'
+      path: '/runs/$runId'
+      fullPath: '/portal/runs/$runId'
+      preLoaderRoute: typeof PortalRunsRunIdRouteImport
+      parentRoute: typeof PortalRouteRoute
+    }
+    '/portal/trace/$rowId': {
+      id: '/portal/trace/$rowId'
+      path: '/trace/$rowId'
+      fullPath: '/portal/trace/$rowId'
+      preLoaderRoute: typeof PortalTraceRowIdRouteImport
+      parentRoute: typeof PortalRouteRoute
     }
   }
 }
 
-const rootRouteChildren: RootRouteChildren = {
-  IndexRoute: IndexRoute,
+interface AppRouteRouteChildren {
+  AppIdeaRoute: typeof AppIdeaRoute
+  AppLandscapeRoute: typeof AppLandscapeRoute
+  AppSearchRoute: typeof AppSearchRoute
+  AppThemesRoute: typeof AppThemesRoute
+  AppIndexRoute: typeof AppIndexRoute
+  AppStartupsIdRoute: typeof AppStartupsIdRoute
+}
+
+const AppRouteRouteChildren: AppRouteRouteChildren = {
+  AppIdeaRoute: AppIdeaRoute,
+  AppLandscapeRoute: AppLandscapeRoute,
+  AppSearchRoute: AppSearchRoute,
+  AppThemesRoute: AppThemesRoute,
+  AppIndexRoute: AppIndexRoute,
+  AppStartupsIdRoute: AppStartupsIdRoute,
+}
+
+const AppRouteRouteWithChildren = AppRouteRoute._addFileChildren(
+  AppRouteRouteChildren,
+)
+
+interface PortalRouteRouteChildren {
+  PortalDatabaseRoute: typeof PortalDatabaseRoute
+  PortalKeysRoute: typeof PortalKeysRoute
+  PortalIndexRoute: typeof PortalIndexRoute
+  PortalRunsRunIdRoute: typeof PortalRunsRunIdRoute
+  PortalTraceRowIdRoute: typeof PortalTraceRowIdRoute
+  PortalRunsIndexRoute: typeof PortalRunsIndexRoute
+}
+
+const PortalRouteRouteChildren: PortalRouteRouteChildren = {
+  PortalDatabaseRoute: PortalDatabaseRoute,
+  PortalKeysRoute: PortalKeysRoute,
   PortalIndexRoute: PortalIndexRoute,
+  PortalRunsRunIdRoute: PortalRunsRunIdRoute,
+  PortalTraceRowIdRoute: PortalTraceRowIdRoute,
+  PortalRunsIndexRoute: PortalRunsIndexRoute,
+}
+
+const PortalRouteRouteWithChildren = PortalRouteRoute._addFileChildren(
+  PortalRouteRouteChildren,
+)
+
+const rootRouteChildren: RootRouteChildren = {
+  AppRouteRoute: AppRouteRouteWithChildren,
+  PortalRouteRoute: PortalRouteRouteWithChildren,
+  SignInRoute: SignInRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -3,6 +3,8 @@ import { existsSync, mkdirSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import * as sqliteVec from 'sqlite-vec'
 
+import { migrate } from './migrate'
+
 // One local SQLite file holds everything: raw rows, startups, runs and vectors.
 const DB_PATH = resolve(process.env.ATHAR_DB_PATH ?? 'data/athar.db')
 
@@ -30,6 +32,7 @@ export function openDatabase(path = DB_PATH): Database {
   conn.run('PRAGMA foreign_keys = ON')
   conn.run('PRAGMA busy_timeout = 5000')
   sqliteVec.load(conn)
+  migrate(conn)
   return conn
 }
 

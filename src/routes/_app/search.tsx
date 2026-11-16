@@ -1,5 +1,5 @@
 import { Link, createFileRoute, getRouteApi, useNavigate } from '@tanstack/react-router'
-import { CalendarDays, ChevronLeft, ChevronRight, FileText, Globe, Shapes, TextSearch } from 'lucide-react'
+import { CalendarDays, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Equal, FileCheck, FileText, FileX, Globe, Link2, Link2Off, Quote, Shapes, TextSearch } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import { Profile } from '@/components/athar/profile'
@@ -46,13 +46,13 @@ export const Route = createFileRoute('/_app/search')({
 // The filter bar's schema: five attributes, each with an icon and only the conditions the archive can answer.
 function filterFields(sectors: { sector: string; count: number }[], years: { year: number; count: number }[]): FilterField[] {
   return [
-    { id: 'q', label: 'Words', icon: <TextSearch />, type: 'text', placeholder: 'olive, payment, tutoring', operators: [{ value: 'contains', label: 'contains' }] },
+    { id: 'q', label: 'Words', icon: <TextSearch />, type: 'text', placeholder: 'olive, payment, tutoring', operators: [{ value: 'contains', label: 'contains', icon: <Quote /> }] },
     {
       id: 'sector',
       label: 'Sector',
       icon: <Shapes />,
       type: 'select',
-      operators: [{ value: 'is', label: 'is' }],
+      operators: [{ value: 'is', label: 'is', icon: <Equal /> }],
       options: [...sectors].sort((a, b) => b.count - a.count).map((x) => ({ value: x.sector, label: x.sector, icon: <SectorSwatch sector={x.sector} size={14} />, description: `${x.count} startups` })),
     },
     {
@@ -61,14 +61,14 @@ function filterFields(sectors: { sector: string; count: number }[], years: { yea
       icon: <CalendarDays />,
       type: 'select',
       operators: [
-        { value: 'is', label: 'in' },
-        { value: 'after', label: 'after' },
-        { value: 'before', label: 'before' },
+        { value: 'is', label: 'in', icon: <Equal /> },
+        { value: 'after', label: 'after', icon: <ChevronsRight /> },
+        { value: 'before', label: 'before', icon: <ChevronsLeft /> },
       ],
-      options: years.map((y) => ({ value: String(y.year), label: String(y.year), description: `${y.count} labelled` })),
+      options: years.map((y) => ({ value: String(y.year), label: String(y.year), icon: <CalendarDays />, description: `${y.count} labelled` })),
     },
-    { id: 'website', label: 'Website', icon: <Globe />, type: 'select', searchable: false, operators: [{ value: 'is', label: 'is' }], options: [{ value: 'yes', label: 'listed' }, { value: 'no', label: 'not listed' }] },
-    { id: 'described', label: 'Description', icon: <FileText />, type: 'select', searchable: false, operators: [{ value: 'is', label: 'is' }], options: [{ value: 'yes', label: 'present' }, { value: 'no', label: 'missing' }] },
+    { id: 'website', label: 'Website', icon: <Globe />, type: 'select', searchable: false, operators: [{ value: 'is', label: 'is', icon: <Equal /> }], options: [{ value: 'yes', label: 'listed', icon: <Link2 /> }, { value: 'no', label: 'not listed', icon: <Link2Off /> }] },
+    { id: 'described', label: 'Description', icon: <FileText />, type: 'select', searchable: false, operators: [{ value: 'is', label: 'is', icon: <Equal /> }], options: [{ value: 'yes', label: 'present', icon: <FileCheck /> }, { value: 'no', label: 'missing', icon: <FileX /> }] },
   ]
 }
 

@@ -558,6 +558,7 @@ export function FilterOperatorPopover<V, O>({
       visibleFilterOperators(operators).map((entry) => ({
         value: entry.value,
         label: entry.label,
+        icon: entry.icon,
       })),
     [operators]
   )
@@ -1006,7 +1007,10 @@ function FilterChipImpl<V, O>({ rule, index }: FilterChipProps<V>) {
           >
             {/* ONE element that is both the group text and the trigger: an
                 extra wrapper here is the direct child the group would fuse. */}
-            <button type="button">{operatorLabel}</button>
+            <button type="button">
+              {operator?.icon}
+              {operatorLabel}
+            </button>
           </ButtonGroupText>
         }
       />

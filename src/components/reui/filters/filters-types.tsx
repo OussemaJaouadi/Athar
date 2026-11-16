@@ -69,6 +69,8 @@ export type FilterOperatorArity = "none" | "one" | "many" | "range"
 export interface FilterOperator {
   value: string
   label: string
+  /** Athar addition: a glyph drawn before the label in the chip and the menu. */
+  icon?: React.ReactNode
   /** Defaults to `"one"`. */
   arity?: FilterOperatorArity
   /** The opposite operator. Negate flips to it, else sets `rule.negated`. */

@@ -19,7 +19,7 @@ function RunsPage() {
   const busy = runs.some((r) => r.status === 'running')
 
   return (
-    <main className="mx-auto grid max-w-7xl gap-6 px-5 py-6">
+    <main className="grid grid-cols-[minmax(0,1fr)] gap-4 p-4 lg:p-6">
       <h1 className="text-xl font-semibold">Runs</h1>
       <section className="grid gap-px border border-hairline bg-hairline sm:grid-cols-3">
         {operations.map((op, i) => (

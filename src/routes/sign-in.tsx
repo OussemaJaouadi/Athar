@@ -28,7 +28,7 @@ function SignInPage() {
           className="h-10 px-5"
           onClick={async () => {
             await signIn({ data: 'operator' })
-            navigate({ to: '/portal/runs' })
+            navigate({ to: '/portal' })
           }}
         >
           Conservation lab

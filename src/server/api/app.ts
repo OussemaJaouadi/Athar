@@ -1,6 +1,7 @@
 import { createServerFn } from '@tanstack/react-start'
 
 import { getDatabase } from '../db'
+import { readAsk } from './ask'
 
 export type StartupRow = {
   id: string
@@ -9,39 +10,80 @@ export type StartupRow = {
   sector: string | null
   cohort: string | null
   creation_year: number | null
+  website: string | null
 }
 
-const LIST = 'SELECT id, name, description, sector, cohort, creation_year FROM startups'
+export type SearchInput = {
+  q?: string
+  ask?: string
+  sector?: string
+  from?: number
+  to?: number
+  flag?: 'no-description' | 'website' | 'no-website'
+}
 
-// Search: full text over name, description and sector, plus a sector filter.
+const COLUMNS = 's.id, s.name, s.description, s.sector, s.cohort, s.creation_year, s.website'
+const LABELLED = 'CAST(substr(s.cohort, 4, 4) AS INTEGER)'
+
+/** FTS5 query from free words: every word must match, as a prefix. */
+export const ftsAll = (q: string) =>
+  q
+    .replace(/["*()^:]/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((t) => `"${t}"*`)
+    .join(' ')
+
+// Search: words over name, description and sector, plus sector, year and evidence filters.
+// "ask" reads a sentence into the same filters (see ask.ts) and returns how it read it.
 export const searchStartups = createServerFn()
-  .validator((input: { q?: string; sector?: string }) => ({ q: input.q?.trim() ?? '', sector: input.sector?.trim() ?? '' }))
+  .validator((input: SearchInput) => input)
   .handler(async ({ data }) => {
     const db = getDatabase()
-    const sectorClause = data.sector ? ' AND s.sector = $sector' : ''
-    const params = { $sector: data.sector, $q: data.q.replace(/["*]/g, ' ').split(/\s+/).filter(Boolean).map((t) => `"${t}"*`).join(' ') }
-    const rows = data.q
-      ? db
-          .query<StartupRow, typeof params>(
-            `SELECT s.id, s.name, s.description, s.sector, s.cohort, s.creation_year FROM startups_fts f
-             JOIN startups s ON s.id = f.startup_id WHERE startups_fts MATCH $q${sectorClause} ORDER BY rank LIMIT 100`,
-          )
-          .all(params)
-      : db.query<StartupRow, typeof params>(`${LIST} s WHERE 1 = 1${sectorClause} ORDER BY name LIMIT 100`).all(params)
     const sectors = db
       .query<{ sector: string; count: number }, []>('SELECT sector, COUNT(*) AS count FROM startups WHERE sector IS NOT NULL GROUP BY sector ORDER BY sector')
       .all()
+    const years = db
+      .query<{ year: number; count: number }, []>(`SELECT ${LABELLED} AS year, COUNT(*) AS count FROM startups s WHERE cohort IS NOT NULL GROUP BY year ORDER BY year`)
+      .all()
     const total = db.query<{ n: number }, []>('SELECT COUNT(*) AS n FROM startups').get()?.n ?? 0
-    return { rows, sectors, total }
+
+    const read = data.ask ? readAsk(data.ask, sectors.map((s) => s.sector)) : null
+    const f = { ...data, ...(read?.filters ?? {}) }
+    const q = (f.q ?? '').trim()
+
+    const where: string[] = []
+    const params: Record<string, string | number> = {}
+    if (f.sector) (where.push('s.sector = $sector'), (params.$sector = f.sector))
+    if (f.from) (where.push(`${LABELLED} >= $from`), (params.$from = f.from))
+    if (f.to) (where.push(`${LABELLED} <= $to`), (params.$to = f.to))
+    if (f.flag === 'no-description') where.push('s.description IS NULL')
+    if (f.flag === 'website') where.push('s.website IS NOT NULL')
+    if (f.flag === 'no-website') where.push('s.website IS NULL')
+
+    let from = 'startups s'
+    let order = 's.name'
+    if (q) {
+      from = 'startups_fts f JOIN startups s ON s.id = f.startup_id'
+      where.unshift('startups_fts MATCH $q')
+      params.$q = ftsAll(q)
+      order = 'rank'
+    }
+    const clause = where.length ? ` WHERE ${where.join(' AND ')}` : ''
+    const matched = db.query<{ n: number }, typeof params>(`SELECT COUNT(*) AS n FROM ${from}${clause}`).get(params)?.n ?? 0
+    const rows = db.query<StartupRow, typeof params>(`SELECT ${COLUMNS} FROM ${from}${clause} ORDER BY ${order} LIMIT 200`).all(params)
+    return { rows, matched, sectors, years, total, read }
   })
 
-// Profile: the startup, the source rows behind it, and its open review items.
+export type ChainInfo = { rowNumber: number; fetchedAt: string; snapshot: string; changes: { field: string; why: string }[] }
+
+// Profile: the startup, the source rows behind it, and the chain behind its fields.
 export const getStartup = createServerFn()
   .validator((id: string) => id)
   .handler(async ({ data: id }) => {
     const db = getDatabase()
     const startup = db
-      .query<StartupRow & { website: string | null; founders_json: string; primary_row_id: string | null; website_status: string | null; website_checked_at: string | null }, [string]>(
+      .query<StartupRow & { founders_json: string; primary_row_id: string | null; domain: string | null; created_at: string }, [string]>(
         'SELECT * FROM startups WHERE id = ?',
       )
       .get(id)
@@ -53,7 +95,6 @@ export const getStartup = createServerFn()
          WHERE r.startup_id = ? ORDER BY ss.fetched_at DESC, sr.row_number`,
       )
       .all(id)
-    // The chain behind each field: which snapshot and row it came from, and what Clean did to it.
     const primary = startup.primary_row_id
       ? db
           .query<{ row_number: number; fetched_at: string; content_hash: string; changes_json: string }, [string]>(
@@ -63,16 +104,20 @@ export const getStartup = createServerFn()
           )
           .get(startup.primary_row_id)
       : null
-    const changes = primary
-      ? (JSON.parse(primary.changes_json) as { field: string; why: string }[]).map(({ field, why }) => ({ field, why }))
-      : []
-    return {
-      startup: { ...startup, founders: JSON.parse(startup.founders_json) as string[] },
-      sources,
-      chain: primary
-        ? { rowNumber: primary.row_number, fetchedAt: primary.fetched_at, snapshot: primary.content_hash.slice(0, 8), changes }
-        : null,
-    }
+    const reviews = db
+      .query<{ code: string; message: string; status: string }, [string, string]>(
+        'SELECT code, message, status FROM review_items WHERE startup_id = ? OR source_row_id = ?',
+      )
+      .all(id, startup.primary_row_id ?? '')
+    const chain: ChainInfo | null = primary
+      ? {
+          rowNumber: primary.row_number,
+          fetchedAt: primary.fetched_at,
+          snapshot: primary.content_hash.slice(0, 8),
+          changes: (JSON.parse(primary.changes_json) as { field: string; why: string }[]).map(({ field, why }) => ({ field, why })),
+        }
+      : null
+    return { startup: { ...startup, founders: JSON.parse(startup.founders_json) as string[] }, sources, chain, reviews }
   })
 
 export type WallTile = { id: string; name: string; sector: string | null; year: number | null; described: boolean }
@@ -93,15 +138,37 @@ export const getLandscape = createServerFn().handler(async () => {
   const db = getDatabase()
   const byYear = db
     .query<{ year: string; count: number }, []>(
-      "SELECT substr(cohort, 4, 4) AS year, COUNT(*) AS count FROM startups WHERE cohort IS NOT NULL GROUP BY year ORDER BY year",
+      'SELECT substr(cohort, 4, 4) AS year, COUNT(*) AS count FROM startups WHERE cohort IS NOT NULL GROUP BY year ORDER BY year',
     )
     .all()
   const bySector = db
-    .query<{ sector: string; count: number }, []>('SELECT sector, COUNT(*) AS count FROM startups GROUP BY sector ORDER BY count DESC')
+    .query<{ sector: string; count: number }, []>('SELECT sector, COUNT(*) AS count FROM startups WHERE sector IS NOT NULL GROUP BY sector ORDER BY count DESC')
     .all()
-  return { byYear, bySector }
+  const grid = db
+    .query<{ sector: string; year: string; count: number }, []>(
+      'SELECT sector, substr(cohort, 4, 4) AS year, COUNT(*) AS count FROM startups WHERE sector IS NOT NULL AND cohort IS NOT NULL GROUP BY sector, year',
+    )
+    .all()
+  const facts = db
+    .query<{ total: number; described: number; websites: number; lag: number | null; rows: number }, []>(
+      `SELECT COUNT(*) AS total, SUM(description IS NOT NULL) AS described, SUM(website IS NOT NULL) AS websites,
+              AVG(CAST(substr(cohort, 4, 4) AS INTEGER) - creation_year) AS lag,
+              (SELECT COUNT(*) FROM records) AS rows
+       FROM startups`,
+    )
+    .get()
+  return { byYear, bySector, grid, facts }
 })
 
 export const getEmbeddingCount = createServerFn().handler(async () => {
   return getDatabase().query<{ n: number }, []>('SELECT COUNT(*) AS n FROM embedding_meta').get()?.n ?? 0
+})
+
+// The corpus line shown in every reading-room page: what the archive holds and how fresh it is.
+export const getCorpus = createServerFn().handler(async () => {
+  const db = getDatabase()
+  const snap = db.query<{ fetched_at: string; row_count: number }, []>('SELECT fetched_at, row_count FROM source_snapshots ORDER BY fetched_at DESC LIMIT 1').get()
+  const startups = db.query<{ n: number }, []>('SELECT COUNT(*) AS n FROM startups').get()?.n ?? 0
+  const embedded = db.query<{ n: number }, []>('SELECT COUNT(*) AS n FROM embedding_meta').get()?.n ?? 0
+  return { startups, rows: snap?.row_count ?? 0, fetchedAt: snap?.fetched_at ?? null, embedded }
 })

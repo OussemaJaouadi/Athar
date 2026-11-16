@@ -182,3 +182,54 @@ export const removeKey = createServerFn({ method: 'POST' })
     requireOperator()
     getDatabase().query('DELETE FROM ai_keys WHERE id = ?').run(data)
   })
+
+// Review queue: what the pipeline could not settle alone.
+export const listReviews = createServerFn()
+  .validator((input: { status?: string; code?: string }) => ({ status: input.status ?? 'open', code: input.code ?? '' }))
+  .handler(async ({ data }) => {
+    requireOperator()
+    const db = getDatabase()
+    const items = db
+      .query<
+        { id: string; code: string; step: string; message: string; status: string; created_at: string; source_row_id: string | null; startup_id: string | null; row_number: number | null; name: string | null },
+        { $status: string; $code: string }
+      >(
+        `SELECT ri.id, ri.code, ri.step, ri.message, ri.status, ri.created_at, ri.source_row_id, sr.row_number, COALESCE(s.name, r.name) AS name, COALESCE(ri.startup_id, r.startup_id) AS startup_id
+         FROM review_items ri LEFT JOIN source_rows sr ON sr.id = ri.source_row_id LEFT JOIN records r ON r.source_row_id = ri.source_row_id
+         LEFT JOIN startups s ON s.id = COALESCE(ri.startup_id, r.startup_id)
+         WHERE ri.status = $status AND ($code = '' OR ri.code = $code) ORDER BY sr.row_number LIMIT 300`,
+      )
+      .all({ $status: data.status, $code: data.code })
+    const counts = db
+      .query<{ code: string; status: string; count: number }, []>('SELECT code, status, COUNT(*) AS count FROM review_items GROUP BY code, status')
+      .all()
+    return { items, counts, status: data.status, code: data.code }
+  })
+
+export const setReviewStatus = createServerFn({ method: 'POST' })
+  .validator((input: { ids: string[]; status: 'open' | 'resolved' | 'dismissed' }) => input)
+  .handler(async ({ data }) => {
+    requireOperator()
+    const db = getDatabase()
+    const q = db.query('UPDATE review_items SET status = ? WHERE id = ?')
+    db.transaction(() => data.ids.forEach((id) => q.run(data.status, id)))()
+  })
+
+// Trace picker: find a source row by registry row number or name.
+export const findRows = createServerFn()
+  .validator((q: string) => q.trim())
+  .handler(async ({ data }) => {
+    requireOperator()
+    const db = getDatabase()
+    const latest = db.query<{ id: string }, []>('SELECT id FROM source_snapshots ORDER BY fetched_at DESC LIMIT 1').get()
+    if (!latest) return []
+    const asNumber = /^\d+$/.test(data) ? Number(data) : -1
+    return db
+      .query<{ id: string; row_number: number; name: string; sector: string | null; changes: number; startup_id: string | null }, { $snap: string; $q: string; $n: number }>(
+        `SELECT sr.id, sr.row_number, r.name, r.sector, json_array_length(r.changes_json) AS changes, r.startup_id
+         FROM source_rows sr JOIN records r ON r.source_row_id = sr.id
+         WHERE sr.snapshot_id = $snap AND ($q = '' OR sr.row_number = $n OR r.name LIKE '%' || $q || '%')
+         ORDER BY sr.row_number LIMIT 60`,
+      )
+      .all({ $snap: latest.id, $q: data, $n: asNumber })
+  })

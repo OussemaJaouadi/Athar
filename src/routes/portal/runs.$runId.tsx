@@ -28,7 +28,7 @@ function RunPage() {
   }, [run.status, router])
 
   return (
-    <main className="mx-auto grid max-w-7xl gap-6 px-5 py-6">
+    <main className="grid grid-cols-[minmax(0,1fr)] gap-4 p-4 lg:p-6">
       <Link to="/portal/runs">All runs</Link>
       <header className="flex flex-wrap items-center gap-3">
         <h1 className="text-xl font-semibold">{run.operation}</h1>

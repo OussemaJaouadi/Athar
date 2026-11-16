@@ -16,7 +16,7 @@ function TracePage() {
   const { row, changes, startup, siblings, reviews, prepared } = Route.useLoaderData()
 
   return (
-    <main className="mx-auto grid max-w-7xl gap-6 px-5 py-6">
+    <main className="grid grid-cols-[minmax(0,1fr)] gap-4 p-4 lg:p-6">
       <header className="grid gap-1">
         <span className="font-mono text-[0.6875rem] text-ink-2">TRACE · registry row {row.row_number}</span>
         <h1 className="text-xl font-semibold">{startup?.name ?? 'Unmatched row'}</h1>

@@ -20,9 +20,11 @@ import { Route as AppThemesRouteImport } from './routes/_app/themes'
 import { Route as PortalIndexRouteImport } from './routes/portal/index'
 import { Route as PortalDatabaseRouteImport } from './routes/portal/database'
 import { Route as PortalKeysRouteImport } from './routes/portal/keys'
+import { Route as PortalReviewRouteImport } from './routes/portal/review'
 import { Route as AppStartupsIdRouteImport } from './routes/_app/startups.$id'
 import { Route as PortalRunsIndexRouteImport } from './routes/portal/runs.index'
 import { Route as PortalRunsRunIdRouteImport } from './routes/portal/runs.$runId'
+import { Route as PortalTraceIndexRouteImport } from './routes/portal/trace.index'
 import { Route as PortalTraceRowIdRouteImport } from './routes/portal/trace.$rowId'
 
 const AppRouteRoute = AppRouteRouteImport.update({
@@ -79,6 +81,11 @@ const PortalKeysRoute = PortalKeysRouteImport.update({
   path: '/keys',
   getParentRoute: () => PortalRouteRoute,
 } as any)
+const PortalReviewRoute = PortalReviewRouteImport.update({
+  id: '/review',
+  path: '/review',
+  getParentRoute: () => PortalRouteRoute,
+} as any)
 const AppStartupsIdRoute = AppStartupsIdRouteImport.update({
   id: '/startups/$id',
   path: '/startups/$id',
@@ -92,6 +99,11 @@ const PortalRunsIndexRoute = PortalRunsIndexRouteImport.update({
 const PortalRunsRunIdRoute = PortalRunsRunIdRouteImport.update({
   id: '/runs/$runId',
   path: '/runs/$runId',
+  getParentRoute: () => PortalRouteRoute,
+} as any)
+const PortalTraceIndexRoute = PortalTraceIndexRouteImport.update({
+  id: '/trace/',
+  path: '/trace/',
   getParentRoute: () => PortalRouteRoute,
 } as any)
 const PortalTraceRowIdRoute = PortalTraceRowIdRouteImport.update({
@@ -110,11 +122,13 @@ export interface FileRoutesByFullPath {
   '/themes': typeof AppThemesRoute
   '/portal/database': typeof PortalDatabaseRoute
   '/portal/keys': typeof PortalKeysRoute
+  '/portal/review': typeof PortalReviewRoute
   '/portal/': typeof PortalIndexRoute
   '/startups/$id': typeof AppStartupsIdRoute
   '/portal/runs/$runId': typeof PortalRunsRunIdRoute
   '/portal/trace/$rowId': typeof PortalTraceRowIdRoute
   '/portal/runs/': typeof PortalRunsIndexRoute
+  '/portal/trace/': typeof PortalTraceIndexRoute
 }
 export interface FileRoutesByTo {
   '/sign-in': typeof SignInRoute
@@ -124,12 +138,14 @@ export interface FileRoutesByTo {
   '/themes': typeof AppThemesRoute
   '/portal/database': typeof PortalDatabaseRoute
   '/portal/keys': typeof PortalKeysRoute
+  '/portal/review': typeof PortalReviewRoute
   '/': typeof AppIndexRoute
   '/portal': typeof PortalIndexRoute
   '/startups/$id': typeof AppStartupsIdRoute
   '/portal/runs/$runId': typeof PortalRunsRunIdRoute
   '/portal/trace/$rowId': typeof PortalTraceRowIdRoute
   '/portal/runs': typeof PortalRunsIndexRoute
+  '/portal/trace': typeof PortalTraceIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -142,12 +158,14 @@ export interface FileRoutesById {
   '/_app/themes': typeof AppThemesRoute
   '/portal/database': typeof PortalDatabaseRoute
   '/portal/keys': typeof PortalKeysRoute
+  '/portal/review': typeof PortalReviewRoute
   '/_app/': typeof AppIndexRoute
   '/portal/': typeof PortalIndexRoute
   '/_app/startups/$id': typeof AppStartupsIdRoute
   '/portal/runs/$runId': typeof PortalRunsRunIdRoute
   '/portal/trace/$rowId': typeof PortalTraceRowIdRoute
   '/portal/runs/': typeof PortalRunsIndexRoute
+  '/portal/trace/': typeof PortalTraceIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -161,11 +179,13 @@ export interface FileRouteTypes {
     | '/themes'
     | '/portal/database'
     | '/portal/keys'
+    | '/portal/review'
     | '/portal/'
     | '/startups/$id'
     | '/portal/runs/$runId'
     | '/portal/trace/$rowId'
     | '/portal/runs/'
+    | '/portal/trace/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/sign-in'
@@ -175,12 +195,14 @@ export interface FileRouteTypes {
     | '/themes'
     | '/portal/database'
     | '/portal/keys'
+    | '/portal/review'
     | '/'
     | '/portal'
     | '/startups/$id'
     | '/portal/runs/$runId'
     | '/portal/trace/$rowId'
     | '/portal/runs'
+    | '/portal/trace'
   id:
     | '__root__'
     | '/_app'
@@ -192,12 +214,14 @@ export interface FileRouteTypes {
     | '/_app/themes'
     | '/portal/database'
     | '/portal/keys'
+    | '/portal/review'
     | '/_app/'
     | '/portal/'
     | '/_app/startups/$id'
     | '/portal/runs/$runId'
     | '/portal/trace/$rowId'
     | '/portal/runs/'
+    | '/portal/trace/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -285,6 +309,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PortalKeysRouteImport
       parentRoute: typeof PortalRouteRoute
     }
+    '/portal/review': {
+      id: '/portal/review'
+      path: '/review'
+      fullPath: '/portal/review'
+      preLoaderRoute: typeof PortalReviewRouteImport
+      parentRoute: typeof PortalRouteRoute
+    }
     '/_app/startups/$id': {
       id: '/_app/startups/$id'
       path: '/startups/$id'
@@ -304,6 +335,13 @@ declare module '@tanstack/react-router' {
       path: '/runs/$runId'
       fullPath: '/portal/runs/$runId'
       preLoaderRoute: typeof PortalRunsRunIdRouteImport
+      parentRoute: typeof PortalRouteRoute
+    }
+    '/portal/trace/': {
+      id: '/portal/trace/'
+      path: '/trace'
+      fullPath: '/portal/trace/'
+      preLoaderRoute: typeof PortalTraceIndexRouteImport
       parentRoute: typeof PortalRouteRoute
     }
     '/portal/trace/$rowId': {
@@ -341,19 +379,23 @@ const AppRouteRouteWithChildren = AppRouteRoute._addFileChildren(
 interface PortalRouteRouteChildren {
   PortalDatabaseRoute: typeof PortalDatabaseRoute
   PortalKeysRoute: typeof PortalKeysRoute
+  PortalReviewRoute: typeof PortalReviewRoute
   PortalIndexRoute: typeof PortalIndexRoute
   PortalRunsRunIdRoute: typeof PortalRunsRunIdRoute
   PortalTraceRowIdRoute: typeof PortalTraceRowIdRoute
   PortalRunsIndexRoute: typeof PortalRunsIndexRoute
+  PortalTraceIndexRoute: typeof PortalTraceIndexRoute
 }
 
 const PortalRouteRouteChildren: PortalRouteRouteChildren = {
   PortalDatabaseRoute: PortalDatabaseRoute,
   PortalKeysRoute: PortalKeysRoute,
+  PortalReviewRoute: PortalReviewRoute,
   PortalIndexRoute: PortalIndexRoute,
   PortalRunsRunIdRoute: PortalRunsRunIdRoute,
   PortalTraceRowIdRoute: PortalTraceRowIdRoute,
   PortalRunsIndexRoute: PortalRunsIndexRoute,
+  PortalTraceIndexRoute: PortalTraceIndexRoute,
 }
 
 const PortalRouteRouteWithChildren = PortalRouteRoute._addFileChildren(

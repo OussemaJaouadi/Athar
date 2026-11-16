@@ -23,7 +23,7 @@ const FILLER = new Set(
 )
 
 export type AskReading = {
-  filters: { q?: string; sector?: string; from?: number; to?: number; flag?: 'no-description' | 'no-website' | 'website' }
+  filters: { q?: string; sector?: string; from?: number; to?: number; website?: 'yes' | 'no'; described?: 'yes' | 'no' }
   read: string[]
 }
 
@@ -49,8 +49,8 @@ export function readAsk(sentence: string, known: string[]): AskReading {
   if (inYear && !after && !before) ((filters.from = filters.to = Number(inYear[1])), read.push(`labelled in ${inYear[1]}`))
   rest = rest.replace(/\b20\d\d\b/g, ' ')
 
-  if (/\b(no|without|sans)\s+(a\s+)?description/i.test(rest)) ((filters.flag = 'no-description'), read.push('no description'))
-  else if (/\b(no|without|sans)\s+(a\s+)?(web)?site/i.test(rest)) ((filters.flag = 'no-website'), read.push('no website'))
+  if (/\b(no|without|sans)\s+(a\s+)?description/i.test(rest)) ((filters.described = 'no'), read.push('no description'))
+  else if (/\b(no|without|sans)\s+(a\s+)?(web)?site/i.test(rest)) ((filters.website = 'no'), read.push('no website'))
 
   const words = rest
     .toLowerCase()

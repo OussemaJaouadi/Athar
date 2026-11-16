@@ -1,6 +1,7 @@
 import { HeadContent, Link, Scripts, createRootRoute } from '@tanstack/react-router'
 
 import { SiteHeader } from '@/components/athar/site-header'
+import { TooltipProvider } from '@/components/ui/tooltip'
 import { themeScript } from '@/components/athar/theme'
 
 import appCss from '../styles.css?url'
@@ -54,7 +55,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         <HeadContent />
       </head>
       <body>
-        {children}
+        <TooltipProvider>{children}</TooltipProvider>
         <Scripts />
       </body>
     </html>

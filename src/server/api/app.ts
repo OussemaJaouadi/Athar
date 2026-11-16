@@ -20,7 +20,8 @@ export type SearchInput = {
   sector?: string
   from?: number
   to?: number
-  flag?: 'no-description' | 'website' | 'no-website'
+  website?: 'yes' | 'no'
+  described?: 'yes' | 'no'
 }
 
 const COLUMNS = 's.id, s.name, s.description, s.sector, s.cohort, s.creation_year, s.website, (SELECT row_number FROM source_rows WHERE id = s.primary_row_id) AS row'
@@ -58,9 +59,8 @@ export const searchStartups = createServerFn()
     if (f.sector) (where.push('s.sector = $sector'), (params.$sector = f.sector))
     if (f.from) (where.push(`${LABELLED} >= $from`), (params.$from = f.from))
     if (f.to) (where.push(`${LABELLED} <= $to`), (params.$to = f.to))
-    if (f.flag === 'no-description') where.push('s.description IS NULL')
-    if (f.flag === 'website') where.push('s.website IS NOT NULL')
-    if (f.flag === 'no-website') where.push('s.website IS NULL')
+    if (f.website) where.push(f.website === 'yes' ? 's.website IS NOT NULL' : 's.website IS NULL')
+    if (f.described) where.push(f.described === 'yes' ? 's.description IS NOT NULL' : 's.description IS NULL')
 
     let from = 'startups s'
     let order = 's.name'

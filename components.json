@@ -23,6 +23,7 @@
   "menuAccent": "subtle",
   "registries": {
     "@kokonutui": "https://kokonutui.com/r/{name}.json",
-    "@interior": "https://www.interior.dev/r/{name}.json"
+    "@interior": "https://www.interior.dev/r/{name}.json",
+    "@reui": "https://reui.io/r/styles/radix-nova/{name}.json"
   }
 }

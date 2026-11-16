@@ -1,13 +1,12 @@
 import { Link, createFileRoute, getRouteApi, useNavigate } from '@tanstack/react-router'
 import { CalendarDays, FileText, Globe, Shapes, TextSearch } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { Profile } from '@/components/athar/profile'
 import { Filters } from '@/components/reui/filters/filters'
 import { createFilterQuery, createFilterRule, flattenFilterConditions } from '@/components/reui/filters/filters-query'
 import type { FilterField, FilterQuery } from '@/components/reui/filters/filters-types'
 import { SectorSwatch, TileMark } from '@/components/athar/tile-mark'
-import { ValueFlash } from '@/components/interior/value-flash'
 import { cn } from '@/lib/utils'
 import { getStartup, searchStartups, type SearchInput } from '#/server/api/app'
 
@@ -25,6 +24,7 @@ export const Route = createFileRoute('/_app/search')({
     to: num(s.to),
     website: s.website === 'yes' || s.website === 'no' ? s.website : undefined,
     described: s.described === 'yes' || s.described === 'no' ? s.described : undefined,
+    limit: num(s.limit) ?? (typeof s.limit === 'number' ? s.limit : undefined),
     open: str(s.open),
   }),
   loaderDeps: ({ search }) => search,
@@ -107,13 +107,30 @@ function ArchivePage() {
   const { rows, matched, sectors, years, total } = results
   const [query, setQuery] = useState<FilterQuery>(() => toQuery(search))
   const list = useRef<HTMLUListElement>(null)
+  useEffect(() => {
+    list.current?.querySelector<HTMLElement>(`[data-id="${selected}"]`)?.scrollIntoView({ block: 'nearest' })
+  }, [selected])
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+      const t = e.target as HTMLElement | null
+      if (t && (t.closest('input, textarea, [role="dialog"], [role="listbox"], [role="menu"], [data-slot="filter-chip"]') || t.isContentEditable)) return
+      e.preventDefault()
+      const i = rows.findIndex((r) => r.id === selected)
+      const next = rows[Math.min(rows.length - 1, Math.max(0, i + (e.key === 'ArrowDown' ? 1 : -1)))]
+      if (next && next.id !== selected) navigate({ search: (prev) => ({ ...prev, open: next.id }), resetScroll: false })
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [rows, selected, navigate])
 
   const open = (id: string) => navigate({ search: (prev) => ({ ...prev, open: id }), resetScroll: false })
   const wide = () => typeof window !== 'undefined' && window.matchMedia('(min-width: 1280px)').matches
 
   return (
     <div className="mx-auto w-full max-w-[100rem] flex-1 px-4 sm:px-8">
-      <div className="sticky top-14 z-20 -mx-4 border-b border-hairline bg-canvas px-4 py-3 sm:-mx-8 sm:px-8">
+      <div className="sticky top-14 z-20 -mx-4 flex items-center gap-4 border-b border-hairline bg-canvas px-4 py-3 sm:-mx-8 sm:px-8">
+        <div className="min-w-0 flex-1">
         <Filters
           fields={filterFields(sectors, years)}
           query={query}
@@ -123,14 +140,15 @@ function ArchivePage() {
             navigate({ search: { ...fromQuery(next) }, resetScroll: false })
           }}
         />
+        </div>
+        <p className="shrink-0 text-sm text-ink-2" aria-live="polite">
+          {matched === total ? `${total} startups` : `${matched} of ${total}`}
+        </p>
       </div>
 
       <div className="grid gap-x-8 xl:grid-cols-12">
         <section aria-label="Ledger" className="xl:col-span-3 xl:border-e xl:border-hairline xl:pe-4">
-          <p className="flex items-baseline gap-1.5 border-b border-hairline py-3 text-sm text-ink-2" aria-live="polite">
-            <ValueFlash value={matched} className="!w-auto !min-w-0 font-mono text-ink" label="Startups shown" />
-            {matched === total ? 'startups' : `of ${total} startups`}
-          </p>
+
           {rows.length === 0 ? (
             <div className="grid gap-2 py-10 text-sm">
               <p className="font-display text-xl font-bold">No startup matches.</p>
@@ -141,21 +159,11 @@ function ArchivePage() {
             <ul
               ref={list}
               className="xl:-ms-3"
-              onKeyDown={(e) => {
-                if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
-                e.preventDefault()
-                const i = rows.findIndex((r) => r.id === selected)
-                const next = rows[Math.min(rows.length - 1, Math.max(0, i + (e.key === 'ArrowDown' ? 1 : -1)))]
-                if (next) {
-                  open(next.id)
-                  list.current?.querySelector<HTMLAnchorElement>(`[data-id="${next.id}"]`)?.focus()
-                }
-              }}
             >
               {rows.map((r) => {
                 const on = r.id === selected
                 return (
-                  <li key={r.id} className="py-0.5">
+                  <li key={r.id} className="border-b border-hairline">
                     <Link
                       to="/startups/$id"
                       params={{ id: r.id }}
@@ -166,19 +174,25 @@ function ArchivePage() {
                         e.preventDefault()
                         open(r.id)
                       }}
-                      className={cn('grid h-12 grid-cols-[1.5rem_minmax(0,1fr)_auto] items-center gap-2.5 rounded-md border-s-2 ps-2.5 pe-2.5 no-underline transition-colors duration-150', on ? 'border-glaze bg-surface' : 'border-transparent hover:bg-surface/70')}
+                      className={cn('grid h-12 grid-cols-[1.25rem_minmax(0,1fr)_auto] items-center gap-3 px-3 no-underline outline-none transition-colors duration-150 focus-visible:bg-surface', on ? 'bg-surface' : 'hover:bg-surface/60')}
                     >
-                      {r.description ? <TileMark id={r.id} sector={r.sector} size={24} /> : <span aria-label="No description" className="size-6 border border-dashed border-control" />}
+                      {r.description ? <TileMark id={r.id} sector={r.sector} size={20} /> : <span aria-label="No description" className="size-5 border border-dashed border-control" />}
                       <span className="min-w-0">
                         <span className="block truncate text-sm font-medium text-ink">{r.name}</span>
-                        <span className="block truncate text-[0.6875rem] text-ink-2">{r.sector ?? 'No sector'}</span>
+                        <span className="block truncate text-xs text-ink-2">{r.sector ?? 'No sector'}</span>
                       </span>
                       <span className="font-mono text-xs text-ink-2">{r.cohort?.slice(3)}</span>
                     </Link>
                   </li>
                 )
               })}
-              {matched > rows.length && <li className="py-4 ps-3 text-xs text-ink-2">The first {rows.length} are listed. Add a filter to see the rest.</li>}
+              {matched > rows.length && (
+                <li className="py-4 text-center">
+                  <button type="button" onClick={() => navigate({ search: (p) => ({ ...p, limit: rows.length + 100 }), resetScroll: false })} className="inline-flex h-9 items-center rounded-[4px] border border-control px-4 text-sm hover:bg-surface">
+                    Show {Math.min(100, matched - rows.length)} more of {matched - rows.length}
+                  </button>
+                </li>
+              )}
             </ul>
           )}
         </section>

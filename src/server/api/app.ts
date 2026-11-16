@@ -22,6 +22,8 @@ export type SearchInput = {
   to?: number
   website?: 'yes' | 'no'
   described?: 'yes' | 'no'
+  /** How many rows to return; the ledger asks for more as the reader reaches the end. */
+  limit?: number
 }
 
 const COLUMNS = 's.id, s.name, s.description, s.sector, s.cohort, s.creation_year, s.website, (SELECT row_number FROM source_rows WHERE id = s.primary_row_id) AS row'
@@ -72,7 +74,7 @@ export const searchStartups = createServerFn()
     }
     const clause = where.length ? ` WHERE ${where.join(' AND ')}` : ''
     const matched = db.query<{ n: number }, typeof params>(`SELECT COUNT(*) AS n FROM ${from}${clause}`).get(params)?.n ?? 0
-    const rows = db.query<StartupRow, typeof params>(`SELECT ${COLUMNS} FROM ${from}${clause} ORDER BY ${order} LIMIT 200`).all(params)
+    const rows = db.query<StartupRow, typeof params>(`SELECT ${COLUMNS} FROM ${from}${clause} ORDER BY ${order} LIMIT ${Math.min(1000, Math.max(50, Math.floor(f.limit ?? 100)))}`).all(params)
     return { rows, matched, sectors, years, total, read }
   })
 

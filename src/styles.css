@@ -46,6 +46,9 @@
   --tile-5: #a89c90;
   --tile-6: #c4bbb0;
   --tile-gap: #8a8076;
+  --tile-manganese: #5a4036;
+  --tile-terracotta: #b5553a;
+  --tile-steel: #4a6b8c;
 
   /* shadcn roles mapped onto Athar's tokens */
   --background: var(--canvas);
@@ -99,6 +102,9 @@
   --tile-5: #6d5d50;
   --tile-6: #54473d;
   --tile-gap: #7a7066;
+  --tile-manganese: #c9a999;
+  --tile-terracotta: #e8927b;
+  --tile-steel: #a9bfd6;
   color-scheme: dark;
 }
 
@@ -132,6 +138,9 @@
   --tile-5: #6d5d50;
   --tile-6: #54473d;
   --tile-gap: #7a7066;
+  --tile-manganese: #c9a999;
+  --tile-terracotta: #e8927b;
+  --tile-steel: #a9bfd6;
   color-scheme: dark;
   }
 }
@@ -167,6 +176,8 @@
   --color-ink-2: var(--ink-2);
   --color-hairline: var(--hairline);
   --color-glaze: var(--glaze);
+  --color-glaze-ink: var(--glaze-ink);
+  --color-glaze-hover: var(--glaze-hover);
   --color-ochre: var(--ochre);
   --color-ochre-text: var(--ochre-text);
   --color-warn: var(--warn);

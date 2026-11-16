@@ -2,6 +2,7 @@ import { Link, createFileRoute, getRouteApi, useNavigate, useRouter } from '@tan
 import { ArrowRight, Bookmark, BookmarkCheck, CornerDownLeft } from 'lucide-react'
 import { useState } from 'react'
 
+import { TileMark } from '@/components/athar/tile-mark'
 import { cn } from '@/lib/utils'
 import { getWallCards, type RegistryCard } from '#/server/api/app'
 import { getIdeaCheck, runIdeaCheck, saveIdeaCheck, type IdeaMatch } from '#/server/api/idea'
@@ -116,11 +117,7 @@ function Ask({ cards, draft }: { cards: RegistryCard[]; draft?: string }) {
           </span>
         </div>
         <div className="relative max-h-[52rem] overflow-hidden">
-          <div className="columns-1 gap-3 sm:columns-2 lg:columns-4 2xl:columns-5">
-            {cards.map((c) => (
-              <Card key={c.id} card={c} />
-            ))}
-          </div>
+          <Wall cards={cards} />
           <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-56 bg-gradient-to-b from-transparent to-canvas" />
         </div>
         <div className="mt-2 flex justify-center">
@@ -130,6 +127,25 @@ function Ask({ cards, draft }: { cards: RegistryCard[]; draft?: string }) {
         </div>
       </section>
     </main>
+  )
+}
+
+const OFFSETS = ['lg:pt-0', 'lg:pt-16', 'lg:pt-6', 'lg:pt-24', 'lg:pt-10']
+
+/** The registry as a pinned board: five offset columns of slips, read left to right. */
+function Wall({ cards }: { cards: RegistryCard[] }) {
+  const cols: RegistryCard[][] = [[], [], [], [], []]
+  cards.forEach((c, i) => cols[i % 5].push(c))
+  return (
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      {cols.map((col, i) => (
+        <div key={i} className={cn('min-w-0', OFFSETS[i], i >= 2 && 'hidden lg:block', i === 1 && 'hidden sm:block')}>
+          {col.map((c) => (
+            <Card key={c.id} card={c} />
+          ))}
+        </div>
+      ))}
+    </div>
   )
 }
 
@@ -157,17 +173,20 @@ function Card({ card, words = [], lit, size = 'sm' }: { card: RegistryCard; word
       to="/startups/$id"
       params={{ id: card.id }}
       className={cn(
-        'mb-3 block break-inside-avoid rounded-md border p-4 no-underline transition-colors',
+        'mb-3 block break-inside-avoid rounded-md border no-underline transition-colors', size === 'lg' ? 'p-5' : 'p-3.5',
         lit ? 'border-ochre bg-canvas shadow-[0_0_0_1px_var(--ochre)]' : 'border-hairline bg-surface hover:border-control',
       )}
     >
-      <span className="flex items-baseline justify-between gap-3 font-mono text-xs text-ink-2">
-        <span className="truncate">{card.sector ?? 'No sector'}</span>
-        {card.row !== null && <span className="shrink-0">row {card.row}</span>}
+      <span className="flex items-center gap-2.5">
+        <TileMark id={card.id} sector={card.sector} size={size === 'lg' ? 36 : 24} />
+        <span className="flex min-w-0 flex-1 items-baseline justify-between gap-2 font-mono text-[0.6875rem] text-ink-2">
+          <span className="truncate">{card.sector ?? 'No sector'}</span>
+          {card.row !== null && <span className="shrink-0">row {card.row}</span>}
+        </span>
       </span>
-      <span className={cn('mt-2 block font-display font-bold text-ink', size === 'lg' ? 'text-2xl' : 'text-lg')}>{card.name}</span>
+      <span className={cn('mt-3 block font-display font-bold text-ink', size === 'lg' ? 'text-2xl' : 'text-[1.0625rem] leading-6')}>{card.name}</span>
       {card.description && (
-        <span dir="auto" className={cn('mt-1.5 block font-light text-ink-2', size === 'lg' ? 'text-[0.9375rem] leading-6' : 'line-clamp-5 text-sm leading-[1.4rem]', lit && 'text-ink/85')}>
+        <span dir="auto" className={cn('mt-1.5 block font-light text-ink-2', size === 'lg' ? 'text-[0.9375rem] leading-6' : 'line-clamp-4 text-[0.8125rem] leading-5', lit && 'text-ink/85')}>
           {marked(decode(card.description), words)}
         </span>
       )}

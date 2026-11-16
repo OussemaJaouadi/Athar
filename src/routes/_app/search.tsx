@@ -126,9 +126,9 @@ function ArchivePage() {
       </div>
 
       <div className="grid gap-x-8 xl:grid-cols-12">
-        <section aria-label="Ledger" className="xl:col-span-4 xl:border-e xl:border-hairline">
+        <section aria-label="Ledger" className="xl:col-span-3 xl:border-e xl:border-hairline xl:pe-4">
           <p className="flex items-baseline gap-1.5 border-b border-hairline py-3 text-sm text-ink-2" aria-live="polite">
-            <ValueFlash value={matched} className="font-mono text-ink" label="Startups shown" />
+            <ValueFlash value={matched} className="!w-auto !min-w-0 font-mono text-ink" label="Startups shown" />
             {matched === total ? 'startups' : `of ${total} startups`}
           </p>
           {rows.length === 0 ? (
@@ -166,12 +166,12 @@ function ArchivePage() {
                         e.preventDefault()
                         open(r.id)
                       }}
-                      className={cn('grid h-14 grid-cols-[1.75rem_minmax(0,1fr)_auto] items-center gap-3 rounded-md border-s-2 ps-3 pe-3 no-underline transition-colors duration-150', on ? 'border-glaze bg-surface' : 'border-transparent hover:bg-surface/70')}
+                      className={cn('grid h-12 grid-cols-[1.5rem_minmax(0,1fr)_auto] items-center gap-2.5 rounded-md border-s-2 ps-2.5 pe-2.5 no-underline transition-colors duration-150', on ? 'border-glaze bg-surface' : 'border-transparent hover:bg-surface/70')}
                     >
-                      {r.description ? <TileMark id={r.id} sector={r.sector} size={28} /> : <span aria-label="No description" className="size-7 border border-dashed border-control" />}
+                      {r.description ? <TileMark id={r.id} sector={r.sector} size={24} /> : <span aria-label="No description" className="size-6 border border-dashed border-control" />}
                       <span className="min-w-0">
-                        <span className="block truncate text-[0.9375rem] font-medium text-ink">{r.name}</span>
-                        <span className="block truncate text-xs text-ink-2">{r.sector ?? 'No sector'}</span>
+                        <span className="block truncate text-sm font-medium text-ink">{r.name}</span>
+                        <span className="block truncate text-[0.6875rem] text-ink-2">{r.sector ?? 'No sector'}</span>
                       </span>
                       <span className="font-mono text-xs text-ink-2">{r.cohort?.slice(3)}</span>
                     </Link>
@@ -183,7 +183,7 @@ function ArchivePage() {
           )}
         </section>
 
-        <main className="hidden min-w-0 py-8 xl:col-span-8 xl:block">{profile && <Profile key={profile.startup.id} data={profile} operator={viewer.role === 'operator'} />}</main>
+        <main className="hidden min-w-0 py-8 xl:col-span-9 xl:block xl:ps-4">{profile && <Profile key={profile.startup.id} data={profile} operator={viewer.role === 'operator'} />}</main>
       </div>
     </div>
   )

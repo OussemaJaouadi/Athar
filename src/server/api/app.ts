@@ -22,9 +22,13 @@ export type SearchInput = {
   to?: number
   website?: 'yes' | 'no'
   described?: 'yes' | 'no'
-  /** How many rows to return; the ledger asks for more as the reader reaches the end. */
-  limit?: number
+  /** 1-based page of PAGE_SIZE rows. Out of range is clamped to the last page. */
+  page?: number
+  /** With no page given, return the page that holds this startup, so a shared link lands on its row. */
+  open?: string
 }
+
+export const PAGE_SIZE = 20
 
 const COLUMNS = 's.id, s.name, s.description, s.sector, s.cohort, s.creation_year, s.website, (SELECT row_number FROM source_rows WHERE id = s.primary_row_id) AS row'
 const LABELLED = 'CAST(substr(s.cohort, 4, 4) AS INTEGER)'
@@ -65,17 +69,27 @@ export const searchStartups = createServerFn()
     if (f.described) where.push(f.described === 'yes' ? 's.description IS NOT NULL' : 's.description IS NULL')
 
     let from = 'startups s'
-    let order = 's.name'
+    // A total order: without the id tie-break, rows could repeat or vanish between pages.
+    let order = 's.name COLLATE NOCASE, s.id'
     if (q) {
       from = 'startups_fts f JOIN startups s ON s.id = f.startup_id'
       where.unshift('startups_fts MATCH $q')
       params.$q = ftsAll(q)
-      order = 'rank'
+      order = 'rank, s.id'
     }
     const clause = where.length ? ` WHERE ${where.join(' AND ')}` : ''
     const matched = db.query<{ n: number }, typeof params>(`SELECT COUNT(*) AS n FROM ${from}${clause}`).get(params)?.n ?? 0
-    const rows = db.query<StartupRow, typeof params>(`SELECT ${COLUMNS} FROM ${from}${clause} ORDER BY ${order} LIMIT ${Math.min(1000, Math.max(50, Math.floor(f.limit ?? 100)))}`).all(params)
-    return { rows, matched, sectors, years, total, read }
+    const pages = Math.max(1, Math.ceil(matched / PAGE_SIZE))
+    let page = Math.floor(f.page ?? 0)
+    if (!page && f.open) {
+      const at = db
+        .query<{ n: number }, typeof params>(`SELECT n FROM (SELECT s.id, ROW_NUMBER() OVER (ORDER BY ${order}) AS n FROM ${from}${clause}) WHERE id = $open`)
+        .get({ ...params, $open: f.open })?.n
+      if (at) page = Math.ceil(at / PAGE_SIZE)
+    }
+    page = Math.min(pages, Math.max(1, page || 1))
+    const rows = db.query<StartupRow, typeof params>(`SELECT ${COLUMNS} FROM ${from}${clause} ORDER BY ${order} LIMIT ${PAGE_SIZE} OFFSET ${(page - 1) * PAGE_SIZE}`).all(params)
+    return { rows, matched, page, pages, sectors, years, total, read }
   })
 
 export type Change = { field: string; from: string | null; to: string | null; why: string }

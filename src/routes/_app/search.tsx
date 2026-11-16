@@ -1,19 +1,25 @@
 import { Link, createFileRoute, getRouteApi, useNavigate } from '@tanstack/react-router'
-import { CalendarDays, FileText, Globe, Shapes, TextSearch } from 'lucide-react'
+import { CalendarDays, ChevronLeft, ChevronRight, FileText, Globe, Shapes, TextSearch } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import { Profile } from '@/components/athar/profile'
+import { Scroller } from '@/components/athar/scroller'
+import { SectorSwatch, TileMark } from '@/components/athar/tile-mark'
+import { paginate } from '@/components/interior/pagination'
 import { Filters } from '@/components/reui/filters/filters'
 import { createFilterQuery, createFilterRule, flattenFilterConditions } from '@/components/reui/filters/filters-query'
 import type { FilterField, FilterQuery } from '@/components/reui/filters/filters-types'
-import { SectorSwatch, TileMark } from '@/components/athar/tile-mark'
 import { cn } from '@/lib/utils'
-import { getStartup, searchStartups, type SearchInput } from '#/server/api/app'
+import { PAGE_SIZE, getStartup, searchStartups, type SearchInput } from '#/server/api/app'
 
-type Search = SearchInput & { open?: string }
+type Search = Omit<SearchInput, 'open'> & { open?: string }
 
 const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v : undefined)
 const num = (v: unknown) => (typeof v === 'number' && v > 0 ? v : typeof v === 'string' && /^\d{4}$/.test(v) ? Number(v) : undefined)
+const int = (v: unknown) => {
+  const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : NaN
+  return Number.isInteger(n) && n > 1 ? n : undefined
+}
 const shell = getRouteApi('/_app')
 
 export const Route = createFileRoute('/_app/search')({
@@ -24,13 +30,14 @@ export const Route = createFileRoute('/_app/search')({
     to: num(s.to),
     website: s.website === 'yes' || s.website === 'no' ? s.website : undefined,
     described: s.described === 'yes' || s.described === 'no' ? s.described : undefined,
-    limit: num(s.limit) ?? (typeof s.limit === 'number' ? s.limit : undefined),
+    page: int(s.page),
     open: str(s.open),
   }),
   loaderDeps: ({ search }) => search,
-  loader: async ({ deps: { open, ...filters } }) => {
-    const results = await searchStartups({ data: filters })
-    const selected = open ?? results.rows[0]?.id
+  loader: async ({ deps }) => {
+    const results = await searchStartups({ data: deps })
+    // The record never changes because the list moved: only fall back to the first row when nothing is open.
+    const selected = deps.open ?? results.rows[0]?.id
     return { results, selected, profile: selected ? await getStartup({ data: selected }) : null }
   },
   component: ArchivePage,
@@ -97,19 +104,29 @@ function fromQuery(q: FilterQuery): Filtering {
   }
   return out
 }
-
-// The archive as a ledger beside the open record. Filters are one line; the record is the focal point.
+// The archive as a workspace: filters on one line, then the ledger and the open record, each scrolling on its own.
 function ArchivePage() {
   const { results, selected, profile } = Route.useLoaderData()
   const { viewer } = shell.useLoaderData()
   const search = Route.useSearch()
   const navigate = useNavigate({ from: Route.fullPath })
-  const { rows, matched, sectors, years, total } = results
+  const { rows, matched, page, pages, sectors, years, total } = results
   const [query, setQuery] = useState<FilterQuery>(() => toQuery(search))
-  const list = useRef<HTMLUListElement>(null)
+  const ledger = useRef<HTMLDivElement>(null)
+  const pending = useRef<'first' | 'last' | null>(null)
+
+  // A new page starts at the top; an arrow that crossed a page boundary lands on the right row.
   useEffect(() => {
-    list.current?.querySelector<HTMLElement>(`[data-id="${selected}"]`)?.scrollIntoView({ block: 'nearest' })
+    if (ledger.current) ledger.current.scrollTop = 0
+    const edge = pending.current
+    pending.current = null
+    if (edge && rows.length) navigate({ search: (p) => ({ ...p, open: (edge === 'first' ? rows[0] : rows[rows.length - 1]).id }), resetScroll: false, replace: true })
+  }, [page]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    ledger.current?.querySelector<HTMLElement>(`[data-id="${selected}"]`)?.scrollIntoView({ block: 'nearest' })
   }, [selected])
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
@@ -117,38 +134,47 @@ function ArchivePage() {
       if (t && (t.closest('input, textarea, [role="dialog"], [role="listbox"], [role="menu"], [data-slot="filter-chip"]') || t.isContentEditable)) return
       e.preventDefault()
       const i = rows.findIndex((r) => r.id === selected)
-      const next = rows[Math.min(rows.length - 1, Math.max(0, i + (e.key === 'ArrowDown' ? 1 : -1)))]
-      if (next && next.id !== selected) navigate({ search: (prev) => ({ ...prev, open: next.id }), resetScroll: false })
+      const down = e.key === 'ArrowDown'
+      if (down && i === rows.length - 1 && page < pages) {
+        pending.current = 'first'
+        return navigate({ search: (p) => ({ ...p, open: p.open ?? selected, page: page + 1 }), resetScroll: false })
+      }
+      if (!down && i === 0 && page > 1) {
+        pending.current = 'last'
+        return navigate({ search: (p) => ({ ...p, open: p.open ?? selected, page: page - 1 === 1 ? undefined : page - 1 }), resetScroll: false })
+      }
+      const next = rows[Math.min(rows.length - 1, Math.max(0, i + (down ? 1 : -1)))]
+      if (next && next.id !== selected) navigate({ search: (p) => ({ ...p, open: next.id }), resetScroll: false })
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [rows, selected, navigate])
+  }, [rows, selected, page, pages, navigate])
 
-  const open = (id: string) => navigate({ search: (prev) => ({ ...prev, open: id }), resetScroll: false })
-  const wide = () => typeof window !== 'undefined' && window.matchMedia('(min-width: 1280px)').matches
+  const first = (page - 1) * PAGE_SIZE + 1
+  const last = Math.min(matched, page * PAGE_SIZE)
+  const pageLink = (n: number) => ({ to: '/search' as const, search: (p: Search) => ({ ...p, open: p.open ?? selected, page: n === 1 ? undefined : n }), resetScroll: false, preload: 'intent' as const })
 
   return (
-    <div className="mx-auto w-full max-w-[100rem] flex-1 px-4 sm:px-8">
-      <div className="sticky top-14 z-20 -mx-4 flex items-center gap-4 border-b border-hairline bg-canvas px-4 py-3 sm:-mx-8 sm:px-8">
+    <div className="mx-auto grid w-full max-w-[100rem] flex-1 grid-rows-[auto_minmax(0,1fr)] px-4 sm:px-8 xl:h-[calc(100dvh-57px)] xl:flex-none xl:overflow-hidden">
+      <div className="-mx-4 flex items-center gap-4 border-b border-hairline px-4 py-3 sm:-mx-8 sm:px-8">
         <div className="min-w-0 flex-1">
-        <Filters
-          fields={filterFields(sectors, years)}
-          query={query}
-          showClear
-          onQueryChange={(next) => {
-            setQuery(next)
-            navigate({ search: { ...fromQuery(next) }, resetScroll: false })
-          }}
-        />
+          <Filters
+            fields={filterFields(sectors, years)}
+            query={query}
+            showClear
+            onQueryChange={(next) => {
+              setQuery(next)
+              navigate({ search: { ...fromQuery(next) }, resetScroll: false })
+            }}
+          />
         </div>
         <p className="shrink-0 text-sm text-ink-2" aria-live="polite">
           {matched === total ? `${total} startups` : `${matched} of ${total}`}
         </p>
       </div>
 
-      <div className="grid gap-x-8 xl:grid-cols-12">
-        <section aria-label="Ledger" className="xl:col-span-3 xl:border-e xl:border-hairline xl:pe-4">
-
+      <div className="grid min-h-0 gap-x-8 xl:grid-cols-12">
+        <section aria-label="Ledger" className="flex min-h-0 flex-col xl:col-span-3 xl:border-e xl:border-hairline">
           {rows.length === 0 ? (
             <div className="grid gap-2 py-10 text-sm">
               <p className="font-display text-xl font-bold">No startup matches.</p>
@@ -156,47 +182,88 @@ function ArchivePage() {
               <Link to="/" className="w-fit">Ask it as an idea</Link>
             </div>
           ) : (
-            <ul
-              ref={list}
-              className="xl:-ms-3"
-            >
-              {rows.map((r) => {
-                const on = r.id === selected
-                return (
-                  <li key={r.id} className="border-b border-hairline">
-                    <Link
-                      to="/startups/$id"
-                      params={{ id: r.id }}
-                      data-id={r.id}
-                      aria-current={on ? 'true' : undefined}
-                      onClick={(e) => {
-                        if (!wide()) return
-                        e.preventDefault()
-                        open(r.id)
-                      }}
-                      className={cn('grid h-11 grid-cols-[1.25rem_minmax(0,1fr)_auto] items-center gap-3 px-3 no-underline outline-none transition-colors duration-150 focus-visible:bg-surface', on ? 'bg-surface' : 'hover:bg-surface/60')}
-                    >
-                      {r.description ? <TileMark id={r.id} sector={r.sector} size={20} title={r.sector ?? undefined} /> : <span aria-label="No description" className="size-5 border border-dashed border-control" />}
-                      <span className="min-w-0">
-                        <span className="block truncate text-sm font-medium text-ink">{r.name}</span>
-                      </span>
-                      <span className="font-mono text-xs text-ink-2">{r.cohort?.slice(3)}</span>
+            <Scroller ref={ledger} className="flex-1 xl:-ms-3 xl:pe-3" label="Startups on this page">
+              <ul>
+                {rows.map((r) => {
+                  const on = r.id === selected
+                  return (
+                    <li key={r.id} className="border-b border-hairline">
+                      <Link
+                        to="/startups/$id"
+                        params={{ id: r.id }}
+                        data-id={r.id}
+                        aria-current={on ? 'true' : undefined}
+                        onClick={(e) => {
+                          if (!window.matchMedia('(min-width: 1280px)').matches) return
+                          e.preventDefault()
+                          navigate({ search: (p) => ({ ...p, open: r.id }), resetScroll: false })
+                        }}
+                        className={cn('grid h-10 grid-cols-[1.25rem_minmax(0,1fr)_auto] items-center gap-3 px-3 no-underline outline-none transition-colors duration-150 focus-visible:bg-surface', on ? 'bg-surface' : 'hover:bg-surface/60')}
+                      >
+                        {r.description ? <TileMark id={r.id} sector={r.sector} size={20} title={r.sector ?? undefined} /> : <span aria-label="No description" className="size-5 border border-dashed border-control" />}
+                        <span className="truncate text-sm font-medium text-ink">{r.name}</span>
+                        <span className="font-mono text-xs text-ink-2">{r.cohort?.slice(3)}</span>
+                      </Link>
+                    </li>
+                  )
+                })}
+              </ul>
+            </Scroller>
+          )}
+
+          {matched > PAGE_SIZE && (
+            <nav aria-label="Ledger pages" className="flex items-center justify-between gap-3 border-t border-hairline py-2.5 xl:-ms-3 xl:pe-3 xl:ps-3">
+              <span className="font-mono text-xs whitespace-nowrap text-ink-2">
+                {first}–{last} of {matched}
+              </span>
+              <ol className="flex items-center gap-0.5">
+                <li>
+                  {page > 1 ? (
+                    <Link {...pageLink(page - 1)} aria-label="Previous page" className="grid size-8 place-content-center rounded-[4px] text-ink-2 no-underline hover:bg-surface hover:text-ink">
+                      <ChevronLeft className="size-4" />
                     </Link>
-                  </li>
-                )
-              })}
-              {matched > rows.length && (
-                <li className="py-4 text-center">
-                  <button type="button" onClick={() => navigate({ search: (p) => ({ ...p, limit: rows.length + 100 }), resetScroll: false })} className="inline-flex h-9 items-center rounded-[4px] border border-control px-4 text-sm hover:bg-surface">
-                    Show {Math.min(100, matched - rows.length)} more of {matched - rows.length}
-                  </button>
+                  ) : (
+                    <span aria-disabled="true" className="grid size-8 place-content-center text-hairline">
+                      <ChevronLeft className="size-4" />
+                    </span>
+                  )}
                 </li>
-              )}
-            </ul>
+                {paginate(page, pages, 0, 1).map((item) =>
+                  typeof item === 'number' ? (
+                    <li key={item}>
+                      <Link
+                        {...pageLink(item)}
+                        aria-current={item === page ? 'page' : undefined}
+                        className={cn('grid h-8 min-w-8 place-content-center rounded-[4px] px-1.5 font-mono text-xs no-underline', item === page ? 'bg-surface-raised text-ink' : 'text-ink-2 hover:bg-surface hover:text-ink')}
+                      >
+                        {item}
+                      </Link>
+                    </li>
+                  ) : (
+                    <li key={item} aria-hidden className="grid h-8 w-5 place-content-center font-mono text-xs text-ink-2">
+                      …
+                    </li>
+                  ),
+                )}
+                <li>
+                  {page < pages ? (
+                    <Link {...pageLink(page + 1)} aria-label="Next page" className="grid size-8 place-content-center rounded-[4px] text-ink-2 no-underline hover:bg-surface hover:text-ink">
+                      <ChevronRight className="size-4" />
+                    </Link>
+                  ) : (
+                    <span aria-disabled="true" className="grid size-8 place-content-center text-hairline">
+                      <ChevronRight className="size-4" />
+                    </span>
+                  )}
+                </li>
+              </ol>
+            </nav>
           )}
         </section>
 
-        <main className="hidden min-w-0 py-8 xl:col-span-9 xl:block xl:ps-4">{profile && <Profile key={profile.startup.id} data={profile} operator={viewer.role === 'operator'} />}</main>
+        <Scroller className="hidden xl:col-span-9 xl:block" label="Open record">
+          <main className="min-w-0 py-8 xl:ps-4 xl:pe-4">{profile && <Profile key={profile.startup.id} data={profile} operator={viewer.role === 'operator'} />}</main>
+        </Scroller>
       </div>
     </div>
   )

@@ -229,6 +229,22 @@
   }
   html {
     background: var(--canvas);
+    scrollbar-width: thin;
+    scrollbar-color: var(--control) transparent;
+    scrollbar-gutter: stable;
+  }
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--hairline);
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--control);
   }
   a {
     color: var(--glaze);

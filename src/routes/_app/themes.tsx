@@ -1,8 +1,8 @@
 import { Link, createFileRoute, getRouteApi } from '@tanstack/react-router'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 
 import { yearOf } from '@/components/athar/profile'
-import { Tile, TileStrip, useWallGroups } from '@/components/athar/tile-wall'
+import { TileMark, sectorStyle } from '@/components/athar/tile-mark'
 import { cn } from '@/lib/utils'
 import { getTheme, getThemes } from '#/server/api/sample'
 
@@ -12,122 +12,152 @@ const shell = getRouteApi('/_app')
 export const Route = createFileRoute('/_app/themes')({
   validateSearch: (s: Record<string, unknown>): Search => ({ theme: typeof s.theme === 'string' ? s.theme : undefined }),
   loaderDeps: ({ search }) => search,
-  loader: async ({ deps }) => {
-    const all = await getThemes()
-    const id = deps.theme ?? all.themes[0]?.id
-    return { ...all, selected: id ? await getTheme({ data: id }) : null }
-  },
+  loader: async ({ deps }) => ({ ...(await getThemes()), selected: deps.theme ? await getTheme({ data: deps.theme }) : null }),
   component: ThemesPage,
 })
 
-// Themes: the registry as a wall, the word groups it falls into, and the gaps nobody filled.
+const decode = (t: string) => t.replace(/&amp;/g, '&').replace(/&#39;|&apos;/g, "'").replace(/&quot;/g, '"')
+
+// Themes: the registry as one wall. An index of themes and gaps lights the startups each one covers.
 function ThemesPage() {
   const { themes, gaps, selected } = Route.useLoaderData()
   const { wall } = shell.useLoaderData()
-  const { sectors, min, max } = useWallGroups(wall)
-  const byId = useMemo(() => new Map(wall.map((t) => [t.id, t])), [wall])
-  const missing = wall.filter((t) => !t.described).length
+  const [hover, setHover] = useState<string | null>(null)
+
+  const membersOf = useMemo(() => new Map([...themes, ...gaps].map((t) => [t.id, new Set(t.ids)])), [themes, gaps])
+  const sectors = useMemo(() => {
+    const by = new Map<string, typeof wall>()
+    for (const t of wall) by.set(t.sector ?? 'No sector', [...(by.get(t.sector ?? 'No sector') ?? []), t])
+    return [...by.entries()].sort((a, b) => b[1].length - a[1].length)
+  }, [wall])
+
+  const focus = hover ?? selected?.id ?? null
+  const lit = focus ? membersOf.get(focus) : undefined
+  const focusName = [...themes, ...gaps].find((t) => t.id === focus)?.name
 
   return (
-    <div className="grid flex-1 xl:grid-cols-[minmax(0,1fr)_26rem]">
-      <main className="min-w-0 px-4 py-10 sm:px-10 lg:px-16 lg:py-14">
-        <h1 className="text-[1.75rem] leading-9">Themes</h1>
-        <p className="mt-3 max-w-[64ch] text-ink-2">
-          What the {wall.length} startups in the registry work on, and where nobody tried. These groups come from shared words in each description; groups by meaning come once the archive is indexed.
-        </p>
+    <main className="grid flex-1 grid-cols-1 gap-x-12 px-4 py-10 sm:px-8 xl:grid-cols-12">
+      <section aria-labelledby="index-h" className="xl:col-span-4">
+        <h1 className="text-[2.75rem] leading-[3rem]">Themes</h1>
+        <p className="mt-2 text-ink-2">What the {wall.length} registered startups work on, by the words they use.</p>
 
-        <section aria-labelledby="wall-h" className="mt-12">
-          <h2 id="wall-h" className="text-xl">The registry as a wall</h2>
-          <p className="mt-1 max-w-[64ch] text-sm text-ink-2">
-            One tile per startup, by sector. Tiles fade the more recently a startup was labelled; the {missing} open tiles are startups the registry lists without a description.
-          </p>
-          <div className="mt-6 grid gap-x-10 gap-y-6 sm:grid-cols-2 2xl:grid-cols-3">
-            {sectors.map(([sector, group]) => (
-              <Link key={sector} to="/search" search={{ sector }} className="group grid content-start gap-2 no-underline">
-                <span className="flex items-baseline justify-between gap-3 text-sm">
-                  <span className="text-ink group-hover:text-glaze group-hover:underline">{sector}</span>
-                  <span className="text-ink-2">{group.length}</span>
-                </span>
-                <span className="flex flex-wrap gap-[3px]">
-                  {group.map((t) => (
-                    <Tile key={t.id} t={t} min={min} max={max} />
-                  ))}
-                </span>
-              </Link>
-            ))}
-          </div>
-        </section>
+        <h2 id="index-h" className="mt-10 border-b border-hairline pb-2 font-sans text-sm font-medium text-ink-2">
+          Most tried
+        </h2>
+        <ol onMouseLeave={() => setHover(null)}>
+          {themes.map((t, i) => (
+            <IndexRow key={t.id} n={i + 1} id={t.id} name={t.name} count={t.count} active={selected?.id === t.id} onHover={setHover} />
+          ))}
+        </ol>
 
-        <section aria-labelledby="themes-h" className="mt-16">
-          <h2 id="themes-h" className="border-b border-control pb-2 text-xl">Word groups</h2>
-          <ul className="m-0 list-none p-0">
-            {themes.map((t) => {
-              const busiest = [...t.years].sort((a, b) => b.count - a.count)[0]
-              return (
-                <li key={t.id} className={cn('grid gap-x-8 gap-y-2 border-b border-hairline py-4 md:grid-cols-[14rem_minmax(0,1fr)_auto] md:items-center', selected?.id === t.id && 'bg-surface')}>
-                  <div className="md:ps-2">
-                    <span className="font-display font-medium">{t.name}</span>
-                    <p className="text-[0.8125rem] text-ink-2">
-                      {t.count} startups{busiest && ` · most labelled in ${busiest.year}`}
-                    </p>
-                  </div>
-                  <TileStrip linked={false} tiles={t.ids.slice(0, 90).map((id) => byId.get(id)).filter((x) => x !== undefined)} min={min} max={max} />
-                  <Link to="/themes" search={{ theme: t.id }} resetScroll={false} className="text-sm whitespace-nowrap md:pe-2">
-                    See the {t.count} startups
+        <h2 className="mt-10 border-b border-hairline pb-2 font-sans text-sm font-medium text-ink-2">Least tried</h2>
+        <ol onMouseLeave={() => setHover(null)}>
+          {gaps.map((g, i) => (
+            <IndexRow key={g.id} n={themes.length + i + 1} id={g.id} name={g.name} count={g.count} gap active={selected?.id === g.id} onHover={setHover} />
+          ))}
+        </ol>
+      </section>
+
+      <section aria-label="The registry as a wall" className="mt-12 xl:col-span-8 xl:mt-0">
+        <div className="flex items-baseline justify-between gap-4 border-b border-hairline pb-2 text-sm">
+          <span className="text-ink-2">{focusName ? <span className="text-ink">{focusName}</span> : 'Every startup in the registry, by sector'}</span>
+          <span className="font-mono text-xs text-ink-2">{lit ? `${lit.size} of ${wall.length}` : wall.length}</span>
+        </div>
+        <div className="mt-5 grid gap-x-8 gap-y-4 sm:grid-cols-2">
+          {sectors.map(([sector, tiles]) => {
+            const glaze = sectorStyle(sector).glaze.fill
+            const hits = lit ? tiles.filter((t) => lit.has(t.id)).length : 0
+            return (
+              <div key={sector} className="min-w-0">
+                <div className="mb-1.5 flex items-baseline justify-between gap-3 text-xs">
+                  <Link to="/search" search={{ sector }} className="truncate text-ink-2 no-underline hover:text-ink">
+                    {sector}
                   </Link>
-                </li>
-              )
-            })}
-          </ul>
-        </section>
-
-        <section aria-labelledby="gaps-h" className="mt-16">
-          <h2 id="gaps-h" className="text-xl">Where few tried</h2>
-          <p className="mt-1 max-w-[64ch] text-sm text-ink-2">Needs that sound obvious, and how many registry descriptions use their words. An open tile is a startup nobody registered.</p>
-          <ul className="m-0 mt-4 list-none border-t border-control p-0">
-            {gaps.map((g) => (
-              <li key={g.id} className="grid gap-x-8 gap-y-2 border-b border-hairline py-4 md:grid-cols-[14rem_minmax(0,1fr)_auto] md:items-center">
-                <div>
-                  <span className="font-display font-medium">{g.name}</span>
-                  <p className="text-[0.8125rem] text-ink-2">{g.count === 0 ? 'No startup in the registry' : g.count === 1 ? 'One startup' : `${g.count} startups`}</p>
+                  <span className="font-mono text-ink-2">{lit ? `${hits}/${tiles.length}` : tiles.length}</span>
                 </div>
-                <TileStrip linked={false} tiles={g.examples.map((e) => byId.get(e.id)).filter((x) => x !== undefined)} min={min} max={max} empty={Math.max(0, 10 - g.count)} />
-                {g.count > 0 ? (
-                  <Link to="/themes" search={{ theme: g.id }} resetScroll={false} className="text-sm whitespace-nowrap">
-                    See {g.count === 1 ? 'it' : `the ${g.count}`}
-                  </Link>
-                ) : (
-                  <Link to="/idea" search={{ draft: g.name }} className="text-sm whitespace-nowrap">
-                    Check it as an idea
-                  </Link>
-                )}
-              </li>
-            ))}
-          </ul>
-        </section>
-      </main>
+                <div className="flex flex-wrap gap-[3px]">
+                  {tiles.map((t) => {
+                    const on = !lit || lit.has(t.id)
+                    return (
+                      <Link
+                        key={t.id}
+                        to="/startups/$id"
+                        params={{ id: t.id }}
+                        title={t.name}
+                        aria-label={t.name}
+                        className={cn('size-3 transition-opacity duration-150', on ? 'opacity-100' : 'opacity-15', !t.described && 'outline outline-1 -outline-offset-1 outline-dashed outline-control')}
+                        style={t.described ? { background: glaze } : undefined}
+                      />
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })}
+        </div>
 
-      <aside aria-label="Startups in the group" className="border-hairline xl:sticky xl:top-14 xl:h-[calc(100dvh-3.5rem)] xl:overflow-y-auto xl:border-s">
-        {selected ? (
-          <div className="px-4 py-10 sm:px-8">
-            <h2 className="text-xl">{selected.name}</h2>
-            <p className="mt-1 text-[0.8125rem] text-ink-2">{selected.members.length === 1 ? 'One startup' : `${selected.members.length} startups, all shown`} · descriptions using {selected.words.map((w) => `“${w}”`).join(', ')}</p>
-            <ul className="m-0 mt-4 list-none border-t border-control p-0">
-              {selected.members.map((m) => (
-                <li key={m.id} className="grid gap-0.5 border-b border-hairline py-3">
-                  <Link to="/startups/$id" params={{ id: m.id }} className="font-medium text-ink no-underline hover:text-glaze hover:underline">
-                    {m.name}
-                  </Link>
-                  <span className="line-clamp-2 text-[0.8125rem] text-ink-2">{m.description ?? 'No description in the registry.'}</span>
-                  <span className="text-[0.8125rem] text-ink-2">{[m.sector, yearOf(m.cohort) && `labelled ${yearOf(m.cohort)}`].filter(Boolean).join(' · ')}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : (
-          <div className="hidden px-8 py-14 text-sm text-ink-2 xl:block">Choose “See the startups” on a group to list them here, beside the wall.</div>
+        {selected && (
+          <section aria-labelledby="sel-h" className="mt-12">
+            <div className="flex flex-wrap items-baseline justify-between gap-3 border-b border-hairline pb-2">
+              <h2 id="sel-h" className="text-[1.75rem] leading-9">
+                {selected.name}
+              </h2>
+              <span className="text-sm text-ink-2">Descriptions using {selected.words.map((w) => `“${w}”`).join(', ')}</span>
+            </div>
+            {selected.members.length === 0 ? (
+              <div className="mt-6 grid gap-4">
+                <div className="flex gap-[3px]" aria-hidden>
+                  {Array.from({ length: 24 }, (_, i) => (
+                    <span key={i} className="size-3 outline outline-1 -outline-offset-1 outline-dashed outline-control" />
+                  ))}
+                </div>
+                <p className="text-ink-2">The registry doesn&apos;t show anyone trying this.</p>
+                <Link to="/" search={{ draft: selected.name }} className="w-fit text-sm">
+                  Check it as an idea
+                </Link>
+              </div>
+            ) : (
+              <ul className="mt-1 grid gap-x-8 lg:grid-cols-2">
+                {selected.members.map((m) => (
+                  <li key={m.id} className="border-b border-hairline">
+                    <Link to="/startups/$id" params={{ id: m.id }} className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto] gap-x-3 gap-y-0.5 py-2.5 no-underline hover:bg-surface/60">
+                      <TileMark id={m.id} sector={m.sector} size={20} className="mt-0.5" />
+                      <span className="truncate text-sm font-medium text-ink">{m.name}</span>
+                      <span className="font-mono text-xs text-ink-2">{yearOf(m.cohort)}</span>
+                      <span className="col-start-2 col-end-4 truncate text-xs text-ink-2">{m.description ? decode(m.description) : 'The registry doesn’t say what it does.'}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {selected.gap && selected.members.length > 0 && (
+              <Link to="/" search={{ draft: selected.name }} className="mt-4 inline-block text-sm">
+                Check it as an idea
+              </Link>
+            )}
+          </section>
         )}
-      </aside>
-    </div>
+      </section>
+    </main>
+  )
+}
+
+function IndexRow({ n, id, name, count, gap, active, onHover }: { n: number; id: string; name: string; count: number; gap?: boolean; active: boolean; onHover: (id: string) => void }) {
+  return (
+    <li className="border-b border-hairline">
+      <Link
+        to="/themes"
+        search={active ? {} : { theme: id }}
+        resetScroll={false}
+        onMouseEnter={() => onHover(id)}
+        onFocus={() => onHover(id)}
+        aria-current={active ? 'true' : undefined}
+        className={cn('grid h-11 grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-3 px-2 no-underline transition-colors duration-150', active ? 'bg-surface' : 'hover:bg-surface/60')}
+      >
+        <span className="font-mono text-xs text-ink-2">{String(n).padStart(2, '0')}</span>
+        <span className="truncate text-[0.9375rem] text-ink">{name}</span>
+        <span className={cn('font-mono text-sm', gap ? 'text-ochre-text' : 'text-ink-2')}>{count === 0 ? 'none' : count}</span>
+      </Link>
+    </li>
   )
 }

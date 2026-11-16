@@ -133,7 +133,7 @@ export const getThemes = createServerFn().handler(async () => {
   }).sort((a, b) => b.count - a.count)
   const gaps = WHITE_SPACE.map((t) => {
     const hits = themeMembers(t)
-    return { id: t.id, name: t.name, words: t.words, count: hits.length, examples: hits.slice(0, 3).map(({ id, name }) => ({ id, name })) }
+    return { id: t.id, name: t.name, words: t.words, count: hits.length, examples: hits.slice(0, 3).map(({ id, name }) => ({ id, name })), ids: hits.map((h) => h.id) }
   }).sort((a, b) => a.count - b.count)
   return { sample: true as const, themes, gaps }
 })

@@ -9,6 +9,7 @@ import { sectorSlug } from '#/shared/sector'
 import { websiteAnswers, websiteReason, type WebsiteCheck } from '#/shared/website'
 import { Disclosure, StartupTitle } from '@/components/athar/startup-title'
 import { StartupLink } from '@/components/athar/startup-glimpse'
+import AICitations from '@/components/kokonutui/ai-citations'
 
 // The idea page (the owner picked the version with AI sentences, 17 Nov 2026), in the form of every entity page:
 // the idea is the record on the left; what the registry holds about it is on the right.
@@ -57,14 +58,17 @@ function MatchRow({ m, why }: { m: IdeaMatch; why?: Explanation }) {
         <SiteState check={m.check} />
       </p>
       {why && (
-        <p className="col-span-full mt-1 grid max-w-[72ch] gap-0.5 border-s-2 border-ochre ps-3 text-sm" dir="auto">
-          <span>
-            <span className="font-medium">Same:</span> {why.same}
-          </span>
-          <span>
-            <span className="font-medium">Different:</span> {why.different}
-          </span>
-        </p>
+        // Kokonut UI's inline citations: each AI sentence carries a chip for the startup it was written from,
+        // and the chip's preview shows the registry description that backs it.
+        <div className="col-span-full mt-1 max-w-[72ch]" dir="auto">
+          <AICitations
+            parts={[
+              { text: `Same: ${why.same} `, cite: [m.id] },
+              { text: `Different: ${why.different}`, cite: [m.id] },
+            ]}
+            sources={[{ id: m.id, title: m.name, url: `/startups/${m.id}`, site: 'Registry', snippet: m.description ?? undefined }]}
+          />
+        </div>
       )}
     </li>
   )

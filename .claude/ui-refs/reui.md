@@ -68,3 +68,13 @@ Pulled from the component pages. Where a page had no props table or usage sample
   - `TableCell` and `TableHead` are nowrap in every style, so long values scroll sideways.
 - Usage: none on the page.
 - Dependencies: TanStack Table. The page says "react-table v9" in one place and "V8" in its features list, and does not say which to install. Radix UI and the shadcn Create style are mentioned as compatible, not listed as dependencies.
+
+## Added 2026-11-17 (operator portal)
+
+Primitives come from `https://reui.io/r/styles/radix-nova/<name>.json` into `src/components/reui/`; their `from "cn"` import must become `@/lib/utils`. Example variants (`c-<family>-<n>`) are compositions to copy the structure from; their `IconPlaceholder` is replaced by the lucide icon it names.
+
+- **stepper** (primitive) → `Stepper` (`value`, `onValueChange`, `orientation`, `indicators?`), `StepperNav`, `StepperItem` (`step`, `completed`, `loading`), `StepperTrigger` (`asChild`), `StepperIndicator` (children used when no `indicators` map), `StepperTitle`. Pattern followed: **c-stepper-41**, a vertical list with a status glyph per row. Used for the five pipeline steps on Status; `completed` is set per step from its real state, not from its position.
+- **frame** (primitive) → `Frame` (`variant`, `spacing`), `FramePanel`. Lends the stepper rows their radius and padding, as in c-stepper-41.
+- **alert** (primitive) → `Alert` (`variant: default | destructive | info | success | warning | invert`), `AlertTitle`, `AlertDescription`. Pattern **c-alert-4** for a failed key test.
+- **c-sheet-2** (pattern): a form in a Sheet with header, `FieldGroup` body and footer actions. Followed for the AI key drawer.
+- **c-input-group-35** (pattern): password input with a visibility toggle in an `InputGroup`. Followed for the key field.

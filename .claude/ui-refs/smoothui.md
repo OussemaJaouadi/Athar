@@ -18,3 +18,12 @@ Prompt chips that stagger in from the centre of the row outwards (equal-weight a
 - bencho Ai Chat Input (pill → box on press, model/effort menu, mic → send): https://bencho.dev/blocks/ai-chat-input
 - reactbits Prompt Bar (@ sources, / commands, model picker): https://reactbits.dev/micro/prompt-bar
 - smoothui ai-orb-face / siri-orb as an AI presence mark.
+
+## Installed whole on 2026-11-17 (home page)
+
+Registry alias `@smoothui` (`https://smoothui.dev/r/<name>.json`). Each component lives in its own folder, `src/components/smoothui/<name>/index.tsx`, because they import each other by relative path. Their colour names (`brand`, `on-brand`, `smooth-900`, `btn-drop`, `green`, `amber`, `blue`, `destructive-*`) are mapped to Athar's tokens in the `@theme` block of `src/styles.css`, so the component files are unedited.
+
+- **ai-prompt-input** (+ `ai-core`, `smooth-button`): `AIPromptInput` default export; `value`, `onValueChange`, `onSubmit`, `state` (`idle | thinking | streaming | done | error`), `disabled`, `placeholder`, `children` (left of the toolbar), `attachments`/`onAttach` (unused). Enter sends, Shift+Enter breaks the line.
+- **ai-loader**: `AILoader` default export; `variant: dots | bar | grid`, `label`, `showElapsed`.
+- **ai-suggestions**: `AISuggestions` default export; `suggestions: {id,label}[]`, `onSelect(suggestion)`, `label`.
+- Not installed: `ai-sources` (a mark stack that fans into a source list) and `favicon-search`; both are candidates for the idea page and the portal's startup search.

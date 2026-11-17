@@ -1,5 +1,5 @@
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Blocks, BookOpen, CircleAlert, Download, Gauge, Globe, History, KeyRound, Sparkles, TriangleAlert, Waypoints } from "lucide-react";
+import { Blocks, Check, CircleAlert, CircleDashed, CircleX, Download, Gauge, Globe, History, KeyRound, Sparkles, TriangleAlert, Waypoints } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
@@ -10,7 +10,6 @@ import {
 import {
   Desk,
   DeskBar,
-  DeskItem,
   DeskPane,
   PaneSection,
   deskBtn,
@@ -18,6 +17,10 @@ import {
   deskTh,
   useDeskKeys,
 } from "@/components/athar/desk";
+import { ProgressBar } from "@/components/interior/progress-bar";
+import { Tabs } from "@/components/interior/tabs";
+import { Frame, FramePanel } from "@/components/reui/frame";
+import { Stepper, StepperIndicator, StepperItem, StepperNav, StepperTitle, StepperTrigger } from "@/components/reui/stepper";
 import { labTime, operationName } from "@/components/athar/lab";
 import { RunStatus, StepStateBadge } from "@/components/athar/run-status";
 import { DownloadChanges, DownloadList } from "@/components/athar/pipeline-downloads";
@@ -139,6 +142,26 @@ const STEP_ICON: Record<string, typeof Download> = {
   prepare: Sparkles,
   embed: Waypoints,
 };
+// The glyph before each step, as in ReUI's stepper pattern: a check when current, a spinning ring while it runs, a
+// dashed circle when it has never run, and two more in the same 14px line weight for out of date and failed.
+const STEP_GLYPH: Record<string, React.ReactNode> = {
+  up_to_date: (
+    <span className="flex size-3.5 items-center justify-center rounded-full border border-ok bg-ok-bg text-ok">
+      <Check strokeWidth={2.88} className="size-2.5 *:stroke-[2.88]" aria-hidden />
+    </span>
+  ),
+  running: (
+    <svg viewBox="0 0 14 14" fill="none" strokeWidth={1.2} className="size-3.5" aria-hidden>
+      <circle cx="7" cy="7" r="6" pathLength={40} strokeDasharray="3 1" transform="rotate(-54 7 7)" className="stroke-edge" />
+      <circle cx="7" cy="7" r="6" pathLength={360} strokeDasharray="140 220" strokeDashoffset={118} className="origin-center stroke-glaze motion-safe:animate-spin" />
+    </svg>
+  ),
+  stale: <CircleAlert className="size-3.5 text-warn" aria-hidden />,
+  failed: <CircleX className="size-3.5 text-bad" aria-hidden />,
+  never_run: <CircleDashed className="size-3.5 text-ink-2" aria-hidden />,
+  not_configured: <KeyRound className="size-3.5 text-ink-2" aria-hidden />,
+};
+
 // A step that needs the operator: its Run button becomes the pane's primary action.
 const NEEDS_RUN = new Set(["stale", "never_run", "failed"]);
 
@@ -210,37 +233,46 @@ function Pipeline() {
         onBack={() => navigate({ search: {}, replace: true })}
         backLabel="All steps"
         list={
-          <div role="list" aria-label="Steps">
-            {state.steps.map((s, i) => {
-              const Icon = STEP_ICON[s.operation] ?? Download;
-              return (
-                <div role="listitem" key={s.operation}>
-                  <DeskItem
-                    wrap
-                    selected={s.operation === key}
-                    onSelect={() => select(s.operation)}
-                    title={<span className="font-medium">{s.label}</span>}
-                    detail={
-                      s.state === "not_configured"
-                        ? "Optional. Rewrites descriptions for matching."
-                        : (s.reasons[0] ?? s.counts).split(". ")[0].replace(/\.$/, "")
-                    }
-                    lead={
-                      // The pipeline, drawn: a node per step and the line that joins them.
-                      <span className="flex w-8 shrink-0 flex-col items-center self-stretch" aria-hidden>
-                        <span className={cn("w-px flex-1", i > 0 ? "bg-edge" : "bg-transparent")} />
-                        <span className="grid size-8 place-items-center rounded-full border border-edge bg-canvas text-ink">
-                          <Icon className="size-4" strokeWidth={1.5} />
+          <Stepper
+            value={keys.indexOf(key) + 1}
+            onValueChange={(n) => select(keys[n - 1])}
+            orientation="vertical"
+            aria-label="Pipeline steps"
+            className="p-3"
+          >
+            <Frame variant="ghost" spacing="xs" className="w-full bg-transparent p-0 [--frame-panel-py-base:--spacing(2)]">
+              <StepperNav className="gap-1.5">
+                {state.steps.map((s, i) => (
+                  <StepperItem key={s.operation} step={i + 1} completed={s.state === "up_to_date"} loading={s.state === "running"} className="w-full">
+                    <StepperTrigger
+                      asChild
+                      className="hover:bg-muted/50 data-[state=active]:bg-muted/50 w-full items-start gap-2.5 rounded-[calc(var(--frame-panel-radius)-3px)] border-transparent bg-transparent text-start"
+                    >
+                      <FramePanel>
+                        <StepperIndicator className="mt-[3px] size-3.5 overflow-visible bg-transparent data-[state=active]:bg-transparent data-[state=completed]:bg-transparent">
+                          {STEP_GLYPH[s.state] ?? STEP_GLYPH.never_run}
+                        </StepperIndicator>
+                        <span className="grid min-w-0 flex-1 gap-0.5">
+                          <StepperTitle className="flex items-baseline justify-between gap-3 leading-5">
+                            <span className="truncate font-medium">{s.label}</span>
+                            <StepStateBadge state={s.state} />
+                          </StepperTitle>
+                          <span className="text-[0.8125rem] text-ink-2 [overflow-wrap:anywhere]">
+                            {s.state === "not_configured"
+                              ? "Optional. Rewrites descriptions for matching."
+                              : (s.reasons[0] ?? s.counts).split(". ")[0].replace(/\.$/, "")}
+                          </span>
                         </span>
-                        <span className={cn("w-px flex-1", i < state.steps.length - 1 ? "bg-edge" : "bg-transparent")} />
-                      </span>
-                    }
-                    end={<StepStateBadge state={s.state} />}
-                  />
-                </div>
-              );
-            })}
-          </div>
+                        {s.operation === key && (
+                          <span aria-hidden className="pointer-events-none absolute start-0 top-1/2 h-6 w-0.5 -translate-y-1/2 rounded-e-full bg-ink" />
+                        )}
+                      </FramePanel>
+                    </StepperTrigger>
+                  </StepperItem>
+                ))}
+              </StepperNav>
+            </Frame>
+          </Stepper>
         }
         pane={
           <StepPane
@@ -393,30 +425,17 @@ function StepPane({
         />
       ) : (
         <>
-          <div role="tablist" aria-label="What to show about this step" className="-mt-1 flex gap-1 border-b border-hairline">
-            {(
-              [
-                ["overview", "Overview", Gauge],
-                ["runs", runs.length ? `Runs · ${runs.length}` : "Runs", History],
-                ["how", "How it works", BookOpen],
-              ] as const
-            ).map(([id, label, Icon]) => (
-              <button
-                key={id}
-                type="button"
-                role="tab"
-                aria-selected={view === id}
-                onClick={() => setView(id)}
-                className={cn(
-                  "-mb-px inline-flex h-9 items-center gap-2 border-b-2 px-3 text-[0.875rem] whitespace-nowrap transition-colors duration-150 motion-reduce:transition-none",
-                  view === id ? "border-ink font-medium text-ink" : "border-transparent text-ink-2 hover:text-ink",
-                )}
-              >
-                <Icon className="size-4" strokeWidth={1.5} aria-hidden />
-                {label}
-              </button>
-            ))}
-          </div>
+          <Tabs
+            label="What to show about this step"
+            className="-mt-1"
+            value={view}
+            onValueChange={(v) => setView(v as typeof view)}
+            items={[
+              { value: "overview", label: "Overview" },
+              { value: "runs", label: runs.length ? `Runs · ${runs.length}` : "Runs" },
+              { value: "how", label: "How it works" },
+            ]}
+          />
           {view === "how" ? (
             <StepAbout operation={step.operation} />
           ) : view === "runs" ? (
@@ -493,14 +512,14 @@ function StepPane({
           <PaneSection title="Where it stands" icon={Gauge}>
             <p className="max-w-[75ch] text-[0.9375rem] text-ink">{step.counts}</p>
             {step.total > 0 && (
-              <div
-                className="mt-2.5 flex h-2 w-full max-w-[520px] overflow-hidden rounded-full bg-surface-raised"
-                role="img"
-                aria-label={`${step.current} of ${step.total} done and up to date`}
-              >
-                <span className="bg-ok" style={{ width: `${(step.current / step.total) * 100}%` }} />
-                <span className="bg-warn" style={{ width: `${(step.outOfDate / step.total) * 100}%` }} />
-              </div>
+              <ProgressBar
+                className="mt-3 max-w-[520px]"
+                value={step.state === "running" ? null : step.current}
+                max={step.total}
+                label={`${step.current.toLocaleString("en-GB")} of ${step.total.toLocaleString("en-GB")} done and up to date`}
+                pendingLabel="Running"
+                completeLabel="All current"
+              />
             )}
             <p className="mt-1.5 flex flex-wrap items-baseline gap-x-5 gap-y-1 text-[0.875rem] text-ink tabular-nums">
               <span>

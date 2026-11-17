@@ -1,5 +1,6 @@
 import { CircleAlert, CircleCheck, CircleDashed, CircleX, Clock, KeyRound, LoaderCircle, OctagonX } from 'lucide-react'
 
+import { Status, StatusIndicator, StatusLabel } from '@/components/kibo-ui/status'
 import { cn } from '@/lib/utils'
 
 /*
@@ -53,7 +54,18 @@ export const STEP_STATES: Record<string, State> = {
   not_configured: { label: 'Needs an AI key', Icon: KeyRound, tone: 'idle' },
 }
 
-/** A pipeline step's state (getPipelineState). */
+// Kibo's Status has four states; the two idle ones (never run, needs a key) have no live dot, so they stay a quiet pill.
+const KIBO: Record<string, "online" | "offline" | "maintenance" | "degraded"> = { up_to_date: "online", failed: "offline", running: "maintenance", stale: "degraded" }
+
+/** A pipeline step's state (getPipelineState): Kibo UI's Status badge, a live dot and a word. */
 export function StepStateBadge({ state, className, bare }: { state: string; className?: string; bare?: boolean }) {
-  return <StatePill state={STEP_STATES[state] ?? STEP_STATES.never_run} bare={bare} className={className} />
+  const s = STEP_STATES[state] ?? STEP_STATES.never_run
+  const kibo = KIBO[state]
+  if (!kibo || bare) return <StatePill state={s} bare={bare} className={className} />
+  return (
+    <Status status={kibo} className={cn('shrink-0 font-normal', className)}>
+      <StatusIndicator />
+      <StatusLabel className="text-ink">{s.label}</StatusLabel>
+    </Status>
+  )
 }

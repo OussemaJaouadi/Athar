@@ -1,9 +1,6 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
 
-/* fine-hover: hover styles only where a real pointer can hover (used by Cult UI components). */
-@custom-variant fine-hover (@media (hover: hover) and (pointer: fine));
-
 /* dark: follows the theme choice, and the system only when no choice was made. */
 @custom-variant dark {
   &:where([data-theme='dark'], [data-theme='dark'] *) {
@@ -230,6 +227,32 @@
   --color-glaze-hover: var(--glaze-hover);
   --color-ochre: var(--ochre);
   --color-ochre-text: var(--ochre-text);
+
+  /* SmoothUI's colour names, pointed at Athar's tokens so its components ship unedited. */
+  --color-brand: var(--glaze);
+  --color-brand-secondary: var(--glaze-hover);
+  --color-on-brand: var(--glaze-ink);
+  --color-brand-ink: var(--glaze);
+  --color-smooth-900: var(--ink-2);
+  --color-btn-drop: rgb(0 0 0 / 0.18);
+  --color-btn-sheen: rgb(255 255 255 / 0.16);
+  --color-destructive-top: var(--error);
+  --color-destructive-hover: var(--error);
+  --color-destructive-edge: var(--error);
+  --color-destructive-ink: var(--error);
+  --color-destructive-fg: var(--canvas);
+  --color-green: var(--ok);
+  --color-green-hover: var(--ok);
+  --color-green-ink: var(--ok);
+  --color-green-fg: var(--canvas);
+  --color-amber: var(--ochre);
+  --color-amber-hover: var(--ochre);
+  --color-amber-ink: var(--ochre-text);
+  --color-amber-fg: var(--canvas);
+  --color-blue: var(--tile-steel);
+  --color-blue-hover: var(--tile-steel);
+  --color-blue-ink: var(--tile-steel);
+  --color-blue-fg: var(--canvas);
   --color-warn: var(--warn);
   --color-warn-bg: var(--warn-bg);
   --color-ok: var(--ok);

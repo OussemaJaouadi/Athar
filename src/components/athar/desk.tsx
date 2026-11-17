@@ -1,10 +1,9 @@
 import { Link } from '@tanstack/react-router'
-import { Check, ChevronLeft, ChevronsUpDown, CornerDownLeft, Search } from 'lucide-react'
-import { useCallback, useEffect, useId, useRef, useState } from 'react'
+import { ChevronLeft } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { CodeBlock, CodeBlockCopyButton, CodeBlockHeader, CodeBlockTitle } from '@/components/reui/code-block/code-block'
 import type { CodeBlockTransformer } from '@/components/reui/code-block/code-block'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 
@@ -480,115 +479,5 @@ export function DeskSelect({
         ))}
       </SelectContent>
     </Select>
-  )
-}
-
-/**
- * A dropdown you can type into: the suggestions filter as you type, and any text can be used as it is. For values
- * with a few common answers and an open set behind them (a model id). Arrows move, Enter picks, Escape closes.
- */
-export function DeskCombobox({
-  value,
-  onChange,
-  options,
-  id,
-  label,
-  searchPlaceholder = 'Search, or type your own',
-  className,
-}: {
-  value: string
-  onChange: (value: string) => void
-  options: string[]
-  id?: string
-  label?: string
-  searchPlaceholder?: string
-  className?: string
-}) {
-  const [open, setOpen] = useState(false)
-  const [query, setQuery] = useState('')
-  const [active, setActive] = useState(0)
-  const listId = useId()
-  const known = value && !options.includes(value) ? [value, ...options] : options
-  const needle = query.trim().toLowerCase()
-  const shown = needle ? known.filter((o) => o.toLowerCase().includes(needle)) : known
-  const typed = query.trim() && !known.some((o) => o.toLowerCase() === needle) ? query.trim() : null
-  const rows = typed ? [...shown, typed] : shown
-  const pick = (v: string) => {
-    onChange(v)
-    setOpen(false)
-  }
-  return (
-    <Popover
-      open={open}
-      onOpenChange={(o) => {
-        setOpen(o)
-        if (o) {
-          setQuery('')
-          setActive(Math.max(0, known.indexOf(value)))
-        }
-      }}
-    >
-      <PopoverTrigger asChild>
-        <button id={id} type="button" role="combobox" aria-expanded={open} aria-controls={listId} aria-label={label} className={cn(triggerLook, className)}>
-          <span className="min-w-0 flex-1 truncate font-mono text-[0.8125rem]">{value}</span>
-          <ChevronsUpDown className="size-4 shrink-0 text-ink-2" aria-hidden />
-        </button>
-      </PopoverTrigger>
-      <PopoverContent align="start" sideOffset={4} className={cn(menuSurface, 'w-[var(--radix-popover-trigger-width)] gap-0 p-0')}>
-        <label className="flex items-center gap-2 border-b border-hairline px-2.5">
-          <Search className="size-4 shrink-0 text-ink-2" aria-hidden />
-          <input
-            autoFocus
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value)
-              setActive(0)
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-                e.preventDefault()
-                setActive((i) => Math.min(rows.length - 1, Math.max(0, i + (e.key === 'ArrowDown' ? 1 : -1))))
-              } else if (e.key === 'Enter') {
-                e.preventDefault()
-                if (rows[active]) pick(rows[active])
-              }
-            }}
-            aria-label={searchPlaceholder}
-            aria-controls={listId}
-            aria-activedescendant={rows[active] ? `${listId}-${active}` : undefined}
-            placeholder={searchPlaceholder}
-            autoComplete="off"
-            spellCheck={false}
-            className="h-9 min-w-0 flex-1 bg-transparent text-[0.875rem] text-ink outline-none placeholder:text-ink-3"
-          />
-        </label>
-        <div role="listbox" id={listId} aria-label={label} className="max-h-64 overflow-y-auto p-1 [scrollbar-width:thin] [scrollbar-color:var(--edge)_transparent]">
-          {rows.map((r, i) => (
-            <button
-              key={r}
-              id={`${listId}-${i}`}
-              type="button"
-              role="option"
-              aria-selected={r === value}
-              onMouseEnter={() => setActive(i)}
-              onClick={() => pick(r)}
-              className={cn('flex min-h-9 w-full items-center gap-2 rounded-[5px] px-2 text-start text-[0.875rem] text-ink', i === active && 'bg-surface-raised')}
-            >
-              {r === typed ? (
-                <>
-                  <CornerDownLeft className="size-4 shrink-0 text-ink-2" aria-hidden />
-                  <span className="min-w-0 flex-1 truncate">
-                    Use <span className="font-mono text-[0.8125rem]">{r}</span>
-                  </span>
-                </>
-              ) : (
-                <span className={cn('min-w-0 flex-1 truncate font-mono text-[0.8125rem]', r === value && 'font-medium')}>{r}</span>
-              )}
-              {r === value && <Check className="size-4 shrink-0" aria-hidden />}
-            </button>
-          ))}
-        </div>
-      </PopoverContent>
-    </Popover>
   )
 }

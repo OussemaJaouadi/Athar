@@ -56,3 +56,8 @@ export function Example() {
 ```
 
 - Dependencies: `react`, `lucide-react` (`RotateCcw`, demo only), a `cn` helper at `@/lib/utils`, Tailwind CSS.
+
+## Added 2026-11-17
+
+- **ai-citations** → `src/components/kokonutui/ai-citations.tsx`. `AICitations` default export; `parts: {text, cite?: string[]}[]`, `sources: {id, title, url, site?, snippet?}[]`. A chip follows each cited part and its preview shows the snippet. Used on the idea page: the AI's same and different sentences cite the startup they were written from, and the preview shows its registry description.
+- **inline-alert** was tried and removed: its "re-run" is a timer that marks failed checks as passed, so it cannot show a real result.

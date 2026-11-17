@@ -250,3 +250,11 @@ export function Requests({ rps }: { rps: number }) {
 
 - Also exports `useValueFlash` (returns `direction`, `flashing`, and others) for custom rendering.
 - Dependencies: `motion` (`bun add motion`). The file is copied into the project.
+
+## Added 2026-11-17
+
+Install: `bunx --bun shadcn@latest add @interior/<name> --yes`.
+
+- **loading-button** → `LoadingButton` (`onAction` returning a promise, `children` as the idle label, `pendingLabel`, `successLabel`, `errorLabel`, `resetAfter`, `disabled`, `className`). A rejected promise shows the error label. Used for "Test and save" in the AI key drawer.
+- **tabs** → `Tabs` (`items: {value,label}[]`, `value`, `onValueChange`, `label`, `renderPanel?`, `className`); one underline that travels between tabs. Used in the Status step pane (Overview, Runs, How it works).
+- **progress-bar** → `ProgressBar` (`value: number | null`, `max`, `label`, `pendingLabel`, `completeLabel`); `null` is an indeterminate sweep that hands over to a fraction. Used under "Where it stands" on Status.

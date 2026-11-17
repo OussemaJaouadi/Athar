@@ -3,8 +3,9 @@ import { ArrowRight } from 'lucide-react'
 import { useState } from 'react'
 
 import { TileMark } from '@/components/athar/tile-mark'
-import { PromptComposer } from '@/components/cult-ui/prompt-composer'
-import { AISuggestions } from '@/components/smoothui/ai-suggestions'
+import AILoader from '@/components/smoothui/ai-loader'
+import AIPromptInput from '@/components/smoothui/ai-prompt-input'
+import AISuggestions from '@/components/smoothui/ai-suggestions'
 import { cn } from '@/lib/utils'
 import { getWallCards, type RegistryCard } from '#/server/api/app'
 import { checkIdea } from '#/server/api/ideas'
@@ -55,30 +56,27 @@ function AskForm({ initial, compact }: { initial?: string; compact?: boolean }) 
   }
   return (
     <form role="search" onSubmit={(e) => (e.preventDefault(), send())} className="grid gap-4">
-      <PromptComposer
+      {/* SmoothUI's composer as it ships: it grows with the text, Enter sends, and its state drives the motion. */}
+      <AIPromptInput
         aria-label="Describe your idea"
-        className="max-w-none"
-        size={compact ? 'md' : 'lg'}
+        className={compact ? undefined : 'text-lg'}
         value={text}
-        onChange={(e) => setText(e.target.value)}
-        onSend={send}
-        // Enter asks; Shift+Enter breaks the line.
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-            e.preventDefault()
-            send()
-          }
-        }}
-        isLoading={busy}
-        loadingText={`Reading all ${corpus.startups.toLocaleString('en-GB')} startups…`}
+        onValueChange={setText}
+        onSubmit={send}
+        state={busy ? 'thinking' : error ? 'error' : 'idle'}
+        disabled={busy}
         placeholder="Describe your idea in a sentence"
-        dir="auto"
-      />
-      <p className="ps-1 text-[0.9375rem] text-ink-2" aria-live="polite">
-        {text && short ? 'A little more: a short sentence is enough.' : 'Enter to ask · Shift+Enter for a new line'}
-      </p>
+      >
+        {busy ? (
+          <AILoader variant="bar" showElapsed label={`Reading all ${corpus.startups.toLocaleString('en-GB')} startups`} />
+        ) : (
+          <span className="text-[0.9375rem] text-ink-2" aria-live="polite">
+            {text && short ? 'A little more: a short sentence is enough.' : 'Enter to ask · Shift+Enter for a new line'}
+          </span>
+        )}
+      </AIPromptInput>
       {error && <p className="ps-5 text-[0.9375rem] text-destructive">{error}</p>}
-      {!compact && <AISuggestions className="ps-1" label="Or try one" suggestions={EXAMPLES} onSelect={setText} />}
+      {!compact && <AISuggestions className="ps-1" label="Or try one" suggestions={EXAMPLES.map((label, i) => ({ id: String(i), label }))} onSelect={(sug) => setText(sug.label)} />}
     </form>
   )
 }

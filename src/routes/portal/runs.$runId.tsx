@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 
 import { CollectButton, diffSentence, duration, plural, shortId } from '@/components/athar/collect-button'
 import { findingName, labTime, operationName } from '@/components/athar/lab'
+import { OpsHeading, OpsPage, opsRow, opsTd, opsTh } from '@/components/athar/ops'
 import { RunStatus } from '@/components/athar/run-status'
 import { getRunDetail } from '#/server/api/portal'
 
@@ -40,20 +41,34 @@ function RunPage() {
   const failed = run.status === 'failed' || run.status === 'interrupted'
   const failedStep = steps.find((s) => s.status === 'failed')
   const failure = (failedStep?.message ?? run.error)?.replace(/^.*?failed:\s*/i, '').replace(/[.\s]+$/, '')
-  const opened = reviews.reduce((t, r) => t + r.count, 0)
-  const name = `${operationName(run.operation)} ${shortId(run.id)}`
+  const raised = reviews.reduce((t, r) => t + r.count, 0)
 
   return (
-    <main className="grid gap-8 p-4 lg:p-8">
-      <nav aria-label="Breadcrumb">
-        <ol className="flex items-center gap-1.5 text-[0.875rem]">
+    <OpsPage
+      title={
+        <span className="inline-flex flex-wrap items-center gap-3">
+          {operationName(run.operation)} run <span className="font-mono text-[1.125rem]">{shortId(run.id)}</span>
+          <RunStatus status={run.status} />
+        </span>
+      }
+      lede={
+        <>
+          Started {labTime(run.started_at)}
+          {run.finished_at ? ` · took ${duration(run.started_at, run.finished_at)}` : ` · ${duration(run.started_at, new Date(now).toISOString())} so far`}
+          {!running && !failed && run.rows !== null && run.startups !== null && ` · ${plural(run.rows, 'row')} → ${plural(run.startups, 'startup')} · ${diffSentence(run.diff)}`}
+        </>
+      }
+      actions={!running && <CollectButton running={false} again />}
+    >
+      <nav aria-label="Breadcrumb" className="-order-1">
+        <ol className="flex items-center gap-1 text-[0.8125rem]">
           <li>
             <Link to="/portal" className="text-glaze underline">
               Pipeline
             </Link>
           </li>
           <li aria-hidden className="text-ink-2">
-            <ChevronRight className="size-4" />
+            <ChevronRight className="size-3.5" />
           </li>
           <li aria-current="page" className="text-ink">
             {operationName(run.operation)} <span className="font-mono">{shortId(run.id)}</span>
@@ -61,55 +76,27 @@ function RunPage() {
         </ol>
       </nav>
 
-      <header className="flex flex-wrap items-end justify-between gap-x-10 gap-y-4">
-        <div className="grid gap-2">
-          <div className="flex flex-wrap items-center gap-4">
-            <h1 className="font-display text-[1.75rem] leading-9">
-              {operationName(run.operation)} run <span className="font-mono text-[1.5rem]" title={run.id}>{shortId(run.id)}</span>
-            </h1>
-            <RunStatus status={run.status} />
-          </div>
-          <p className="text-[0.9375rem] text-ink">
-            Started {labTime(run.started_at)}
-            {run.finished_at
-              ? ` · took ${duration(run.started_at, run.finished_at)}`
-              : ` · ${duration(run.started_at, new Date(now).toISOString())} so far`}
-          </p>
-        </div>
-        {!running && <CollectButton running={false} again />}
-      </header>
-
       {failed && (
-        <section role="alert" className="grid gap-2 rounded-lg border border-edge border-s-4 border-s-destructive bg-surface p-5">
-          <p className="flex items-center gap-2 text-[0.9375rem] font-medium text-ink">
-            <CircleAlert className="size-5 shrink-0" aria-hidden />
-            {failedStep ? `${operationName(failedStep.step)} failed` : run.status === 'interrupted' ? 'The run was interrupted' : 'The run failed'}
-          </p>
-          <p className="text-ink">
+        <section role="alert" className="flex items-start gap-2 rounded-md border border-edge border-s-2 border-s-destructive bg-surface px-3 py-2 text-[0.8125rem] text-ink">
+          <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
+          <p>
+            <span className="font-medium">
+              {failedStep ? `${operationName(failedStep.step)} failed.` : run.status === 'interrupted' ? 'The run was interrupted.' : 'The run failed.'}
+            </span>{' '}
             {failure ? `${failure}.` : run.status === 'interrupted' ? 'The server stopped while the run was going.' : 'No message was recorded.'} The registry
             from the run before is unchanged.
           </p>
         </section>
       )}
 
-      {!running && !failed && (
-        <section aria-label="What this run produced" className="grid gap-3 sm:grid-cols-3">
-          <Figure value={run.rows !== null ? run.rows.toLocaleString('en-GB') : '—'} label="source rows collected" />
-          <Figure value={run.startups !== null ? run.startups.toLocaleString('en-GB') : '—'} label="startups after merge" />
-          <Figure value={diffSentence(run.diff)} label={run.diff?.first ? 'nothing before it to compare' : 'rows against the collect before'} small />
-        </section>
-      )}
-
-      <section aria-labelledby="steps-h" className="grid gap-3">
-        <h2 id="steps-h" className="font-sans text-[0.9375rem] font-medium text-ink">
-          Steps
-        </h2>
+      <section aria-labelledby="steps-h" className="grid gap-2">
+        <OpsHeading id="steps-h">Steps</OpsHeading>
         <div className="overflow-x-auto rounded-lg border border-edge">
-          <table className="w-full text-[0.875rem] tabular-nums">
-            <thead className="bg-surface text-[0.8125rem] text-ink-2">
+          <table className="w-full tabular-nums">
+            <thead className="bg-surface">
               <tr>
                 {['Step', 'Status', 'In', 'Out', 'Took', 'What happened'].map((h) => (
-                  <th key={h} scope="col" className="px-4 py-3 text-start font-medium whitespace-nowrap">
+                  <th key={h} scope="col" className={opsTh}>
                     {h}
                   </th>
                 ))}
@@ -119,22 +106,22 @@ function RunPage() {
               {steps.map((s, i) => {
                 const [inUnit, outUnit] = STEP_UNIT[s.step] ?? ['items', 'items']
                 return (
-                  <tr key={s.position} className="border-t border-hairline">
-                    <td className="px-4 py-3 whitespace-nowrap text-ink">
+                  <tr key={s.position} className={opsRow}>
+                    <td className={`${opsTd} whitespace-nowrap`}>
                       <span className="me-2 text-ink-2">{i + 1}</span>
                       {operationName(s.step)}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className={opsTd}>
                       <RunStatus status={s.status} />
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-ink">{s.items_in !== null ? `${s.items_in.toLocaleString('en-GB')} ${inUnit}` : '—'}</td>
-                    <td className="px-4 py-3 whitespace-nowrap text-ink">{s.items_out !== null ? `${s.items_out.toLocaleString('en-GB')} ${outUnit}` : '—'}</td>
-                    <td className="px-4 py-3 whitespace-nowrap text-ink">
+                    <td className={`${opsTd} whitespace-nowrap`}>{s.items_in !== null ? `${s.items_in.toLocaleString('en-GB')} ${inUnit}` : '—'}</td>
+                    <td className={`${opsTd} whitespace-nowrap`}>{s.items_out !== null ? `${s.items_out.toLocaleString('en-GB')} ${outUnit}` : '—'}</td>
+                    <td className={`${opsTd} whitespace-nowrap`}>
                       {s.status === 'running'
                         ? `${duration(s.started_at, new Date(now).toISOString()) ?? '0.1 s'} so far`
                         : (duration(s.started_at, s.finished_at) ?? '—')}
                     </td>
-                    <td className="px-4 py-3 text-ink">{s.message ?? (s.status === 'pending' ? 'Waiting for the step before' : '—')}</td>
+                    <td className={opsTd}>{s.message ?? (s.status === 'pending' ? 'Waiting for the step before' : '—')}</td>
                   </tr>
                 )
               })}
@@ -144,39 +131,27 @@ function RunPage() {
       </section>
 
       {reviews.length > 0 && (
-        <section aria-labelledby="found-h" className="grid gap-3">
-          <h2 id="found-h" className="font-sans text-[0.9375rem] font-medium text-ink">
-            {plural(opened, 'finding')} raised by this run
-          </h2>
-          <ul className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {reviews.map((r) => (
-              <li key={r.code}>
+        <section aria-labelledby="found-h" className="grid max-w-xl gap-2">
+          <OpsHeading id="found-h">{plural(raised, 'finding')} raised by this run</OpsHeading>
+          <ul className="overflow-hidden rounded-lg border border-edge">
+            {reviews.map((r, i) => (
+              <li key={r.code} className={i ? 'border-t border-hairline' : ''}>
                 <Link
                   to="/portal/review"
                   search={{ code: r.code }}
-                  className="group grid h-full grid-cols-[1fr_auto] items-start gap-x-4 gap-y-1 rounded-lg border border-edge bg-surface p-4 no-underline hover:border-ink"
+                  className="flex h-9 items-center justify-between gap-3 px-3 text-[0.8125rem] text-ink no-underline hover:bg-surface"
                 >
-                  <span className="text-[0.9375rem] font-medium text-ink group-hover:underline">{findingName(r.code)}</span>
-                  <span className="row-span-2 font-display text-[1.75rem] leading-8 text-ink tabular-nums">{r.count}</span>
-                  <span className="text-ink">{r.open === r.count ? 'All still open' : `${r.open} still open`}</span>
+                  <span className="truncate">{findingName(r.code)}</span>
+                  <span className="tabular-nums">
+                    {r.count}
+                    <span className="ms-2 text-ink-2">{r.open === r.count ? 'all open' : `${r.open} open`}</span>
+                  </span>
                 </Link>
               </li>
             ))}
           </ul>
         </section>
       )}
-      <p className="sr-only" aria-live="polite">
-        {name} {run.status}
-      </p>
-    </main>
-  )
-}
-
-function Figure({ value, label, small }: { value: string; label: string; small?: boolean }) {
-  return (
-    <div className="rounded-lg border border-edge bg-surface p-5">
-      <p className={small ? 'font-display text-[1.625rem] leading-[3rem] text-ink' : 'font-display text-[2.75rem] leading-[3rem] text-ink tabular-nums'}>{value}</p>
-      <p className="mt-1 text-[0.9375rem] text-ink">{label}</p>
-    </div>
+    </OpsPage>
   )
 }

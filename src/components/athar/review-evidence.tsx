@@ -1,90 +1,103 @@
 import { Link } from '@tanstack/react-router'
 
+import type { Field } from '@/components/athar/ops'
 import type { ReviewItem } from '#/server/api/review'
 
-/** One labelled value, in mono, exactly as stored: the thing the operator is deciding about. */
-function Value({ label, value, empty = 'empty' }: { label: string; value: string | null | undefined; empty?: string }) {
-  const has = value !== null && value !== undefined && String(value).trim() !== ''
-  return (
-    <div className="grid min-w-0 gap-1">
-      <span className="text-[0.8125rem] text-ink-2">{label}</span>
-      <span className="min-w-0 rounded-md border border-edge bg-canvas px-2.5 py-1.5 font-mono text-[0.8125rem] break-all text-ink">
-        {has ? String(value) : <span className="italic">{empty}</span>}
-      </span>
-    </div>
-  )
-}
+const has = (v: string | number | null | undefined) => v !== null && v !== undefined && String(v).trim() !== ''
+const shown = (v: string | number | null | undefined, empty = 'Empty') =>
+  has(v) ? <span className="font-mono">{String(v)}</span> : <span className="text-ink-2">{empty}</span>
 
-/**
- * What the finding rests on, shown inline so it can be decided without a trip to Trace.
- * Known codes get their own evidence; anything else shows the finding's message.
- */
-export function ReviewEvidence({ item }: { item: ReviewItem }) {
+const context = (item: ReviewItem) =>
+  [
+    item.sector,
+    item.creation_year && `founded ${item.creation_year}`,
+    item.founders ? `${item.founders} ${item.founders === 1 ? 'founder' : 'founders'}` : null,
+    item.website ? 'has a website' : 'no website',
+  ]
+    .filter(Boolean)
+    .join(' · ')
+
+/** One short line for the list: what the finding rests on, without opening anything. */
+export function evidenceLine(item: ReviewItem): string {
   switch (item.code) {
     case 'website_unrepairable':
-      return (
-        <div className="grid gap-2">
-          <Value label="The registry wrote" value={item.raw_website} />
-          <p className="text-ink">Not a usable address, so the profile shows no website.</p>
-        </div>
-      )
+      return has(item.raw_website) ? `Registry wrote “${item.raw_website}”` : 'Registry website is empty'
     case 'missing_description':
-      return (
-        <div className="grid gap-2">
-          <Value label="Description in the registry" value={item.raw_desc} empty="no description" />
-          <p className="text-ink">
-            {[
-              item.sector,
-              item.creation_year && `founded ${item.creation_year}`,
-              item.founders ? `${item.founders} ${item.founders === 1 ? 'founder' : 'founders'}` : null,
-              item.website ? 'has a website' : 'no website',
-            ]
-              .filter(Boolean)
-              .join(' · ')}
-          </p>
-        </div>
-      )
+      return context(item)
     case 'industry_differs':
-      return (
-        <div className="grid gap-2 sm:grid-cols-2">
-          <Value label="Industry" value={item.raw_industry} />
-          <Value label="Sector" value={item.raw_sector} />
-        </div>
-      )
+      return `Industry “${item.raw_industry ?? ''}” · sector “${item.raw_sector ?? ''}”`
     case 'cohort_unreadable':
-      return <Value label="Label date in the registry" value={item.raw_label} />
+      return `Label date “${item.raw_label ?? ''}”`
     case 'cohort_before_creation':
-      return (
-        <div className="grid gap-2 sm:grid-cols-2">
-          <Value label="Labelled" value={item.raw_label} />
-          <Value label="Created" value={item.raw_creation_year} />
-        </div>
-      )
+      return `Labelled ${item.raw_label ?? '?'} · created ${item.raw_creation_year ?? '?'}`
     case 'possible_duplicate':
-      return (
-        <div className="grid gap-2">
-          <p className="text-ink">{item.message}.</p>
-          <ul className="grid gap-1.5">
-            {[{ startup_id: item.startup_id ?? '', name: item.name ?? 'This startup', website: item.website, row_id: item.source_row_id, row_number: item.row_number }, ...item.others].map(
-              (d, i) => (
-                <li key={d.startup_id || i} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-md border border-edge bg-canvas px-2.5 py-1.5">
-                  <span className="font-mono text-[0.8125rem] text-ink-2">{d.row_number !== null ? `Row ${d.row_number}` : 'No row'}</span>
-                  {d.row_id ? (
-                    <Link to="/portal/trace/$rowId" params={{ rowId: d.row_id }} className="text-glaze underline">
-                      {d.name}
-                    </Link>
-                  ) : (
-                    <span className="text-ink">{d.name}</span>
-                  )}
-                  <span className="font-mono text-[0.8125rem] break-all text-ink">{d.website ?? 'no website'}</span>
-                  {i === 0 && <span className="text-[0.8125rem] text-ink-2">this one</span>}
-                </li>
-              ),
-            )}
-          </ul>
-        </div>
-      )
+      return `Same name as ${item.others.length} other ${item.others.length === 1 ? 'startup' : 'startups'}`
     default:
-      return <p className="text-ink">{item.message.replace(/[.\s]*$/, '.')}</p>
+      return item.message
   }
+}
+
+/** The full evidence for the drawer, as label and value pairs, values exactly as stored. */
+export function evidenceFields(item: ReviewItem): Field[] {
+  const out: Field[] = []
+  switch (item.code) {
+    case 'website_unrepairable':
+      out.push({ label: 'Registry wrote', value: shown(item.raw_website), copy: item.raw_website ?? undefined })
+      out.push({ label: 'Profile shows', value: 'No website' })
+      break
+    case 'missing_description':
+      out.push({ label: 'Description', value: shown(item.raw_desc, 'None in the registry') })
+      break
+    case 'industry_differs':
+      out.push({ label: 'Industry', value: shown(item.raw_industry), copy: item.raw_industry ?? undefined })
+      out.push({ label: 'Registry sector', value: shown(item.raw_sector), copy: item.raw_sector ?? undefined })
+      break
+    case 'cohort_unreadable':
+      out.push({ label: 'Label date', value: shown(item.raw_label), copy: item.raw_label ?? undefined })
+      break
+    case 'cohort_before_creation':
+      out.push({ label: 'Labelled', value: shown(item.raw_label) })
+      out.push({ label: 'Created', value: shown(item.raw_creation_year) })
+      break
+    case 'possible_duplicate':
+      break
+    default:
+      out.push({ label: 'Finding', value: item.message })
+  }
+  out.push(
+    { label: 'Sector', value: item.sector ?? <span className="text-ink-2">Empty</span> },
+    { label: 'Founded', value: item.creation_year ?? <span className="text-ink-2">Empty</span> },
+    { label: 'Founders', value: item.founders },
+    { label: 'Website', value: shown(item.website, 'None'), copy: item.website ?? undefined },
+  )
+  return out
+}
+
+/** For a possible duplicate: this startup and the others with its name, each linking to its trace. */
+export function DuplicateList({ item }: { item: ReviewItem }) {
+  if (item.code !== 'possible_duplicate') return null
+  const all = [
+    { startup_id: item.startup_id ?? '', name: item.name ?? 'This startup', website: item.website, row_id: item.source_row_id, row_number: item.row_number },
+    ...item.others,
+  ]
+  return (
+    <ul className="grid text-[0.8125rem]">
+      {all.map((d, i) => (
+        <li key={d.startup_id || i} className="grid grid-cols-[4.5rem_minmax(0,1fr)_minmax(0,1fr)] gap-3 border-t border-hairline py-2 first:border-0">
+          <span className="text-ink-2 tabular-nums">{d.row_number !== null ? `Row ${d.row_number}` : 'No row'}</span>
+          <span className="min-w-0 truncate">
+            {d.row_id ? (
+              <Link to="/portal/trace" search={{ row: d.row_id ?? undefined }} className="text-glaze underline">
+                {d.name}
+              </Link>
+            ) : (
+              d.name
+            )}
+            {i === 0 && <span className="text-ink-2"> · this one</span>}
+          </span>
+          <span className="min-w-0 truncate font-mono text-ink">{d.website ?? 'no website'}</span>
+        </li>
+      ))}
+    </ul>
+  )
 }

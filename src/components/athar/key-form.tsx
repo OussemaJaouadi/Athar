@@ -2,15 +2,20 @@ import { useRouter } from '@tanstack/react-router'
 import { FlaskConical, LoaderCircle, Save } from 'lucide-react'
 import { useId, useState } from 'react'
 
-import { KeyNote, keyControl, keyPrimary, keySecondary } from '@/components/athar/key-ui'
+import { KeyNote } from '@/components/athar/key-ui'
+import { opsButton, opsControl, opsPrimary } from '@/components/athar/ops'
+import { cn } from '@/lib/utils'
 import { PROVIDER_NAME, SUGGESTED_MODELS } from '#/shared/key-models'
 import { PROVIDERS, type Provider } from '#/shared/providers'
 import { saveKey, testNewKey, type KeyTest } from '#/server/api/keys'
 
 const OTHER = '__other'
 
-/** Add a key: test it against the provider first; Save opens only once the test passed for these exact values. */
-export function KeyForm({ first }: { first: boolean }) {
+/**
+ * Add a key, in one row: Name · Provider · Model · Key · Test · Save. Save opens only once a test passed for these
+ * exact values; the result is one line under the row.
+ */
+export function KeyForm() {
   const router = useRouter()
   const id = useId()
   const [name, setName] = useState('')
@@ -62,39 +67,40 @@ export function KeyForm({ first }: { first: boolean }) {
     }
   }
 
-  const label = 'grid content-start gap-1.5 text-[0.8125rem] font-medium text-ink-2'
+  const field = 'grid content-start gap-1'
+  const label = 'text-[0.8125rem] text-ink-2'
   return (
     <form
-      className="grid gap-5"
+      aria-label="Add a key"
+      className="grid gap-2.5 rounded-md border border-edge bg-surface p-3"
       onSubmit={(e) => {
         e.preventDefault()
         if (passed) save()
         else run()
       }}
     >
-      <div className={first ? 'grid gap-5 md:grid-cols-2' : 'grid gap-5'}>
-        <div className={label}>
-          <label htmlFor={`${id}-name`}>Name</label>
+      <div className="flex flex-wrap items-end gap-2.5">
+        <div className={cn(field, 'w-48')}>
+          <label htmlFor={`${id}-name`} className={label}>
+            Name
+          </label>
           <input
             id={`${id}-name`}
-            className={keyControl}
+            className={cn(opsControl, 'w-full min-w-0')}
             value={name}
             onChange={(e) => (setName(e.target.value), setNameError(undefined))}
-            placeholder="For example: OpenRouter main"
+            placeholder="OpenRouter main"
             aria-invalid={nameError ? true : undefined}
             aria-describedby={nameError ? `${id}-name-err` : undefined}
           />
-          {nameError && (
-            <KeyNote ok={false} className="mt-1">
-              <span id={`${id}-name-err`}>{nameError}</span>
-            </KeyNote>
-          )}
         </div>
-        <div className={label}>
-          <label htmlFor={`${id}-provider`}>Provider</label>
+        <div className={cn(field, 'w-36')}>
+          <label htmlFor={`${id}-provider`} className={label}>
+            Provider
+          </label>
           <select
             id={`${id}-provider`}
-            className={keyControl}
+            className={cn(opsControl, 'w-full min-w-0')}
             value={provider}
             onChange={(e) => {
               const p = e.target.value as Provider
@@ -109,9 +115,11 @@ export function KeyForm({ first }: { first: boolean }) {
             ))}
           </select>
         </div>
-        <div className={label}>
-          <label htmlFor={`${id}-model`}>Model</label>
-          <select id={`${id}-model`} className={keyControl} value={choice} onChange={(e) => setChoice(e.target.value)}>
+        <div className={cn(field, 'w-52')}>
+          <label htmlFor={`${id}-model`} className={label}>
+            Model
+          </label>
+          <select id={`${id}-model`} className={cn(opsControl, 'w-full min-w-0')} value={choice} onChange={(e) => setChoice(e.target.value)}>
             {SUGGESTED_MODELS[provider].map((m) => (
               <option key={m} value={m}>
                 {m}
@@ -119,57 +127,66 @@ export function KeyForm({ first }: { first: boolean }) {
             ))}
             <option value={OTHER}>Other model…</option>
           </select>
-          {choice === OTHER && (
+        </div>
+        {choice === OTHER && (
+          <div className={cn(field, 'w-52')}>
+            <label htmlFor={`${id}-custom`} className={label}>
+              Model id
+            </label>
             <input
-              aria-label="Model id"
-              className={`${keyControl} mt-1.5 font-mono`}
+              id={`${id}-custom`}
+              className={cn(opsControl, 'w-full min-w-0 font-mono')}
               value={custom}
               onChange={(e) => setCustom(e.target.value)}
-              placeholder="The provider's model id"
+              placeholder="provider/model"
             />
-          )}
-        </div>
-        <div className={label}>
-          <label htmlFor={`${id}-key`}>Key</label>
+          </div>
+        )}
+        <div className={cn(field, 'min-w-56 flex-1')}>
+          <label htmlFor={`${id}-key`} className={label}>
+            Key <span className="sr-only">(stays on the server; only its last four characters are shown again)</span>
+          </label>
           <input
             id={`${id}-key`}
-            className={`${keyControl} font-mono`}
+            className={cn(opsControl, 'w-full min-w-0 font-mono')}
             type="password"
             autoComplete="off"
             spellCheck={false}
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
             placeholder="Paste the key"
+            title="Stays on the server. Only its last four characters are shown again."
           />
-          <span className="text-[0.8125rem] font-normal text-ink-2">Stays on the server. Only its last four characters are shown again.</span>
         </div>
+        <button type="button" className={opsButton} disabled={busy !== null || !model || !apiKey.trim()} onClick={run}>
+          {busy === 'test' ? <LoaderCircle className="animate-spin motion-reduce:animate-none" aria-hidden /> : <FlaskConical aria-hidden />}
+          {busy === 'test' ? 'Testing…' : test && !stale ? 'Test again' : 'Test'}
+        </button>
+        <button type="button" className={opsPrimary} disabled={busy !== null || !passed} title={passed ? undefined : 'Test the key first'} onClick={save}>
+          {busy === 'save' ? <LoaderCircle className="animate-spin motion-reduce:animate-none" aria-hidden /> : <Save aria-hidden />}
+          {busy === 'save' ? 'Saving…' : 'Save'}
+        </button>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
-        <button type="button" className={keySecondary} disabled={busy !== null || !model || !apiKey.trim()} onClick={run}>
-          {busy === 'test' ? <LoaderCircle className="size-4 animate-spin motion-reduce:animate-none" aria-hidden /> : <FlaskConical className="size-4" aria-hidden />}
-          {busy === 'test' ? 'Testing…' : test && !stale ? 'Test again' : 'Test key'}
-        </button>
-        <button type="button" className={keyPrimary} disabled={busy !== null || !passed} onClick={save}>
-          {busy === 'save' ? <LoaderCircle className="size-4 animate-spin motion-reduce:animate-none" aria-hidden /> : <Save className="size-4" aria-hidden />}
-          {busy === 'save' ? 'Saving…' : 'Save key'}
-        </button>
-        {!passed && !test && <span className="text-[0.875rem] text-ink">Save opens once the test passes.</span>}
-      </div>
-
-      <div aria-live="polite" className="grid gap-2">
-        {test && stale && <p className="text-[0.875rem] text-ink">The values changed since the last test. Test again to save.</p>}
+      <div aria-live="polite" className="grid gap-1.5 empty:hidden">
+        {nameError && (
+          <KeyNote ok={false}>
+            <span id={`${id}-name-err`}>{nameError}</span>
+          </KeyNote>
+        )}
+        {!test && !saved && <p className="text-[0.8125rem] text-ink">Test the key with its provider first; Save opens once it passes. The test spends no tokens.</p>}
+        {test && stale && <p className="text-[0.8125rem] text-ink">The values changed since the last test. Test again to save.</p>}
         {test && !stale && (
           <KeyNote ok={test.ok}>
-            <p>{test.message}</p>
+            <span>{test.message}</span>
             {test.suggestions && test.suggestions.length > 0 && (
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <span className="text-[0.8125rem] text-ink-2">Close matches:</span>
+              <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                <span className="text-ink-2">Close matches:</span>
                 {test.suggestions.map((s) => (
                   <button
                     key={s}
                     type="button"
-                    className="h-8 rounded-md border border-edge px-2.5 font-mono text-[0.8125rem] text-ink hover:border-ink focus-visible:outline-2 focus-visible:outline-glaze"
+                    className={cn(opsButton, 'h-7 font-mono font-normal')}
                     onClick={() => {
                       setChoice(OTHER)
                       setCustom(s)
@@ -178,7 +195,7 @@ export function KeyForm({ first }: { first: boolean }) {
                     {s}
                   </button>
                 ))}
-              </div>
+              </span>
             )}
           </KeyNote>
         )}

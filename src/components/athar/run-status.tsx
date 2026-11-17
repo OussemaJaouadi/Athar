@@ -16,7 +16,7 @@ const STATES: Record<string, { label: string; Icon: typeof Clock; bar: string; s
 export function RunStatus({ status, className }: { status: string; className?: string }) {
   const s = STATES[status] ?? STATES.pending
   return (
-    <span className={cn('inline-flex h-7 items-center gap-1.5 rounded-sm border border-edge border-s-2 ps-2 pe-2.5 text-[0.8125rem] text-ink', s.bar, className)}>
+    <span className={cn('inline-flex h-6 items-center gap-1.5 rounded-sm border border-edge border-s-2 ps-1.5 pe-2 text-[0.8125rem] text-ink', s.bar, className)}>
       <s.Icon className={cn('size-3.5 shrink-0', s.spin && 'animate-spin motion-reduce:animate-none')} aria-hidden />
       {s.label}
     </span>

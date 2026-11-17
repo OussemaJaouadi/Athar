@@ -2,7 +2,8 @@ import { useNavigate } from '@tanstack/react-router'
 import { LoaderCircle, RefreshCw } from 'lucide-react'
 import { useState } from 'react'
 
-import { labPrimary, useLabToaster } from '@/components/athar/lab'
+import { useLabToaster } from '@/components/athar/lab'
+import { opsPrimary } from '@/components/athar/ops'
 import { cn } from '@/lib/utils'
 import { startOperation } from '#/server/api/portal'
 
@@ -15,7 +16,7 @@ export function CollectButton({ running, again, className }: { running: boolean;
   return (
     <button
       type="button"
-      className={cn(labPrimary, 'inline-flex items-center gap-2', className)}
+      className={cn(opsPrimary, className)}
       disabled={busy}
       onClick={() => {
         setStarting(true)
@@ -40,9 +41,9 @@ export function CollectButton({ running, again, className }: { running: boolean;
       }}
     >
       {busy ? (
-        <LoaderCircle className="size-4 animate-spin motion-reduce:animate-none" aria-hidden />
+        <LoaderCircle className="animate-spin motion-reduce:animate-none" aria-hidden />
       ) : (
-        <RefreshCw className="size-4" aria-hidden />
+        <RefreshCw aria-hidden />
       )}
       {busy ? 'Collecting…' : again ? 'Collect again' : 'Collect the registry'}
     </button>

@@ -1,14 +1,40 @@
 import { Link } from '@tanstack/react-router'
-import { ExternalLink, Route as RouteIcon, X } from 'lucide-react'
-import { useEffect, useRef } from 'react'
+import { ExternalLink, Route as RouteIcon } from 'lucide-react'
 
-import { DbCopy } from '@/components/athar/db-copy'
-import { Scroller } from '@/components/athar/scroller'
+import { FieldList, OpsDrawer, opsGhost, type Field } from '@/components/athar/ops'
 import type { DbRow, DbValue } from '#/server/api/database'
 
 export type DbColumn = { name: string; type: string; blob: boolean; secret: boolean }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/** Human names for the tables an operator meets; the raw name stays as a tooltip. */
+export const TABLE_NAMES: Record<string, string> = {
+  source_snapshots: 'Snapshots',
+  source_rows: 'Source rows',
+  records: 'Records',
+  startups: 'Startups',
+  review_items: 'Findings',
+  runs: 'Runs',
+  run_steps: 'Run steps',
+  ai_keys: 'AI keys',
+  ai_usage: 'AI usage',
+  embedding_meta: 'Embedding meta',
+  prepared_texts: 'Prepared texts',
+  schema_migrations: 'Migrations',
+}
+
+/** "identity_key" → "Identity key"; "founders_json" → "Founders"; "id" → "ID". */
+export function humanize(col: string) {
+  const words = col.replace(/_json$/, '').split('_').filter(Boolean)
+  const s = words.map((w) => (w === 'id' ? 'ID' : w === 'url' ? 'URL' : w)).join(' ')
+  return s.charAt(0).toUpperCase() + s.slice(1)
+}
+export const tableName = (t: string) => TABLE_NAMES[t] ?? humanize(t)
+
+/** Columns read as code: ids, hashes, JSON. Everything else is prose. */
+export const isMono = (name: string, v?: DbValue) =>
+  name === 'id' || name.endsWith('_id') || name.endsWith('_json') || name.endsWith('_hash') || (typeof v === 'string' && UUID.test(v))
 
 /** A JSON value parsed for display, or null when the text is not JSON. */
 export function asJson(v: DbValue): unknown {
@@ -22,16 +48,22 @@ export function asJson(v: DbValue): unknown {
   }
 }
 
-/** How a value reads in one grid cell: short, single line. The panel shows it in full. */
+/** How a value reads in one grid cell: short, single line. The drawer shows it in full. */
 export function cellText(col: DbColumn, v: DbValue): string {
   if (v === null) return '—'
   if (col.secret) return '••••'
   if (col.blob) return `${(Number(v) / 1024).toFixed(0)} KB`
-  if (typeof v === 'number') return v.toLocaleString('en-GB')
+  if (typeof v === 'number') return String(v)
   if (UUID.test(v)) return `…${v.slice(-8)}`
   const json = asJson(v)
   const text = json !== null ? JSON.stringify(json) : v
   return text.length > 90 ? `${text.slice(0, 90)}…` : text
+}
+
+/** What to call a row: its name when it has one, else its row number, else its short key. */
+export function rowTitle(row: DbRow | null, key: string) {
+  const s = (k: string) => (row && row[k] !== null && row[k] !== undefined ? String(row[k]) : null)
+  return s('name') ?? (s('row_number') ? `Row ${s('row_number')}` : null) ?? (UUID.test(key) ? `…${key.slice(-8)}` : `Row ${key}`)
 }
 
 // Where a row leads: its source row's trace, its startup's profile.
@@ -42,116 +74,95 @@ function links(table: string, row: DbRow) {
   return { trace, profile }
 }
 
-/** One row in full: every field, JSON pretty-printed, a copy button on each, and the ways out to Trace and the profile. */
-export function DbPanel({ table, columns, row, missing, rowKey, onClose }: { table: string; columns: DbColumn[]; row: DbRow | null; missing?: boolean; rowKey: string; onClose: () => void }) {
-  const closeRef = useRef<HTMLButtonElement>(null)
-  useEffect(() => {
-    closeRef.current?.focus()
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+function fieldOf(c: DbColumn, v: DbValue): Field {
+  const label = humanize(c.name)
+  if (v === null) return { label, value: <span className="text-ink-2">Empty</span> }
+  if (c.secret) return { label, value: 'Hidden. Key values never leave the server.' }
+  if (c.blob) return { label, value: `Binary, ${(Number(v) / 1024).toFixed(0)} KB. Not shown.` }
+  const json = asJson(v)
+  if (json !== null) {
+    const pretty = JSON.stringify(json, null, 2)
+    return {
+      label,
+      block: true,
+      copy: pretty,
+      value: (
+        <pre className="max-h-80 overflow-auto rounded-md border border-edge bg-canvas p-2.5 font-mono text-[0.8125rem] leading-5 whitespace-pre-wrap break-words text-ink">
+          {pretty}
+        </pre>
+      ),
+    }
+  }
+  const long = typeof v === 'string' && v.length > 80
+  return {
+    label,
+    copy: String(v),
+    mono: isMono(c.name, v),
+    block: long,
+    value: (
+      <span className={long ? 'leading-6 whitespace-pre-wrap' : typeof v === 'number' ? 'tabular-nums' : undefined}>
+        {typeof v === 'number' ? String(v) : v}
+      </span>
+    ),
+  }
+}
 
+/** One row in full, in the portal drawer: a calm label/value list, copy on hover, the ways out to Trace and the profile. */
+export function DbDrawer({
+  table,
+  columns,
+  row,
+  missing,
+  rowKey,
+  onClose,
+}: {
+  table: string
+  columns: DbColumn[]
+  row: DbRow | null
+  missing?: boolean
+  rowKey: string | undefined
+  onClose: () => void
+}) {
   const to = row ? links(table, row) : { trace: null, profile: null }
   return (
-    <>
-      <div aria-hidden className="fixed inset-0 z-40 bg-canvas/60" onClick={onClose} />
-      <aside
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="db-panel-h"
-        className="fixed inset-y-0 end-0 z-50 flex w-[min(42rem,100vw)] flex-col border-s border-edge bg-canvas shadow-[0_0_48px_-12px_rgb(0_0_0/0.5)]"
-      >
-        <header className="flex items-start justify-between gap-4 border-b border-edge px-6 py-5">
-          <div className="grid min-w-0 gap-1">
-            <p className="text-[0.8125rem] text-ink-2">
-              <span className="font-mono">{table}</span>
-            </p>
-            <h2 id="db-panel-h" className="truncate font-mono text-[1.125rem] text-ink">
-              {rowKey}
-            </h2>
-          </div>
-          <button
-            ref={closeRef}
-            type="button"
-            onClick={onClose}
-            aria-label="Close the row"
-            className="inline-grid size-9 shrink-0 place-items-center rounded-md border border-edge text-ink hover:bg-surface-raised"
-          >
-            <X className="size-4" aria-hidden />
-          </button>
-        </header>
-        {(to.trace || to.profile) && (
-          <div className="flex flex-wrap gap-2 border-b border-edge px-6 py-3">
-            {to.trace && (
-              <Link
-                to="/portal/trace/$rowId"
-                params={{ rowId: to.trace }}
-                className="inline-flex h-9 items-center gap-2 rounded-md border border-edge px-3 text-[0.875rem] text-ink no-underline hover:bg-surface-raised"
-              >
-                <RouteIcon className="size-4" aria-hidden />
-                Trace this row
-              </Link>
-            )}
-            {to.profile && (
-              <Link
-                to="/startups/$id"
-                params={{ id: to.profile }}
-                className="inline-flex h-9 items-center gap-2 rounded-md border border-edge px-3 text-[0.875rem] text-ink no-underline hover:bg-surface-raised"
-              >
-                <ExternalLink className="size-4" aria-hidden />
-                Open profile
-              </Link>
-            )}
-          </div>
-        )}
-        <Scroller className="flex-1" label="Row fields">
-          {row ? (
-            <dl className="grid gap-5 px-6 py-5">
-              {columns.map((c) => {
-                const v = row[c.name] ?? null
-                const json = asJson(v)
-                const full = v === null ? '' : c.blob ? `${v} bytes` : json !== null ? JSON.stringify(json, null, 2) : String(v)
-                return (
-                  <div key={c.name} className="grid gap-1.5">
-                    <div className="flex items-center justify-between gap-3">
-                      <dt className="font-mono text-[0.8125rem] text-ink-2">
-                        {c.name} <span className="ms-1 font-sans">{c.type.toLowerCase()}</span>
-                      </dt>
-                      {v !== null && !c.secret && <DbCopy value={full} label={`Copy ${c.name}`} />}
-                    </div>
-                    <dd className="min-w-0">
-                      {v === null ? (
-                        <span className="text-ink">Empty</span>
-                      ) : c.secret ? (
-                        <span className="text-ink">Hidden. Key values never leave the server.</span>
-                      ) : json !== null ? (
-                        <pre className="overflow-x-auto rounded-md border border-edge bg-surface p-3 font-mono text-[0.8125rem] leading-5 whitespace-pre-wrap break-words text-ink">{full}</pre>
-                      ) : c.blob ? (
-                        <span className="text-ink">
-                          Binary, {Number(v).toLocaleString('en-GB')} bytes ({(Number(v) / 1024).toFixed(0)} KB). Not shown.
-                        </span>
-                      ) : (
-                        <p className={`text-[0.9375rem] leading-6 whitespace-pre-wrap break-words text-ink ${typeof v === 'number' || UUID.test(String(v)) ? 'font-mono tabular-nums' : ''}`}>{full}</p>
-                      )}
-                    </dd>
-                  </div>
-                )
-              })}
-            </dl>
-          ) : (
-            <p className="px-6 py-5 text-ink">
-              {missing ? (
-                <>
-                  No row in <span className="font-mono">{table}</span> has the key <span className="font-mono">{rowKey}</span>.
-                </>
-              ) : (
-                'Loading the row…'
-              )}
-            </p>
+    <OpsDrawer
+      open={Boolean(rowKey)}
+      onOpenChange={(o) => !o && onClose()}
+      storageKey="database"
+      defaultWidth={560}
+      eyebrow={tableName(table)}
+      title={rowKey ? rowTitle(row, rowKey) : ''}
+      itemKey={rowKey}
+      actions={
+        <>
+          {to.trace && (
+            <Link to="/portal/trace/$rowId" params={{ rowId: to.trace }} className={`${opsGhost} no-underline`}>
+              <RouteIcon aria-hidden />
+              Trace this row
+            </Link>
           )}
-        </Scroller>
-      </aside>
-    </>
+          {to.profile && (
+            <Link to="/startups/$id" params={{ id: to.profile }} className={`${opsGhost} no-underline`}>
+              <ExternalLink aria-hidden />
+              Open profile
+            </Link>
+          )}
+        </>
+      }
+    >
+      {row ? (
+        <FieldList fields={columns.map((c) => fieldOf(c, row[c.name] ?? null))} />
+      ) : (
+        <p className="text-[0.8125rem] text-ink">
+          {missing ? (
+            <>
+              No row in {tableName(table)} has the key <span className="font-mono">{rowKey}</span>.
+            </>
+          ) : (
+            'Loading the row…'
+          )}
+        </p>
+      )}
+    </OpsDrawer>
   )
 }

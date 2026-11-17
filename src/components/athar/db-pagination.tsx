@@ -10,7 +10,7 @@ export function DbPagination({ page, pages, onPage }: { page: number; pages: num
   const cell = 'inline-flex h-8 min-w-8 items-center justify-center rounded-md px-2 text-[0.8125rem] tabular-nums text-ink'
   return (
     <nav aria-label="Pages" className="flex items-center gap-1">
-      <button type="button" disabled={!p.canPrev} onClick={p.prev} aria-label="Previous page" className={cn(cell, 'border border-edge hover:bg-surface-raised disabled:pointer-events-none disabled:text-ink-3')}>
+      <button type="button" disabled={!p.canPrev} onClick={p.prev} aria-label="Previous page" className={cn(cell, 'border border-edge hover:bg-surface-raised disabled:pointer-events-none disabled:opacity-50')}>
         <ChevronLeft className="size-4" aria-hidden />
       </button>
       {p.items.map((item) =>
@@ -30,7 +30,7 @@ export function DbPagination({ page, pages, onPage }: { page: number; pages: num
           </span>
         ),
       )}
-      <button type="button" disabled={!p.canNext} onClick={p.next} aria-label="Next page" className={cn(cell, 'border border-edge hover:bg-surface-raised disabled:pointer-events-none disabled:text-ink-3')}>
+      <button type="button" disabled={!p.canNext} onClick={p.next} aria-label="Next page" className={cn(cell, 'border border-edge hover:bg-surface-raised disabled:pointer-events-none disabled:opacity-50')}>
         <ChevronRight className="size-4" aria-hidden />
       </button>
     </nav>

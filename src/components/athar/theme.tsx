@@ -36,3 +36,23 @@ export function ThemeToggle({ className }: { className?: string }) {
     </button>
   )
 }
+
+export type ThemeChoice = 'light' | 'dark' | 'system'
+
+/** The stored choice: an explicit light or dark, or the system's. */
+export function readThemeChoice(): ThemeChoice {
+  if (typeof document === 'undefined') return 'system'
+  const set = document.documentElement.dataset.theme
+  return set === 'light' || set === 'dark' ? set : 'system'
+}
+
+/** Apply and remember a theme choice; "system" hands the decision back to the OS. */
+export function applyThemeChoice(choice: ThemeChoice) {
+  const root = document.documentElement
+  if (choice === 'system') delete root.dataset.theme
+  else root.dataset.theme = choice
+  try {
+    if (choice === 'system') localStorage.removeItem(KEY)
+    else localStorage.setItem(KEY, choice)
+  } catch {}
+}

@@ -1,14 +1,12 @@
 import { Link } from '@tanstack/react-router'
 
-import { ThemeToggle } from '@/components/athar/theme'
-
 export const NAV = [
   { to: '/', label: 'Ask' },
   { to: '/search', label: 'Archive' },
   { to: '/landscape', label: 'Landscape' },
 ] as const
 
-/** The reading room's one bar: brand, nav, then whatever the page adds (palette, role link) and the theme toggle. */
+/** The reading room's one bar: brand, nav, then whatever the page adds (search, account menu). */
 export function SiteHeader({ children }: { children?: React.ReactNode }) {
   return (
     <header className="sticky top-0 z-30 border-b border-hairline bg-canvas">
@@ -31,7 +29,6 @@ export function SiteHeader({ children }: { children?: React.ReactNode }) {
         </nav>
         <div className="ms-auto flex shrink-0 items-center gap-3">
           {children}
-          <ThemeToggle />
         </div>
       </div>
     </header>

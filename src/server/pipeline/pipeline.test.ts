@@ -319,8 +319,12 @@ describe('the rows behind the numbers', () => {
     run(db)
     ingest(db, body([first[1], { ...first[2], desc: 'Edited.' }, first[3], row({ name: 'Newcomer', website: 'https://new.tn', founders: ['N C'] })]), null)
     run(db)
-    expect(downloads(db).map((d) => [d.id, d.entriesNew, d.entriesGone, d.startupsNew, d.startupsGone])).toEqual([[2, 2, 2, 1, 1], [1, 4, 0, 4, 0]])
+    expect(downloads(db).map((d) => [d.id, d.entriesNew, d.entriesGone, d.startupsNew, d.startupsGone, d.startupsEdited])).toEqual([[2, 2, 2, 1, 1, 1], [1, 4, 0, 4, 0, 0]])
     expect(downloadChanges(db, 2)!.map((c) => [c.name, c.kind]).sort()).toEqual([['Newcomer', 'new startup'], ['Startup 0', 'startup withdrawn'], ['Startup 2', 'edited']])
+    const edited = downloadChanges(db, 2)!.find((c) => c.kind === 'edited')!
+    expect(edited).toMatchObject({ startupId: 'startup-2', sector: 'Ad Tech and Creative Tech', labelled: '2022-12' })
+    expect(edited.differences).toEqual([{ field: 'description', before: 'Free Wi-Fi paid by an 8-second advert.', after: 'Edited.' }])
+    expect(downloadChanges(db, 2)!.find((c) => c.kind === 'new startup')!.differences).toBeUndefined()
     expect(downloadChanges(db, 9)).toBeNull()
   })
 
@@ -348,7 +352,13 @@ describe('the rows behind the numbers', () => {
     db.query("INSERT INTO idea_checks (id, idea, language, checked_at, download, compared, matches_json, saved) VALUES ('abc', 'Free Wi-Fi for cafes', 'en', '2026-11-17T10:00:00Z', 1, 1, ?, 1)").run(
       JSON.stringify([{ startupId: 'relead', closeness: 0.6, band: 'close' }, { startupId: 'gone', closeness: 0.58, band: 'close' }, { startupId: 'relead', closeness: 0.5, band: 'far' }]),
     )
-    expect(ideaChecks(db)).toEqual([{ id: 'abc', idea: 'Free Wi-Fi for cafes', language: 'en', checkedAt: '2026-11-17T10:00:00Z', saved: true, explainedBy: null, close: [{ id: 'relead', name: 'Relead' }] }])
+    expect(ideaChecks(db)).toEqual([{
+      id: 'abc', idea: 'Free Wi-Fi for cafes', language: 'en', checkedAt: '2026-11-17T10:00:00Z', saved: true, download: 1, compared: 1, explanations: null, explainedBy: null,
+      matches: [{ startupId: 'relead', name: 'Relead', closeness: 0.6, band: 'close' }, { startupId: 'relead', name: 'Relead', closeness: 0.5, band: 'far' }],
+      close: [{ id: 'relead', name: 'Relead' }],
+    }])
+    db.query("UPDATE idea_checks SET explained_json = ?, explained_model = 'model-x' WHERE id = 'abc'").run(JSON.stringify([{ startupId: 'relead', same: 'Both offer Wi-Fi.', different: 'Nothing in its description.' }]))
+    expect(ideaChecks(db)[0]).toMatchObject({ explainedBy: 'model-x', explanations: [{ startupId: 'relead', same: 'Both offer Wi-Fi.', different: 'Nothing in its description.' }] })
     expect(ideaChecks(db, { savedOnly: true })).toHaveLength(1)
     const { ideaCheck } = require('./facts') as typeof import('./facts')
     expect(ideaCheck(db, 'abc')).toEqual(ideaChecks(db)[0])

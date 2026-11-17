@@ -1,5 +1,9 @@
 import type { Database } from 'bun:sqlite'
 
+import { cleanEntry } from './clean'
+import type { RegistryRow } from './registry'
+import { differences } from './state'
+
 // The rows behind the numbers. Every counted fact a step reports can be opened as the startups or entries it counts,
 // and the registry's own changes can be read download by download.
 
@@ -62,48 +66,72 @@ export type DownloadSummary = {
   /** Startups first seen in this download, and startups whose last entry disappeared with it. */
   startupsNew: number
   startupsGone: number
+  /** Known startups whose published row changed: an older entry stopped with the previous download and a new one took its place. */
+  startupsEdited: number
 }
 
 /** Every download, newest first, with what it added and what it no longer published. */
 export function downloads(db: Database): DownloadSummary[] {
   return db
     .query<
-      { id: number; fetched_at: string; last_checked_at: string; row_count: number; entries_new: number; entries_gone: number; startups_new: number; startups_gone: number },
+      { id: number; fetched_at: string; last_checked_at: string; row_count: number; entries_new: number; entries_gone: number; startups_new: number; startups_gone: number; startups_edited: number },
       []
     >(
       `SELECT d.id, d.fetched_at, d.last_checked_at, d.row_count,
               (SELECT COUNT(*) FROM entries e WHERE e.first_download = d.id) AS entries_new,
               (SELECT COUNT(*) FROM entries e WHERE e.last_download = (SELECT MAX(p.id) FROM downloads p WHERE p.id < d.id)) AS entries_gone,
               (SELECT COUNT(*) FROM startups s WHERE s.first_download = d.id) AS startups_new,
-              (SELECT COUNT(*) FROM startups s WHERE s.last_download = (SELECT MAX(p.id) FROM downloads p WHERE p.id < d.id)) AS startups_gone
+              (SELECT COUNT(*) FROM startups s WHERE s.last_download = (SELECT MAX(p.id) FROM downloads p WHERE p.id < d.id)) AS startups_gone,
+              (SELECT COUNT(DISTINCT e.startup_id) FROM entries e JOIN startups s ON s.id = e.startup_id
+               WHERE e.first_download = d.id AND s.first_download < d.id
+                 AND EXISTS (SELECT 1 FROM entries o WHERE o.startup_id = e.startup_id AND o.first_download < d.id
+                             AND o.last_download = (SELECT MAX(p.id) FROM downloads p WHERE p.id < d.id))) AS startups_edited
        FROM downloads d ORDER BY d.id DESC`,
     )
     .all()
-    .map((d) => ({ id: d.id, fetchedAt: d.fetched_at, lastCheckedAt: d.last_checked_at, rows: d.row_count, entriesNew: d.entries_new, entriesGone: d.entries_gone, startupsNew: d.startups_new, startupsGone: d.startups_gone }))
+    .map((d) => ({ id: d.id, fetchedAt: d.fetched_at, lastCheckedAt: d.last_checked_at, rows: d.row_count, entriesNew: d.entries_new, entriesGone: d.entries_gone, startupsNew: d.startups_new, startupsGone: d.startups_gone, startupsEdited: d.startups_edited }))
 }
 
-export type DownloadChange = { entryId: string; name: string; startupId: string | null; startupName: string | null; kind: 'new startup' | 'new listing of a known startup' | 'edited' | 'withdrawn' | 'startup withdrawn' }
+export type FieldEdit = { field: string; before: string | null; after: string | null }
+export type DownloadChange = {
+  entryId: string
+  name: string
+  startupId: string | null
+  startupName: string | null
+  sector: string | null
+  /** 'YYYY-MM' */
+  labelled: string | null
+  kind: 'new startup' | 'new listing of a known startup' | 'edited' | 'withdrawn' | 'startup withdrawn'
+  /** For 'edited' only: what the new row reads differently from the row it replaced. */
+  differences?: FieldEdit[]
+}
 
 /** What one download changed against the one before it, entry by entry. Null for an unknown download. */
 export function downloadChanges(db: Database, id: number): DownloadChange[] | null {
   if (!db.query<{ id: number }, [number]>('SELECT id FROM downloads WHERE id = ?').get(id)) return null
   const previous = db.query<{ id: number | null }, [number]>('SELECT MAX(id) AS id FROM downloads WHERE id < ?').get(id)?.id ?? null
-  const row = `SELECT e.id AS entry_id, json_extract(e.raw_json, '$.name') AS name, e.startup_id, s.name AS startup_name, s.first_download, s.last_download,
-               (SELECT COUNT(*) FROM entries o WHERE o.startup_id = e.startup_id AND o.last_download = ?2 AND o.first_download < ?1) AS replaced
+  const row = `SELECT e.id AS entry_id, e.raw_json, json_extract(e.raw_json, '$.name') AS name, e.startup_id, s.name AS startup_name, s.sector, s.labelled,
+               s.first_download, s.last_download,
+               (SELECT o.raw_json FROM entries o WHERE o.startup_id = e.startup_id AND o.last_download = ?2 AND o.first_download < ?1 ORDER BY o.id LIMIT 1) AS replaced
                FROM entries e LEFT JOIN startups s ON s.id = e.startup_id`
-  type R = { entry_id: string; name: string; startup_id: string | null; startup_name: string | null; first_download: number | null; last_download: number | null; replaced: number }
+  type R = { entry_id: string; raw_json: string; name: string; startup_id: string | null; startup_name: string | null; sector: string | null; labelled: string | null
+    first_download: number | null; last_download: number | null; replaced: string | null }
   const added = db.query<R, [number, number]>(`${row} WHERE e.first_download = ?1 ORDER BY name COLLATE NOCASE`).all(id, previous ?? -1)
   const gone = previous === null ? [] : db.query<R, [number, number]>(`${row} WHERE e.last_download = ?2 ORDER BY name COLLATE NOCASE`).all(id, previous)
+  const base = (r: R) => ({ entryId: r.entry_id, name: r.name, startupId: r.startup_id, startupName: r.startup_name, sector: r.sector, labelled: r.labelled })
+  const read = (json: string) => cleanEntry(JSON.parse(json) as RegistryRow).cleaned
   return [
-    ...added.map((r): DownloadChange => ({
-      entryId: r.entry_id, name: r.name, startupId: r.startup_id, startupName: r.startup_name,
+    ...added.map((r): DownloadChange => {
       // A known startup whose earlier entry stopped with the previous download was edited, not listed again.
-      kind: r.first_download === id ? 'new startup' : r.replaced > 0 ? 'edited' : 'new listing of a known startup',
-    })),
+      if (r.first_download === id) return { ...base(r), kind: 'new startup' }
+      if (!r.replaced) return { ...base(r), kind: 'new listing of a known startup' }
+      // Compared as read, so text withheld from a website field cannot appear here.
+      return { ...base(r), kind: 'edited', differences: differences(read(r.raw_json), read(r.replaced)).map((d) => ({ field: d.field, before: d.there, after: d.here })) }
+    }),
     ...gone
       // The withdrawn side of an edit is already said by its "edited" row.
       .filter((r) => !added.some((a) => a.startup_id && a.startup_id === r.startup_id && a.first_download !== id))
-      .map((r): DownloadChange => ({ entryId: r.entry_id, name: r.name, startupId: r.startup_id, startupName: r.startup_name, kind: r.last_download === previous ? 'startup withdrawn' : 'withdrawn' })),
+      .map((r): DownloadChange => ({ ...base(r), kind: r.last_download === previous ? 'startup withdrawn' : 'withdrawn' })),
   ]
 }
 
@@ -137,25 +165,50 @@ export function people(db: Database, options: { q?: string; repeat?: boolean; li
   return { rows, total: keys.length }
 }
 
-export type IdeaCheckRow = { id: string; idea: string; language: string | null; checkedAt: string; saved: boolean; close: { id: string; name: string }[]; explainedBy: string | null }
+export type IdeaCheckMatch = { startupId: string; name: string; closeness: number; band: 'close' | 'far' | 'nearest' }
+export type IdeaCheckRow = {
+  id: string
+  idea: string
+  language: string | null
+  checkedAt: string
+  saved: boolean
+  /** The download it was compared with, and how many startups had a description to compare. */
+  download: number | null
+  compared: number
+  /** Every startup the check kept, closest first, with its band. Startups that have since left the data are dropped. */
+  matches: IdeaCheckMatch[]
+  /** The close ones only: the same as matches filtered on band 'close'. */
+  close: { id: string; name: string }[]
+  /** The AI's two sentences per close startup; null when the model was never asked. */
+  explanations: { startupId: string; same: string; different: string }[] | null
+  explainedBy: string | null
+}
 
-/** Every stored idea check, newest first, with the startups it found close. */
-export function ideaChecks(db: Database, options: { savedOnly?: boolean; limit?: number } = {}): IdeaCheckRow[] {
+type IdeaCheckStored = { id: string; idea: string; language: string | null; checked_at: string; saved: number; download: number | null; compared: number; matches_json: string; explained_json: string | null; explained_model: string | null }
+const IDEA_CHECK = 'SELECT id, idea, language, checked_at, saved, download, compared, matches_json, explained_json, explained_model FROM idea_checks'
+
+function toIdeaCheck(db: Database, c: IdeaCheckStored): IdeaCheckRow {
   const name = db.query<{ name: string }, [string]>('SELECT name FROM startups WHERE id = ?')
+  const matches = (JSON.parse(c.matches_json) as { startupId: string; closeness: number; band: IdeaCheckMatch['band'] }[])
+    .flatMap((m): IdeaCheckMatch[] => {
+      const s = name.get(m.startupId)
+      return s ? [{ startupId: m.startupId, name: s.name, closeness: m.closeness, band: m.band }] : []
+    })
+    .sort((a, b) => b.closeness - a.closeness)
+  return {
+    id: c.id, idea: c.idea, language: c.language, checkedAt: c.checked_at, saved: c.saved === 1, download: c.download, compared: c.compared, matches,
+    close: matches.filter((m) => m.band === 'close').map((m) => ({ id: m.startupId, name: m.name })),
+    explanations: c.explained_json ? (JSON.parse(c.explained_json) as { startupId: string; same: string; different: string }[]) : null,
+    explainedBy: c.explained_model,
+  }
+}
+
+/** Every stored idea check, newest first, with everything it found. */
+export function ideaChecks(db: Database, options: { savedOnly?: boolean; limit?: number } = {}): IdeaCheckRow[] {
   return db
-    .query<{ id: string; idea: string; language: string | null; checked_at: string; saved: number; matches_json: string; explained_model: string | null }, [number]>(
-      `SELECT id, idea, language, checked_at, saved, matches_json, explained_model FROM idea_checks ${options.savedOnly ? 'WHERE saved = 1' : ''} ORDER BY checked_at DESC LIMIT ?`,
-    )
+    .query<IdeaCheckStored, [number]>(`${IDEA_CHECK} ${options.savedOnly ? 'WHERE saved = 1' : ''} ORDER BY checked_at DESC LIMIT ?`)
     .all(options.limit ?? 100)
-    .map((c) => ({
-      id: c.id, idea: c.idea, language: c.language, checkedAt: c.checked_at, saved: c.saved === 1, explainedBy: c.explained_model,
-      close: (JSON.parse(c.matches_json) as { startupId: string; band: string }[])
-        .filter((m) => m.band === 'close')
-        .flatMap((m) => {
-          const s = name.get(m.startupId)
-          return s ? [{ id: m.startupId, name: s.name }] : []
-        }),
-    }))
+    .map((c) => toIdeaCheck(db, c))
 }
 
 // ── One of each, by its own id ──────────────────────────────────────────────────────────────────
@@ -189,22 +242,8 @@ export function person(db: Database, slug: string): PersonRow | null {
 
 /** One stored idea check by id, however old; null when it does not exist. */
 export function ideaCheck(db: Database, id: string): IdeaCheckRow | null {
-  const c = db
-    .query<{ id: string; idea: string; language: string | null; checked_at: string; saved: number; matches_json: string; explained_model: string | null }, [string]>(
-      'SELECT id, idea, language, checked_at, saved, matches_json, explained_model FROM idea_checks WHERE id = ?',
-    )
-    .get(id)
-  if (!c) return null
-  const name = db.query<{ name: string }, [string]>('SELECT name FROM startups WHERE id = ?')
-  return {
-    id: c.id, idea: c.idea, language: c.language, checkedAt: c.checked_at, saved: c.saved === 1, explainedBy: c.explained_model,
-    close: (JSON.parse(c.matches_json) as { startupId: string; band: string }[])
-      .filter((m) => m.band === 'close')
-      .flatMap((m) => {
-        const s = name.get(m.startupId)
-        return s ? [{ id: m.startupId, name: s.name }] : []
-      }),
-  }
+  const c = db.query<IdeaCheckStored, [string]>(`${IDEA_CHECK} WHERE id = ?`).get(id)
+  return c ? toIdeaCheck(db, c) : null
 }
 
 // ── Quality: what is doubtful or missing now ────────────────────────────────────────────────────

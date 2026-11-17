@@ -1,5 +1,5 @@
-import { Link, createFileRoute, getRouteApi, useNavigate, useRouter } from '@tanstack/react-router'
-import { ArrowRight, Bookmark, BookmarkCheck } from 'lucide-react'
+import { Link, createFileRoute, getRouteApi, useNavigate } from '@tanstack/react-router'
+import { ArrowRight } from 'lucide-react'
 import { useState } from 'react'
 
 import { TileMark } from '@/components/athar/tile-mark'
@@ -8,24 +8,16 @@ import { AIPromptInput } from '@/components/smoothui/ai-prompt-input'
 import { AISuggestions } from '@/components/smoothui/ai-suggestions'
 import { cn } from '@/lib/utils'
 import { getWallCards, type RegistryCard } from '#/server/api/app'
-import { getIdeaCheck, saveIdeaCheck, type IdeaMatch } from '#/server/api/idea'
 import { checkIdea } from '#/server/api/ideas'
 
-type Search = { check?: string; draft?: string }
+type Search = { draft?: string }
 const shell = getRouteApi('/_app')
 
 export const Route = createFileRoute('/_app/')({
   validateSearch: (s: Record<string, unknown>): Search => ({
-    check: typeof s.check === 'string' ? s.check : undefined,
     draft: typeof s.draft === 'string' ? s.draft : undefined,
   }),
-  loaderDeps: ({ search }) => ({ check: search.check }),
-  loader: async ({ deps }) => {
-    const report = deps.check ? await getIdeaCheck({ data: deps.check }) : null
-    if (!report) return { report: null, cards: await getWallCards({ data: { perSector: 3 } }) }
-    const ids = [...report.matches, ...report.weak].map((m) => m.id)
-    return { report, cards: ids.length ? await getWallCards({ data: { ids } }) : [] }
-  },
+  loader: async () => ({ cards: await getWallCards({ data: { perSector: 3 } }) }),
   component: Home,
 })
 
@@ -33,11 +25,11 @@ const EXAMPLES = ['Olive farmers selling straight to restaurants abroad', 'تط�
 
 const longDate = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
 
-// Home: ask the registry. The answer rises out of the wall of startups, each with the row it rests on.
+// Home: ask the registry. The check opens on its own page (/ideas/<id>); before asking, the wall of startups.
 function Home() {
-  const { report, cards } = Route.useLoaderData()
+  const { cards } = Route.useLoaderData()
   const { draft } = Route.useSearch()
-  return report ? <Answer report={report} cards={cards} /> : <Ask cards={cards} draft={draft} />
+  return <Ask cards={cards} draft={draft} />
 }
 
 function AskForm({ initial, compact }: { initial?: string; compact?: boolean }) {
@@ -169,154 +161,3 @@ function Card({ card, words = [], lit, size = 'sm' }: { card: RegistryCard; word
   )
 }
 
-type Report = NonNullable<Awaited<ReturnType<typeof getIdeaCheck>>>
-
-function Answer({ report, cards }: { report: Report; cards: RegistryCard[] }) {
-  const router = useRouter()
-  const [saved, setSaved] = useState(report.saved)
-  const byId = new Map(cards.map((c) => [c.id, c]))
-  const lead = report.matches.slice(0, 3)
-  const more = report.matches.slice(3)
-  const n = report.strong
-  const verdict = n === 0 ? 'No close precedent.' : n >= 6 ? 'Many tried parts of this.' : 'Tried before.'
-  const card = (m: IdeaMatch) => byId.get(m.id) ?? { id: m.id, name: m.name, sector: m.sector, labelled: m.labelled, description: m.description }
-
-  return (
-    <main className="mx-auto w-full max-w-[90rem] flex-1 px-4 pt-10 pb-24 sm:px-8 lg:pt-14">
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
-        <div>
-          <p className="text-sm text-ink-2">Your idea, checked {longDate(report.checkedAt)} against {report.against} startups</p>
-          <p dir="auto" className="mt-2 max-w-[40ch] font-display text-[1.75rem] leading-9 font-bold sm:text-[2.125rem] sm:leading-[2.75rem]">
-            “{report.idea}”
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Link to="/" search={{ draft: report.idea }} className="inline-flex h-10 items-center rounded-full border border-edge px-4 text-sm text-ink no-underline hover:bg-surface">
-            Edit idea
-          </Link>
-          <button
-            type="button"
-            onClick={async () => {
-              await saveIdeaCheck({ data: { id: report.id, saved: !saved } })
-              setSaved(!saved)
-              router.invalidate()
-            }}
-            className="inline-flex h-10 items-center gap-2 rounded-full border border-edge px-4 text-sm hover:bg-surface"
-          >
-            {saved ? <BookmarkCheck className="size-4 text-glaze" /> : <Bookmark className="size-4" />} {saved ? 'Saved' : 'Save'}
-          </button>
-        </div>
-      </div>
-
-      <section aria-labelledby="verdict" className="mt-10 border-t border-ink pt-8">
-        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_22rem]">
-          <div>
-            <h1 id="verdict" className="text-[clamp(2.75rem,6vw,5rem)] leading-[0.95]">
-              {verdict}
-            </h1>
-            <p className="mt-4 max-w-[60ch] text-lg leading-8 text-ink">
-              {n === 0
-                ? report.weakTotal > 0
-                  ? `No startup shares more than one word with your idea. ${report.weakTotal} share a single word, which is not enough to call them precedents.`
-                  : 'No startup in the registry uses the words of your idea.'
-                : n === 1 ? 'One startup shares two or more words with your idea. It is below, with the registry row it rests on.' : `${n} startups share two or more words with your idea. The closest are below, each with the registry row it rests on.`}
-            </p>
-          </div>
-          <Crowd report={report} />
-        </div>
-      </section>
-
-      {lead.length > 0 && (
-        <section aria-label="Closest startups" className="mt-12 grid gap-x-4 gap-y-8 lg:grid-cols-3">
-          {lead.map((m) => (
-            <div key={m.id} className="grid grid-rows-[1fr_auto] gap-4 [&>a]:mb-0 [&>a]:h-full">
-              <Card card={card(m)} words={m.shared} lit size="lg" />
-              <dl className="grid grid-cols-2 gap-4 px-1 text-sm">
-                <div>
-                  <dt className="text-ink-2">Same as your idea</dt>
-                  <dd className="m-0 mt-1">{m.shared.join(', ')}</dd>
-                </div>
-                <div>
-                  <dt className="text-ink-2">Not in its entry</dt>
-                  <dd className="m-0 mt-1">{m.missing.length ? m.missing.join(', ') : 'everything matches'}</dd>
-                </div>
-              </dl>
-            </div>
-          ))}
-        </section>
-      )}
-
-      {(more.length > 0 || report.weak.length > 0) && (
-        <section aria-label="Also sharing words" className="mt-16">
-          <div className="mb-5 flex items-baseline justify-between gap-4 border-t border-hairline pt-4 text-sm text-ink-2">
-            <span>Also sharing words</span>
-            <span>Highlighted: the words they share with your idea</span>
-          </div>
-          <div className="columns-1 gap-3 sm:columns-2 lg:columns-4">
-            {more.map((m) => (
-              <Card key={m.id} card={card(m)} words={m.shared} lit />
-            ))}
-            {report.weak.map((m) => (
-              <Card key={m.id} card={card(m)} words={m.shared} />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {n === 0 && (
-        <div className="mt-12 max-w-[64ch] rounded-md bg-surface px-6 py-5 leading-7">
-          <strong className="font-medium">What a no-match means.</strong> No labelled startup in the Startup Tunisia registry describes this. Startups outside the registry are not here, so ask around before you count on being first.{' '}
-          <Link to="/landscape">See the registry by sector and year</Link>
-        </div>
-      )}
-
-      <div className="mt-16 max-w-[44rem]">
-        <p className="mb-3 text-sm text-ink-2">Ask about another idea</p>
-        <AskForm compact />
-      </div>
-    </main>
-  )
-}
-
-const YEARS = [2019, 2020, 2021, 2022, 2023, 2024, 2025]
-
-/** How crowded and how recent, from the close matches' real sector and labelled year. */
-function Crowd({ report }: { report: Report }) {
-  const close = report.matches
-  if (close.length === 0) return null
-  const years = close.map((m) => Number(m.labelled?.slice(0, 4))).filter((y) => y > 0)
-  const per = new Map<number, number>()
-  for (const y of years) per.set(y, (per.get(y) ?? 0) + 1)
-  const peak = Math.max(...per.values(), 1)
-  const first = Math.min(...years)
-  const last = Math.max(...years)
-  const inSector = report.sector ? close.filter((m) => m.sector === report.sector!.name).length : 0
-  return (
-    <aside aria-label="How crowded" className="grid content-end gap-3 self-end">
-      <p className="text-sm leading-6">
-        {close.length === report.strong ? (close.length === 1 ? 'One close match.' : `${close.length} close matches.`) : `The ${close.length} closest.`}{' '}
-        {report.sector && inSector > 1 && <>{inSector} are {report.sector.name}. </>}
-        {years.length > 0 && (first === last ? (years.length === 1 ? `Labelled in ${first}.` : `All labelled in ${first}.`) : `Labelled between ${first} and ${last}${last < YEARS[YEARS.length - 1] ? ', none since' : ''}.`)}
-      </p>
-      <ol className="grid grid-cols-7 gap-1" aria-label="Close matches by year labelled">
-        {YEARS.map((y) => {
-          const c = per.get(y) ?? 0
-          return (
-            <li key={y} className="grid grid-rows-[1.25rem_3rem_1.25rem] items-end gap-1 text-center">
-              <span className="font-mono text-[0.8125rem] text-ink">{c || ''}</span>
-              <span className="flex h-12 items-end border-b border-edge" aria-label={`${y}: ${c}`}>
-                {c > 0 && <span className="w-full rounded-t-[2px] bg-ochre" style={{ height: `${Math.max(12, (c / peak) * 100)}%` }} />}
-              </span>
-              <span className="font-mono text-[0.8125rem] text-ink-3">{String(y).slice(2)}</span>
-            </li>
-          )
-        })}
-      </ol>
-      {report.sector && (
-        <Link to="/landscape" search={{ sector: report.sector.name }} className="text-sm">
-          {report.sector.name} in the registry: {report.sector.total} startups, {report.sector.recent} since {report.sector.since}
-        </Link>
-      )}
-    </aside>
-  )
-}

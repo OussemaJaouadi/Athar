@@ -236,7 +236,7 @@ export function IdeaRecord({ data }: { data: IdeaPage }) {
             defaultOpen={close.length === 0}
             summary={close.length === 0
                 ? `The nearest ones, none of them close: ${word(far.length)} ${far.length === 1 ? 'startup' : 'startups'}`
-                : `Further away: ${word(far.length)} ${far.length === 1 ? 'startup that shares' : 'startups that share'} words with your idea, or a neighbouring one`}
+                : `Further away: ${word(far.length)} ${far.length === 1 ? 'startup' : 'startups'} nearer in meaning than the rest, but not close`}
           >
             <ul className="border-t border-hairline">
               {[...far].sort((a, b) => b.closeness - a.closeness).map((m) => (

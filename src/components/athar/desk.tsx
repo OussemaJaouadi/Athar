@@ -370,25 +370,6 @@ export function JsonBlock({ value, title, text }: { value?: unknown; title?: str
   )
 }
 
-/** Parse stored JSON without letting one bad row blank the pane. */
-export function parseJson<T>(text: string | null | undefined, fallback: T): T {
-  if (!text) return fallback
-  try {
-    return JSON.parse(text) as T
-  } catch {
-    return fallback
-  }
-}
-
-/** Last four characters of an id, with the full id in the title and on copy. */
-export function ShortId({ id }: { id: string }) {
-  return (
-    <span className="font-mono" title={id}>
-      …{id.slice(-4)}
-    </span>
-  )
-}
-
 /**
  * Desk keyboard: J/K or arrows move the selection, / focuses search, and page-specific keys (E, F, Z…) through
  * `keys`. Ignored while typing in a field.

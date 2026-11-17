@@ -225,33 +225,6 @@ export const getWall = createServerFn().handler(async () => {
     .map((t): WallTile => ({ ...t, described: t.described === 1 }))
 })
 
-// Landscape: counts that open the startups behind them.
-export const getLandscape = createServerFn().handler(async () => {
-  const db = getDatabase()
-  const byYear = db
-    .query<{ year: string; count: number }, []>(
-      'SELECT substr(labelled, 1, 4) AS year, COUNT(*) AS count FROM startups WHERE labelled IS NOT NULL GROUP BY year ORDER BY year',
-    )
-    .all()
-  const bySector = db
-    .query<{ sector: string; count: number }, []>('SELECT sector, COUNT(*) AS count FROM startups WHERE sector IS NOT NULL GROUP BY sector ORDER BY count DESC')
-    .all()
-  const grid = db
-    .query<{ sector: string; year: string; count: number }, []>(
-      'SELECT sector, substr(labelled, 1, 4) AS year, COUNT(*) AS count FROM startups WHERE sector IS NOT NULL AND labelled IS NOT NULL GROUP BY sector, year',
-    )
-    .all()
-  const facts = db
-    .query<{ total: number; described: number; websites: number; lag: number | null; rows: number }, []>(
-      `SELECT COUNT(*) AS total, SUM(description IS NOT NULL) AS described, SUM(website IS NOT NULL) AS websites,
-              AVG(CAST(substr(labelled, 1, 4) AS INTEGER) - creation_year) AS lag,
-              (SELECT COUNT(*) FROM entries) AS rows
-       FROM startups`,
-    )
-    .get()
-  return { byYear, bySector, grid, facts }
-})
-
 export type LandscapeRow = {
   id: string
   name: string
@@ -291,10 +264,6 @@ export const getLandscapeRows = createServerFn().handler(async () => {
     startups: (JSON.parse(f.ids) as string[]).map((id) => byId.get(id)).filter((r): r is LandscapeRow => !!r).map((r) => ({ id: r.id, name: r.name, year: r.year })),
   }))
   return { rows, founders }
-})
-
-export const getEmbeddingCount = createServerFn().handler(async () => {
-  return getDatabase().query<{ n: number }, []>('SELECT COUNT(*) AS n FROM embedding_meta').get()?.n ?? 0
 })
 
 // The corpus line shown in every reading-room page: what the archive holds and how fresh it is.

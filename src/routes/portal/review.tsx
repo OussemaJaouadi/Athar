@@ -219,7 +219,7 @@ function ReviewPage() {
           current ? (
             <FindingPane
               item={current}
-              rowCount={rowCount}
+             
               position={group ? `${group.indexOf(current) + 1} of ${group.length} in this group` : undefined}
               note={note}
               setNote={setNote}
@@ -237,7 +237,6 @@ function ReviewPage() {
 
 function FindingPane({
   item,
-  rowCount,
   position,
   note,
   setNote,
@@ -245,7 +244,6 @@ function FindingPane({
   onDecide,
 }: {
   item: ReviewItem
-  rowCount: number
   position?: string
   note: string
   setNote: (v: string) => void
@@ -304,7 +302,6 @@ function FindingPane({
         <PaneSection title="Record">
           <Fields
             fields={[
-              { label: 'Source row', value: item.row_number ? `${item.row_number} of ${rowCount}` : '' },
               { label: 'Sector', value: item.sector ?? '' },
               { label: 'Labelled', value: item.raw_label ?? '' },
               { label: 'Founded', value: item.creation_year ?? item.raw_creation_year ?? '' },

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { CodeBlock, CodeBlockCopyButton, CodeBlockHeader, CodeBlockTitle } from '@/components/reui/code-block/code-block'
 import type { CodeBlockTransformer } from '@/components/reui/code-block/code-block'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 
 /*
@@ -438,4 +439,62 @@ export function useDeskKeys({
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [ids, current, select, search, keys])
+}
+
+/**
+ * The portal's dropdown: Radix Select (shadcn) on Athar tokens, never the browser's native list. A 32px trigger like
+ * every desk control; the menu is a surface panel with an edge border, 32px rows, a soft raised highlight and a check
+ * on the chosen option. `hint` puts a quiet second line on an option (a provider's note, a count).
+ */
+export function DeskSelect({
+  value,
+  onChange,
+  options,
+  id,
+  label,
+  className,
+}: {
+  value: string
+  onChange: (value: string) => void
+  options: { value: string; label: string; hint?: string }[]
+  id?: string
+  label?: string
+  className?: string
+}) {
+  return (
+    <Select value={value} onValueChange={onChange}>
+      <SelectTrigger
+        id={id}
+        aria-label={label}
+        className={cn(
+          'h-8 w-full rounded-[5px] border-edge bg-canvas ps-2.5 pe-2 text-[0.875rem] text-ink hover:bg-surface focus-visible:border-ink focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-glaze dark:bg-canvas dark:hover:bg-surface [&_svg]:text-ink-2',
+          className,
+        )}
+      >
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent
+        position="popper"
+        sideOffset={4}
+        className="rounded-[6px] border border-edge bg-surface p-1 text-ink shadow-[0_12px_32px_-12px_rgb(0_0_0/0.45)] ring-0"
+      >
+        {options.map((o) => (
+          <SelectItem
+            key={o.value}
+            value={o.value}
+            className="min-h-8 rounded-[4px] py-1.5 ps-2.5 pe-8 text-[0.875rem] text-ink focus:bg-surface-raised focus:text-ink data-[state=checked]:font-medium [&_svg]:text-ink"
+          >
+            {o.hint ? (
+              <span className="grid">
+                <span>{o.label}</span>
+                <span className="text-[0.8125rem] font-normal text-ink-2">{o.hint}</span>
+              </span>
+            ) : (
+              o.label
+            )}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
 }

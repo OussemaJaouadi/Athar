@@ -1,3 +1,4 @@
+import { DeskSelect } from '@/components/athar/desk'
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useTable, type ColumnDef, type RowSelectionState, type SortingState } from '@tanstack/react-table'
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Search } from 'lucide-react'
@@ -96,22 +97,14 @@ function DatabasePage() {
         <label className="sr-only min-[1100px]:hidden" htmlFor="db-table">
           Table
         </label>
-        <select
-          id="db-table"
-          value={table}
-          onChange={(e) => navigate({ search: { table: e.target.value } })}
-          className={cn(deskInput, 'min-[1100px]:hidden')}
-        >
-          {groups.map((g) => (
-            <optgroup key={g.stage} label={g.stage}>
-              {g.tables.map((t) => (
-                <option key={t.name} value={t.name}>
-                  {tableName(t.name)} ({n(t.rows)})
-                </option>
-              ))}
-            </optgroup>
-          ))}
-        </select>
+        <div className="min-w-56 min-[1100px]:hidden">
+          <DeskSelect
+            id="db-table"
+            value={table}
+            onChange={(v) => navigate({ search: { table: v } })}
+            options={groups.flatMap((g) => g.tables.map((t) => ({ value: t.name, label: tableName(t.name), hint: `${g.stage} · ${n(t.rows)} rows` })))}
+          />
+        </div>
         {data && (
           <label className="relative flex items-center">
             <span className="sr-only">Search {name}</span>

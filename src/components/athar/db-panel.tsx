@@ -70,21 +70,6 @@ const display = (v: unknown): string | null => {
   return String(v)
 }
 
-/** The registry's own fields, read from a source row's raw_json: the record as the registry gave it. */
-function rawFields(raw: Record<string, unknown>, flagged: string[]): DeskField[] {
-  const order = ['name', 'sector', 'industry', 'label', 'creation_year', 'founders', 'website', 'desc', 'email', 'phone', 'logo', 'logo_id']
-  const keys = [...order.filter((k) => k in raw), ...Object.keys(raw).filter((k) => !order.includes(k))]
-  return keys.map((k) => {
-    const v = raw[k]
-    const text = display(v)
-    return {
-      label: humanize(k),
-      value: text === 'n.a.' ? <span className="text-ink-3">n.a.</span> : text,
-      mono: k === 'website' || k === 'logo' || (typeof v === 'string' && isUrl(v)),
-      bad: flagged.includes(k) && !isEmpty(v),
-    }
-  })
-}
 
 function columnField(c: DbColumn, v: DbValue, flagged: string[]): DeskField {
   const label = humanize(c.name)
@@ -158,10 +143,16 @@ export function RecordPane({
   const jsonCols = columns.filter((c) => !c.secret && asJson(row[c.name] ?? null) !== undefined)
   const raw = table === 'source_rows' ? asJson(row.raw_json ?? null) : undefined
   const isRecord = raw !== undefined && raw !== null && typeof raw === 'object' && !Array.isArray(raw)
+  // Internal ids (UUIDs) are plumbing: the links below navigate, so they are not shown as fields.
+  const isId = (name: string) => {
+    const v = row[name]
+    return (name === 'id' || name.endsWith('_id')) && typeof v === 'string' && /^[0-9a-f-]{32,36}$/i.test(v)
+  }
+  // A source row is the raw download: shown once, as its JSON, never again as parsed fields.
   const fields: DeskField[] = isRecord
-    ? rawFields(raw as Record<string, unknown>, flagged)
-    : columns.filter((c) => !jsonCols.includes(c)).map((c) => columnField(c, row[c.name] ?? null, flagged))
-  const stored: DeskField[] = isRecord ? columns.filter((c) => c.name !== 'raw_json').map((c) => columnField(c, row[c.name] ?? null, [])) : []
+    ? []
+    : columns.filter((c) => !jsonCols.includes(c) && !isId(c.name)).map((c) => columnField(c, row[c.name] ?? null, flagged))
+  const stored: DeskField[] = []
 
   const plain = Object.fromEntries(columns.map((c) => [c.name, c.secret ? '••••' : (asJson(row[c.name] ?? null) ?? row[c.name] ?? null)]))
   const trace = ctx?.sourceRowId ?? null
@@ -170,9 +161,11 @@ export function RecordPane({
 
   return (
     <>
-      <PaneSection title={`${rowTitle(row, rowKey)}, read as a record`}>
-        <Fields fields={fields} />
-      </PaneSection>
+      {fields.length > 0 && (
+        <PaneSection title={rowTitle(row, rowKey)}>
+          <Fields fields={fields} />
+        </PaneSection>
+      )}
       <p className="flex flex-wrap gap-x-[18px] gap-y-1">
         {trace && (
           <Link to="/portal/trace" search={{ row: trace }} className={link}>

@@ -1,3 +1,4 @@
+import { DeskSelect } from '@/components/athar/desk'
 import { useRouter } from '@tanstack/react-router'
 import { FlaskConical, LoaderCircle, Save } from 'lucide-react'
 import { useId, useState } from 'react'
@@ -117,35 +118,27 @@ export function AddKeyPane({ onSaved }: { onSaved: (id: string) => void }) {
           <label htmlFor={`${id}-provider`} className={label}>
             Provider
           </label>
-          <select
+          <DeskSelect
             id={`${id}-provider`}
-            className={control}
             value={provider}
-            onChange={(e) => {
-              const p = e.target.value as Provider
+            onChange={(v) => {
+              const p = v as Provider
               setProvider(p)
               setChoice(SUGGESTED_MODELS[p][0])
             }}
-          >
-            {PROVIDERS.map((p) => (
-              <option key={p} value={p}>
-                {PROVIDER_NAME[p]}
-              </option>
-            ))}
-          </select>
+            options={PROVIDERS.map((p) => ({ value: p, label: PROVIDER_NAME[p] }))}
+          />
         </div>
         <div className={field}>
           <label htmlFor={`${id}-model`} className={label}>
             Model
           </label>
-          <select id={`${id}-model`} className={control} value={choice} onChange={(e) => setChoice(e.target.value)}>
-            {SUGGESTED_MODELS[provider].map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-            <option value={OTHER}>Other model…</option>
-          </select>
+          <DeskSelect
+            id={`${id}-model`}
+            value={choice}
+            onChange={setChoice}
+            options={[...SUGGESTED_MODELS[provider].map((m) => ({ value: m, label: m })), { value: OTHER, label: 'Other model…' }]}
+          />
           {choice === OTHER && (
             <input
               aria-label="Model id"

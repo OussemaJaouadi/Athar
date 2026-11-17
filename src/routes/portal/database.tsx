@@ -11,7 +11,7 @@ import { DataGridScrollArea } from '@/components/reui/data-grid/data-grid-scroll
 import { DataGridTable } from '@/components/reui/data-grid/data-grid-table'
 import { cn } from '@/lib/utils'
 import { getDbRows, listDbTables, type DbRow } from '#/server/api/database'
-import { listIdeaChecks, listPeople } from '#/server/api/ops'
+import { getIdeaCheckRow, getPersonRow, listIdeaChecks, listPeople } from '#/server/api/ops'
 import type { IdeaCheckRow, PersonRow } from '#/server/pipeline/facts'
 import { DB_PAGE_SIZE as PAGE_SIZE } from '#/shared/database'
 
@@ -416,7 +416,13 @@ function Workspace({
           <ChevronLeft className="size-4" aria-hidden />
           Back to {name.toLowerCase()}
         </button>
-        {ideas ? <IdeaCheckRecord check={ideas.find((c) => c.id === current)} /> : <RecordPane table={data.table} rowKey={current} />}
+        {ideas ? (
+          <ById id={current} found={ideas.find((c) => c.id === current)} load={(id) => getIdeaCheckRow({ data: id })}>
+            {(c) => <IdeaCheckRecord check={c} />}
+          </ById>
+        ) : (
+          <RecordPane table={data.table} rowKey={current} />
+        )}
       </aside>
     </>
   )
@@ -439,7 +445,7 @@ function PeopleWorkspace({
   setNarrowRecord: (v: boolean) => void
 }) {
   const ids = useMemo(() => people.rows.map((p) => p.slug), [people.rows])
-  const current = selected && ids.includes(selected) ? selected : ids[0]
+  const current = selected ?? ids[0]
   useDeskKeys({ ids, current, select: (id) => go({ row: id }, true), search: searchRef })
   const th = 'h-[34px] border-b border-edge px-3 text-start text-[0.8125rem] font-normal whitespace-nowrap text-ink-2'
   const td = 'h-9 border-b border-hairline px-3 text-[0.875rem] text-ink'
@@ -488,8 +494,28 @@ function PeopleWorkspace({
           <ChevronLeft className="size-4" aria-hidden />
           Back to people
         </button>
-        <PersonRecord person={people.rows.find((p) => p.slug === current)} />
+        <ById id={current} found={people.rows.find((p) => p.slug === current)} load={(slug) => getPersonRow({ data: slug })}>
+          {(p) => <PersonRecord person={p} />}
+        </ById>
       </aside>
     </>
   )
+}
+
+/** A row deep-linked by id: taken from the page already loaded, else looked up on its own (any age, any page). */
+function ById<T>({ id, found, load, children }: { id: string | undefined; found: T | undefined; load: (id: string) => Promise<T | null>; children: (row: T | undefined) => React.ReactNode }) {
+  const [fetched, setFetched] = useState<{ id: string; row: T | undefined } | null>(null)
+  useEffect(() => {
+    if (found || !id) return
+    let live = true
+    load(id)
+      .then((row) => live && setFetched({ id, row: row ?? undefined }))
+      .catch(() => live && setFetched({ id, row: undefined }))
+    return () => {
+      live = false
+    }
+    // load is a fresh arrow each render; the id is what matters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, found])
+  return <>{children(found ?? (fetched && fetched.id === id ? fetched.row : undefined))}</>
 }

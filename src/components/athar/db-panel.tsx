@@ -5,7 +5,7 @@ import { Fields, JsonBlock, PaneSection, isEmpty, type DeskField } from '@/compo
 import { StartupLink } from '@/components/athar/startup-glimpse'
 import { languageName, month, websiteCheckWords, websiteKindName } from '@/components/athar/trace-parts'
 import { getDbRecord, type DbColumnInfo, type DbRecord, type DbRow, type DbValue } from '#/server/api/database'
-import { getEntry } from '#/server/api/ops'
+import { getEntry, getFoundersOf } from '#/server/api/ops'
 import type { IdeaCheckRow, PersonRow } from '#/server/pipeline/facts'
 
 export type DbColumn = DbColumnInfo
@@ -318,15 +318,19 @@ type EntryView = NonNullable<Awaited<ReturnType<typeof getEntry>>>
 /** A startup's relations, from its lead entry's view: its entries, founders, website check, prepared text and vector. */
 function StartupRelated({ id, entryId }: { id: string; entryId: string }) {
   const [view, setView] = useState<EntryView | null | undefined>(undefined)
+  const [founders, setFounders] = useState<Awaited<ReturnType<typeof getFoundersOf>>>([])
   useEffect(() => {
     let live = true
     getEntry({ data: entryId })
       .then((v) => live && setView(v))
       .catch(() => live && setView(null))
+    getFoundersOf({ data: id })
+      .then((f) => live && setFounders(f))
+      .catch(() => live && setFounders([]))
     return () => {
       live = false
     }
-  }, [entryId])
+  }, [entryId, id])
   if (view === undefined) return <p className="text-[0.875rem] text-ink-2">Reading its relations…</p>
   const entries = view ? [{ id: view.id, lead: true }, ...view.siblings.map((s) => ({ id: s.id, lead: s.lead }))] : [{ id: entryId, lead: true }]
   const d = view?.downstream
@@ -349,12 +353,19 @@ function StartupRelated({ id, entryId }: { id: string; entryId: string }) {
             ),
           },
           {
-            label: 'Founder rows',
-            value: (
-              <Link to="/portal/database" search={{ table: 'founders', q: id }} className="text-glaze underline">
-                Open its founder rows
-              </Link>
-            ),
+            label: founders.length === 1 ? 'Founder' : `Founders (${founders.length})`,
+            value: founders.length ? (
+              <span className="grid gap-0.5">
+                {founders.map((f) => (
+                  <span key={f.position}>
+                    <Link to="/portal/database" search={{ table: 'people', row: f.slug }} className="text-glaze underline">
+                      {f.name}
+                    </Link>
+                    {f.startups > 1 && <span className="text-ink-2"> · {f.startups} startups</span>}
+                  </span>
+                ))}
+              </span>
+            ) : null,
           },
           {
             label: 'Website check',

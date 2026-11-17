@@ -1,11 +1,12 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { CircleAlert } from 'lucide-react'
+import { ArrowRight, CircleAlert } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { CollectButton, duration, plural, shortId } from '@/components/athar/collect-button'
-import { Desk, DeskBar, DeskEmpty, DeskItem, DeskPane, PaneSection, deskTd, deskTh, useDeskKeys } from '@/components/athar/desk'
+import { CollectButton, duration, plural } from '@/components/athar/collect-button'
+import { Desk, DeskBar, DeskEmpty, DeskItem, DeskPane, PaneSection, useDeskKeys } from '@/components/athar/desk'
 import { labTime, operationName } from '@/components/athar/lab'
 import { RunStatus } from '@/components/athar/run-status'
+import { cn } from '@/lib/utils'
 import { getPipeline, getRunDetail, type RunChange } from '#/server/api/portal'
 
 type Search = { run?: string }
@@ -25,15 +26,6 @@ export const Route = createFileRoute('/portal/')({
 })
 
 const dateOnly = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
-
-// Collect reads the registry's rows and keeps the distinct ones as entries; Build turns entries into startups.
-// clean and merge belong to runs made before pipeline v2.
-const STEP_UNIT: Record<string, [string, string]> = {
-  collect: ['rows', 'new entries'],
-  build: ['entries', 'startups'],
-  clean: ['rows', 'records'],
-  merge: ['records', 'startups'],
-}
 
 const STEP_NAME: Record<string, string> = { build: 'Build' }
 const stepName = (step: string) => STEP_NAME[step] ?? operationName(step)
@@ -99,12 +91,8 @@ function Pipeline() {
                   <DeskItem
                     selected={r.id === selected}
                     onSelect={() => select(r.id)}
-                    title={
-                      <>
-                        {operationName(r.operation)} <span className="font-mono">{shortId(r.id)}</span>
-                      </>
-                    }
-                    detail={`${labTime(r.started_at)} · ${duration(r.started_at, r.finished_at) ?? 'running'}`}
+                    title={labTime(r.started_at)}
+                    detail={`${operationName(r.operation)} · ${duration(r.started_at, r.finished_at) ?? 'running'}`}
                     end={<RunStatus status={r.status} />}
                   />
                 </div>
@@ -122,134 +110,139 @@ function Pipeline() {
 
 type Detail = NonNullable<Awaited<ReturnType<typeof getRunDetail>>>
 
+// Short labels for the counted facts; the step's own sentence is the fallback (and the hover title).
+const FACT: Record<string, string> = {
+  no_description: 'no description',
+  listed_more_than_once: 'listed more than once',
+  exact_copies: 'exact duplicate rows',
+  other_sector: 'listed under two sectors',
+  other_name: 'listed under two names',
+  second_website: 'two websites, first kept',
+  website_text_removed: 'extra text removed from a website',
+  website_unreadable: 'unreadable websites',
+  cohort_unreadable: 'unreadable label dates',
+  label_before_creation: 'labelled before founded',
+}
+// Already told by the flow strip.
+const IN_FLOW = new Set(['entries_new'])
+
+// What each step's output is called, for the flow strip. clean and merge belong to runs before pipeline v2.
+const OUT_UNIT: Record<string, [string, string]> = {
+  collect: ['entry', 'entries'],
+  build: ['startup', 'startups'],
+  clean: ['record', 'records'],
+  merge: ['startup', 'startups'],
+}
+
 function RunPane({ detail, position }: { detail: Detail; position: string }) {
   const { run, steps } = detail
   const live = run.status === 'running'
   const now = useNow(live)
+  const nowIso = new Date(now).toISOString()
   const failed = run.status === 'failed' || run.status === 'interrupted'
   const failedStep = steps.find((s) => s.status === 'failed')
   const failure = (failedStep?.message ?? run.error)?.replace(/^.*?failed:\s*/i, '').replace(/[.\s]+$/, '')
-  const nowIso = new Date(now).toISOString()
-  const statement = live
-    ? `Running · ${duration(run.started_at, nowIso) ?? '0.1 s'} so far`
-    : failed
-      ? `${failedStep ? `${stepName(failedStep.step)} failed` : run.status === 'interrupted' ? 'Interrupted' : 'Failed'} · ${labTime(run.started_at)}`
-      : run.rows !== null && run.startups !== null
-        ? `${plural(run.rows, 'row')} → ${plural(run.startups, 'startup')}`
-        : run.change.kind === 'confirmed'
-          ? 'Same rows as the last download'
-          : labTime(run.started_at)
+  const took = run.finished_at ? duration(run.started_at, run.finished_at) : duration(run.started_at, nowIso)
+  const facts = steps.flatMap((st) => st.notes.filter((n) => !IN_FLOW.has(n.code) && n.count > 0)).sort((a, b) => b.count - a.count)
+  const first = steps[0]
 
   return (
     <DeskPane
-      title={
-        <>
-          {operationName(run.operation)} run <span className="font-mono text-[1.125rem] font-normal">{shortId(run.id)}</span>
-        </>
+      title={`${operationName(run.operation)} · ${labTime(run.started_at)}`}
+      statement={
+        <span className="inline-flex items-center gap-1.5">
+          <RunStatus status={run.status} />
+          <span className="text-ink-2">{live ? `${took ?? '0.1 s'} so far` : took ? `in ${took}` : ''}</span>
+        </span>
       }
-      statement={statement}
       position={position}
     >
       {failed && (
         <p role="alert" className="flex items-start gap-2 border-s-[3px] border-destructive ps-2.5 text-[0.875rem] text-ink">
           <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
           <span>
-            {failure ? `${failure}.` : run.status === 'interrupted' ? 'The server stopped while the run was going.' : 'No message was recorded.'} The registry from the
-            run before is unchanged.
+            {failedStep ? `${stepName(failedStep.step)} failed: ` : ''}
+            {failure ? `${failure}.` : run.status === 'interrupted' ? 'The server stopped while the run was going.' : 'No message was recorded.'} The registry from
+            the run before is unchanged.
           </span>
         </p>
       )}
 
-      <PaneSection title="Steps" aside={`Started ${labTime(run.started_at)}${run.finished_at ? ` · took ${duration(run.started_at, run.finished_at)}` : ''}`}>
-        <table className="w-full border-collapse tabular-nums">
-          <thead>
-            <tr>
-              {['Step', 'Status', 'In → out', 'Took', 'What happened'].map((h) => (
-                <th key={h} scope="col" className={deskTh}>
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {steps.map((s, i) => {
-              const [inUnit, outUnit] = STEP_UNIT[s.step] ?? ['items', 'items']
-              return (
-                <tr key={s.position}>
-                  <td className={`${deskTd} whitespace-nowrap`}>
-                    <span className="me-2 text-ink-2">{i + 1}</span>
-                    {stepName(s.step)}
-                  </td>
-                  <td className={deskTd}>
-                    <RunStatus status={s.status} />
-                  </td>
-                  <td className={`${deskTd} whitespace-nowrap`}>
-                    {s.items_in !== null ? `${s.items_in.toLocaleString('en-GB')} ${inUnit}` : '—'}
-                    {s.items_out !== null && ` → ${s.items_out.toLocaleString('en-GB')} ${outUnit}`}
-                  </td>
-                  <td className={`${deskTd} whitespace-nowrap`}>
-                    {s.status === 'running' ? `${duration(s.started_at, nowIso) ?? '0.1 s'} so far` : (duration(s.started_at, s.finished_at) ?? '—')}
-                  </td>
-                  <td className={deskTd}>{s.message ?? (s.status === 'pending' ? 'Waiting for the step before' : '—')}</td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </PaneSection>
-
-      {steps.some((st) => st.notes.length > 0) && (
-        <PaneSection title="What the steps found">
-          <div className="grid gap-4">
-            {steps
-              .filter((st) => st.notes.length > 0)
-              .map((st) => (
-                <div key={st.position} className="grid gap-1">
-                  <p className="text-[0.8125rem] text-ink-2">{stepName(st.step)}</p>
-                  <ul className="grid">
-                    {st.notes.map((n) => (
-                      <li key={n.code} className="grid grid-cols-[4.5rem_minmax(0,1fr)] gap-3 border-b border-hairline py-[7px] text-[0.875rem]">
-                        <span className="text-end text-ink tabular-nums">{n.count.toLocaleString('en-GB')}</span>
-                        <span className="text-ink">{n.text}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
-          </div>
-        </PaneSection>
-      )}
+      {/* The flow: each number once, each step's time on its arrow. */}
+      <ol aria-label="What the run did" className="flex flex-wrap items-center gap-x-1 gap-y-3 py-1">
+        <li className="grid">
+          <span className="font-display text-[1.75rem] leading-8 text-ink tabular-nums">{first?.items_in !== null && first?.items_in !== undefined ? first.items_in.toLocaleString('en-GB') : '—'}</span>
+          <span className="text-[0.8125rem] text-ink-2">rows published</span>
+        </li>
+        {steps.map((st) => {
+          const [one, many] = OUT_UNIT[st.step] ?? ['item', 'items']
+          const t = st.status === 'running' ? duration(st.started_at, nowIso) : duration(st.started_at, st.finished_at)
+          return (
+            <li key={st.position} className="contents">
+              <span aria-hidden className="mx-3 grid min-w-[7.5rem] justify-items-center text-[0.8125rem] text-ink-2">
+                <span>
+                  {stepName(st.step).toLowerCase()}
+                  {t && ` · ${t}`}
+                </span>
+                <span className={cn('h-px w-full', st.status === 'done' ? 'bg-ink' : 'bg-edge')} />
+                <ArrowRight className="-mt-[9px] size-4 self-end justify-self-end text-ink" />
+              </span>
+              <span className="grid">
+                <span className="font-display text-[1.75rem] leading-8 text-ink tabular-nums">
+                  {st.items_out !== null ? st.items_out.toLocaleString('en-GB') : st.status === 'running' ? '…' : '—'}
+                </span>
+                <span className="text-[0.8125rem] text-ink-2">
+                  {st.items_out === 1 ? one : many}
+                  {st.status !== 'done' && st.status !== 'running' && ` · ${st.status === 'failed' ? 'failed' : 'not run'}`}
+                </span>
+                <span className="sr-only">
+                  {stepName(st.step)}: {st.message}
+                </span>
+              </span>
+            </li>
+          )
+        })}
+      </ol>
 
       {!live && !failed && (
         <PaneSection title="What changed">
           <p className="text-[0.875rem] text-ink">{changeSentence(run.change)}</p>
         </PaneSection>
       )}
+
+      {facts.length > 0 && (
+        <PaneSection title="What the data showed">
+          <ul className="grid max-w-[880px] gap-x-10 md:grid-cols-2">
+            {facts.map((n) => (
+              <li key={n.code} title={n.text} className="grid grid-cols-[3.5rem_minmax(0,1fr)] items-baseline gap-3 border-b border-hairline py-[7px] text-[0.875rem]">
+                <span className="text-end font-medium text-ink tabular-nums">{n.count.toLocaleString('en-GB')}</span>
+                <span className="text-ink">{FACT[n.code] ?? n.text}</span>
+              </li>
+            ))}
+          </ul>
+        </PaneSection>
+      )}
     </DeskPane>
   )
 }
 
-/** What a run did to the registry, as one plain sentence. */
+/** What a run did to the registry, as one short sentence. */
 function changeSentence(change: RunChange) {
   switch (change.kind) {
     case 'stored': {
-      const parts = [
-        `Stored download ${change.download} (${dateOnly(change.fetchedAt)}, ${plural(change.rows, 'row')})`,
-        `${plural(change.entriesNew, 'new entry', 'new entries')}`,
-        ...(change.entriesWithdrawn ? [`${plural(change.entriesWithdrawn, 'entry', 'entries')} no longer published`] : []),
-      ]
       const s = change.startups
-      const startups = s
-        ? s.changed === 0 && s.unchanged === 0
-          ? `${plural(s.created, 'startup')} built`
-          : `startups: ${s.created} new, ${s.changed} changed, ${s.unchanged} unchanged`
-        : null
-      return `${parts.join(' · ')}${startups ? `; ${startups}` : ''}.`
+      if (change.download === 1 || (s && s.changed === 0 && s.unchanged === 0)) return 'First download: everything is new.'
+      const parts = [
+        `${plural(change.entriesNew, 'new entry', 'new entries')}`,
+        ...(change.entriesWithdrawn ? [`${change.entriesWithdrawn} no longer published`] : []),
+        ...(s ? [`startups ${s.created} new, ${s.changed} changed, ${s.unchanged} unchanged`] : []),
+      ]
+      return `${parts.join(' · ')}.`
     }
     case 'confirmed':
-      return `The registry published the same rows as the download of ${change.sameAs ? dateOnly(change.sameAs) : 'the run before'}; nothing was stored, only its check time moved.`
+      return `Same rows as the download of ${change.sameAs ? dateOnly(change.sameAs) : 'the run before'}; nothing new to store.`
     case 'legacy':
-      return 'This run used the pipeline before v2. Its tables were replaced, so what it stored is no longer here.'
+      return 'Made by the pipeline before v2; what it stored was replaced.'
     default:
       return 'Nothing to compare.'
   }

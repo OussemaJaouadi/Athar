@@ -303,13 +303,13 @@ export function Fields({ fields, className }: { fields: DeskField[]; className?:
 export type EvidenceRow = { field: string; wrote: React.ReactNode; cleaning: React.ReactNode; why: React.ReactNode; bad?: boolean }
 
 /** "What cleaning did": Field / Registry wrote / Cleaning / Why. The offending value gets a 3px ochre bar. */
-export function Evidence({ rows }: { rows: EvidenceRow[] }) {
+export function Evidence({ rows, headers = ['Field', 'Registry wrote', 'Cleaning', 'Why'] }: { rows: EvidenceRow[]; headers?: [string, string, string, string] }) {
   const cell = 'border-b border-hairline px-3 py-2 text-[0.875rem] [overflow-wrap:anywhere] text-ink'
   const head = 'border-b border-edge px-3 py-2 text-[0.8125rem] text-ink-2'
   return (
     <div role="table" className="grid grid-cols-[150px_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)] border border-edge [&>*:nth-last-child(-n+4)]:border-b-0">
       <div role="row" className="contents">
-        {['Field', 'Registry wrote', 'Cleaning', 'Why'].map((h) => (
+        {headers.map((h) => (
           <div role="columnheader" key={h} className={head}>
             {h}
           </div>

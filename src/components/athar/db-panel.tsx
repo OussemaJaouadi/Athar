@@ -139,8 +139,8 @@ function CopyJson({ value, label }: { value: unknown; label: string }) {
 function StartupLinks({ id }: { id: string }) {
   return (
     <>
-      <Link to="/portal/trace" search={{ startup: id }} className={linkCls}>
-        Trace this startup
+      <Link to="/portal/entries" search={{ startup: id }} className={linkCls}>
+        Open its entry
       </Link>
       <Link to="/startups/$id" params={{ id }} className={linkCls}>
         Open the startup profile

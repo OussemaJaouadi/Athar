@@ -19,6 +19,7 @@ import { Route as AppSearchRouteImport } from './routes/_app/search'
 import { Route as AppThemesRouteImport } from './routes/_app/themes'
 import { Route as PortalIndexRouteImport } from './routes/portal/index'
 import { Route as PortalDatabaseRouteImport } from './routes/portal/database'
+import { Route as PortalEntriesRouteImport } from './routes/portal/entries'
 import { Route as PortalKeysRouteImport } from './routes/portal/keys'
 import { Route as PortalReviewRouteImport } from './routes/portal/review'
 import { Route as AppIdeasIdRouteImport } from './routes/_app/ideas.$id'
@@ -78,6 +79,11 @@ const PortalIndexRoute = PortalIndexRouteImport.update({
 const PortalDatabaseRoute = PortalDatabaseRouteImport.update({
   id: '/database',
   path: '/database',
+  getParentRoute: () => PortalRouteRoute,
+} as any)
+const PortalEntriesRoute = PortalEntriesRouteImport.update({
+  id: '/entries',
+  path: '/entries',
   getParentRoute: () => PortalRouteRoute,
 } as any)
 const PortalKeysRoute = PortalKeysRouteImport.update({
@@ -145,6 +151,7 @@ export interface FileRoutesByFullPath {
   '/search': typeof AppSearchRoute
   '/themes': typeof AppThemesRoute
   '/portal/database': typeof PortalDatabaseRoute
+  '/portal/entries': typeof PortalEntriesRoute
   '/portal/keys': typeof PortalKeysRoute
   '/portal/review': typeof PortalReviewRoute
   '/portal/': typeof PortalIndexRoute
@@ -165,6 +172,7 @@ export interface FileRoutesByTo {
   '/search': typeof AppSearchRoute
   '/themes': typeof AppThemesRoute
   '/portal/database': typeof PortalDatabaseRoute
+  '/portal/entries': typeof PortalEntriesRoute
   '/portal/keys': typeof PortalKeysRoute
   '/portal/review': typeof PortalReviewRoute
   '/': typeof AppIndexRoute
@@ -189,6 +197,7 @@ export interface FileRoutesById {
   '/_app/search': typeof AppSearchRoute
   '/_app/themes': typeof AppThemesRoute
   '/portal/database': typeof PortalDatabaseRoute
+  '/portal/entries': typeof PortalEntriesRoute
   '/portal/keys': typeof PortalKeysRoute
   '/portal/review': typeof PortalReviewRoute
   '/_app/': typeof AppIndexRoute
@@ -214,6 +223,7 @@ export interface FileRouteTypes {
     | '/search'
     | '/themes'
     | '/portal/database'
+    | '/portal/entries'
     | '/portal/keys'
     | '/portal/review'
     | '/portal/'
@@ -234,6 +244,7 @@ export interface FileRouteTypes {
     | '/search'
     | '/themes'
     | '/portal/database'
+    | '/portal/entries'
     | '/portal/keys'
     | '/portal/review'
     | '/'
@@ -257,6 +268,7 @@ export interface FileRouteTypes {
     | '/_app/search'
     | '/_app/themes'
     | '/portal/database'
+    | '/portal/entries'
     | '/portal/keys'
     | '/portal/review'
     | '/_app/'
@@ -348,6 +360,13 @@ declare module '@tanstack/react-router' {
       path: '/database'
       fullPath: '/portal/database'
       preLoaderRoute: typeof PortalDatabaseRouteImport
+      parentRoute: typeof PortalRouteRoute
+    }
+    '/portal/entries': {
+      id: '/portal/entries'
+      path: '/entries'
+      fullPath: '/portal/entries'
+      preLoaderRoute: typeof PortalEntriesRouteImport
       parentRoute: typeof PortalRouteRoute
     }
     '/portal/keys': {
@@ -462,6 +481,7 @@ const AppRouteRouteWithChildren = AppRouteRoute._addFileChildren(
 
 interface PortalRouteRouteChildren {
   PortalDatabaseRoute: typeof PortalDatabaseRoute
+  PortalEntriesRoute: typeof PortalEntriesRoute
   PortalKeysRoute: typeof PortalKeysRoute
   PortalReviewRoute: typeof PortalReviewRoute
   PortalIndexRoute: typeof PortalIndexRoute
@@ -473,6 +493,7 @@ interface PortalRouteRouteChildren {
 
 const PortalRouteRouteChildren: PortalRouteRouteChildren = {
   PortalDatabaseRoute: PortalDatabaseRoute,
+  PortalEntriesRoute: PortalEntriesRoute,
   PortalKeysRoute: PortalKeysRoute,
   PortalReviewRoute: PortalReviewRoute,
   PortalIndexRoute: PortalIndexRoute,

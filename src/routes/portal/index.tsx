@@ -1,64 +1,75 @@
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { ArrowRight, CircleAlert } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
+import { CircleAlert } from 'lucide-react'
+import { useCallback, useEffect, useRef } from 'react'
 
-import { CollectButton, RunMenu, duration, plural } from '@/components/athar/collect-button'
-import { Desk, DeskBar, DeskEmpty, DeskItem, DeskPane, PaneSection, useDeskKeys } from '@/components/athar/desk'
+import { RunStepButton, duration, plural } from '@/components/athar/collect-button'
+import { Desk, DeskBar, DeskItem, DeskPane, PaneSection, deskTd, deskTh, useDeskKeys } from '@/components/athar/desk'
 import { labTime, operationName } from '@/components/athar/lab'
-import { RunStatus } from '@/components/athar/run-status'
+import { RunStatus, StepStateBadge } from '@/components/athar/run-status'
 import { cn } from '@/lib/utils'
+import { getPipelineState } from '#/server/api/ops'
 import { getPipeline, getRunDetail, type RunChange } from '#/server/api/portal'
+import type { StepState } from '#/server/pipeline/state'
 
-type Search = { run?: string }
+type Search = { step?: string; run?: string }
+
+// Which operations ran each step: Build runs inside every Collect, and alone as Rebuild.
+const RUNS_OF: Record<string, string[]> = { collect: ['collect'], rebuild: ['collect', 'rebuild'], check: ['check'], prepare: ['prepare'], embed: ['embed'] }
+// The step name a run records for each of the five steps.
+const STEP_OF: Record<string, string> = { collect: 'collect', rebuild: 'build', check: 'check', prepare: 'prepare', embed: 'embed' }
+// The step a run belongs to, when a link opens the page on a run.
+const KEY_OF_RUN: Record<string, string> = { collect: 'collect', rebuild: 'rebuild', check: 'check', prepare: 'prepare', embed: 'embed' }
 
 export const Route = createFileRoute('/portal/')({
-  validateSearch: (s: Record<string, unknown>): Search => ({ run: typeof s.run === 'string' && s.run ? s.run : undefined }),
-  loaderDeps: ({ search }) => ({ run: search.run }),
-  // The selected run: the one in the URL, else the run in flight, else the latest. The pane is never empty while
-  // there are runs.
+  validateSearch: (s: Record<string, unknown>): Search => ({
+    step: typeof s.step === 'string' && s.step ? s.step : undefined,
+    run: typeof s.run === 'string' && s.run ? s.run : undefined,
+  }),
+  loaderDeps: ({ search }) => ({ step: search.step, run: search.run }),
+  // The selected step: the one in the URL, else the step of a linked run, else the running one, else the first with
+  // something to do, else Collect. Its pane shows the facts of the selected run, or of its last run.
   loader: async ({ deps }) => {
-    const data = await getPipeline()
-    const id = deps.run ?? data.runs.find((r) => r.status === 'running')?.id ?? data.runs[0]?.id
-    const detail = id ? await getRunDetail({ data: id }) : null
-    return { data, detail }
+    const [state, data] = await Promise.all([getPipelineState(), getPipeline()])
+    const keys = state.steps.map((s) => s.operation)
+    const linked = deps.run ? data.runs.find((r) => r.id === deps.run) : undefined
+    const key =
+      (deps.step && keys.includes(deps.step) && deps.step) ||
+      (linked && KEY_OF_RUN[linked.operation]) ||
+      state.steps.find((s) => s.state === 'running')?.operation ||
+      state.steps.find((s) => s.next)?.operation ||
+      keys[0]
+    const step = state.steps.find((s) => s.operation === key)!
+    const runs = data.runs.filter((r) => RUNS_OF[key]?.includes(r.operation))
+    const runId = linked && runs.some((r) => r.id === linked.id) ? linked.id : runs[0]?.id
+    const detail = runId ? await getRunDetail({ data: runId }) : null
+    return { state, data, key, step, runs, detail }
   },
   component: Pipeline,
 })
 
 const dateOnly = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
-
-const STEP_NAME: Record<string, string> = { build: 'Build' }
-const stepName = (step: string) => STEP_NAME[step] ?? operationName(step)
-
-// A clock for the run in flight; the portal's poller refreshes the data when a step changes state.
-function useNow(on: boolean) {
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => {
-    if (!on) return
-    const t = setInterval(() => setNow(Date.now()), 500)
-    return () => clearInterval(t)
-  }, [on])
-  return now
-}
+// The button name for a step's operation: Build is brought up to date by Rebuild.
+const runLabel = (s: StepState) => (s.operation === 'rebuild' ? 'Rebuild' : s.label)
 
 function Pipeline() {
-  const { data, detail } = Route.useLoaderData()
+  const { state, data, key, step, runs, detail } = Route.useLoaderData()
   const search = Route.useSearch()
   const navigate = useNavigate({ from: '/portal/' })
-  const running = data.runs.find((r) => r.status === 'running')
-  const selected = detail?.run.id
-  const ids = data.runs.map((r) => r.id)
+  const keys = state.steps.map((s) => s.operation)
+  const running = state.steps.find((s) => s.state === 'running')
+  const nextStep = state.steps.find((s) => s.next && s.state !== 'not_configured')
 
-  const select = useCallback((id: string) => navigate({ search: { run: id }, replace: true }), [navigate])
-  useDeskKeys({ ids, current: selected, select })
+  const select = useCallback((k: string) => navigate({ search: { step: k }, replace: true }), [navigate])
+  useDeskKeys({ ids: keys, current: key, select })
 
-  // A run that starts while the page is open is selected, so its steps can be followed.
-  const seen = useRef(running?.id)
+  // A step that starts running while the page is open is selected, so its counts can be followed.
+  const seen = useRef(running?.operation)
   useEffect(() => {
-    if (running && running.id !== seen.current) {
-      seen.current = running.id
-      select(running.id)
+    if (running && running.operation !== seen.current) {
+      seen.current = running.operation
+      select(running.operation)
     }
+    if (!running) seen.current = undefined
   }, [running, select])
 
   return (
@@ -66,60 +77,49 @@ function Pipeline() {
       <DeskBar
         title="Pipeline"
         facts={
-          data.download
-            ? [
-                `Downloaded ${dateOnly(data.download.fetched_at)}`,
-                `last checked ${dateOnly(data.download.last_checked_at)}`,
-                plural(data.entries, 'entry', 'entries'),
-                plural(data.startups, 'startup'),
-                ...(data.withdrawn ? [`${data.withdrawn} withdrawn`] : []),
-              ].join(' · ')
-            : 'Nothing collected yet'
+          nextStep
+            ? nextStep.next
+            : data.download
+              ? `Everything is up to date as of ${dateOnly(data.download.last_checked_at)}.`
+              : 'Nothing collected yet.'
         }
-        actions={
-          <>
-            <RunMenu operations={data.operations} running={!!running} hasKey={data.hasKey} />
-            <CollectButton running={!!running} again={!!data.download} />
-          </>
-        }
+        actions={nextStep && <RunStepButton primary operation={nextStep.operation} label={runLabel(nextStep)} disabled={!!running} />}
       />
       <Desk
         storageKey="pipeline"
-        showPaneOnNarrow={!!search.run}
+        showPaneOnNarrow={!!search.step}
         onBack={() => navigate({ search: {}, replace: true })}
-        backLabel="All runs"
+        backLabel="All steps"
         list={
-          data.runs.length ? (
-            <div role="list" aria-label="Runs">
-              {data.runs.map((r) => (
-                <div role="listitem" key={r.id}>
-                  <DeskItem
-                    selected={r.id === selected}
-                    onSelect={() => select(r.id)}
-                    title={labTime(r.started_at)}
-                    detail={`${operationName(r.operation)} · ${duration(r.started_at, r.finished_at) ?? 'running'}`}
-                    end={<RunStatus status={r.status} />}
-                  />
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="px-4 py-3 text-[0.875rem] text-ink">No runs yet. Collect downloads the Startup Tunisia registry, keeps every distinct row and builds the startups from them.</p>
-          )
+          <div role="list" aria-label="Steps">
+            {state.steps.map((s) => (
+              <div role="listitem" key={s.operation}>
+                <DeskItem
+                  selected={s.operation === key}
+                  onSelect={() => select(s.operation)}
+                  title={s.label}
+                  detail={s.state === 'not_configured' ? 'Needs an AI key' : (s.reasons[0] ?? s.counts)}
+                  end={<StepStateBadge state={s.state} />}
+                />
+              </div>
+            ))}
+          </div>
         }
-        pane={detail ? <RunPane detail={detail} position={`${ids.indexOf(detail.run.id) + 1} of ${ids.length}`} /> : <DeskEmpty>No run to show yet.</DeskEmpty>}
+        pane={<StepPane step={step} runs={runs} detail={detail} selectedRun={search.run} position={`${keys.indexOf(key) + 1} of ${keys.length}`} busy={!!running} />}
       />
     </main>
   )
 }
 
 type Detail = NonNullable<Awaited<ReturnType<typeof getRunDetail>>>
+type RunItem = Awaited<ReturnType<typeof getPipeline>>['runs'][number]
 
 // Short labels for the counted facts; the step's own sentence is the fallback (and the hover title).
 const FACT: Record<string, string> = {
+  entries_new: 'rows not seen in any earlier download',
+  exact_copies: 'exact duplicate rows',
   no_description: 'no description',
   listed_more_than_once: 'listed more than once',
-  exact_copies: 'exact duplicate rows',
   other_sector: 'listed under two sectors',
   other_name: 'listed under two names',
   second_website: 'two websites, first kept',
@@ -127,136 +127,150 @@ const FACT: Record<string, string> = {
   website_unreadable: 'unreadable websites',
   label_unreadable: 'unreadable label dates',
   label_before_creation: 'labelled before founded',
-  // check
+  reachable: 'answered',
   unreachable: 'did not answer, asked twice',
   moved: 'answered from another domain',
   turned: 'changed status since the last check',
   social_not_checked: 'social pages, not checked',
   no_website: 'no website in the registry',
-  // embed and prepare
   embedded: 'embedded by this run',
   up_to_date: 'already up to date',
   from_prepared: 'embedded from a prepared text',
   removed: 'removed: no description any more',
   prepared: 'prepared by this run',
 }
-// Already told by the flow strip.
-const IN_FLOW = new Set(['entries_new', 'reachable'])
 
-// What each step takes in and gives out, for the flow strip. clean and merge belong to runs before pipeline v2.
-const IN_UNIT: Record<string, string> = {
-  collect: 'rows published',
-  build: 'entries',
-  check: 'websites',
-  prepare: 'descriptions',
-  embed: 'startups',
-  clean: 'rows',
-  merge: 'records',
-}
-const OUT_UNIT: Record<string, [string, string]> = {
-  collect: ['entry', 'entries'],
-  build: ['startup', 'startups'],
-  check: ['answering', 'answering'],
-  prepare: ['prepared', 'prepared'],
-  embed: ['vector', 'vectors'],
-  clean: ['record', 'records'],
-  merge: ['startup', 'startups'],
-}
-
-function RunPane({ detail, position }: { detail: Detail; position: string }) {
-  const { run, steps } = detail
-  const live = run.status === 'running'
-  const now = useNow(live)
-  const nowIso = new Date(now).toISOString()
-  const failed = run.status === 'failed' || run.status === 'interrupted'
-  const failedStep = steps.find((s) => s.status === 'failed')
-  const failure = (failedStep?.message ?? run.error)?.replace(/^.*?failed:\s*/i, '').replace(/[.\s]+$/, '')
-  const took = run.finished_at ? duration(run.started_at, run.finished_at) : duration(run.started_at, nowIso)
-  // In the order the steps wrote them, so "of those" lines stay under the line they detail.
-  const facts = steps.flatMap((st) => st.notes.filter((n) => !IN_FLOW.has(n.code) && n.count > 0))
-  const first = steps[0]
+function StepPane({
+  step,
+  runs,
+  detail,
+  selectedRun,
+  position,
+  busy,
+}: {
+  step: StepState
+  runs: RunItem[]
+  detail: Detail | null
+  selectedRun?: string
+  position: string
+  busy: boolean
+}) {
+  const navigate = useNavigate({ from: '/portal/' })
+  const stepName = STEP_OF[step.operation]
+  const facts = (detail?.steps ?? []).filter((s) => s.step === stepName).flatMap((s) => s.notes.filter((n) => n.count > 0))
+  const failure = detail && (detail.run.status === 'failed' || detail.run.status === 'interrupted') ? (detail.run.error ?? 'No message was recorded.') : null
+  const notConfigured = step.state === 'not_configured'
 
   return (
     <DeskPane
-      title={`${operationName(run.operation)} · ${labTime(run.started_at)}`}
-      statement={
-        <span className="inline-flex items-center gap-1.5">
-          <RunStatus status={run.status} />
-          <span className="text-ink-2">{live ? `${took ?? '0.1 s'} so far` : took ? `in ${took}` : ''}</span>
-        </span>
-      }
+      title={step.label}
+      statement={<StepStateBadge state={step.state} />}
       position={position}
+      foot={
+        notConfigured ? (
+          <p className="text-[0.875rem] text-ink">
+            Needs an AI key.{' '}
+            <Link to="/portal/keys" className="text-glaze underline">
+              Add one under Keys
+            </Link>
+          </p>
+        ) : (
+          <RunStepButton operation={step.operation} label={runLabel(step)} disabled={busy}>
+            Run this step
+          </RunStepButton>
+        )
+      }
     >
-      {failed && (
-        <p role="alert" className="flex items-start gap-2 border-s-[3px] border-destructive ps-2.5 text-[0.875rem] text-ink">
-          <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
+      <PaneSection title="Coverage">
+        <p className="text-[0.875rem] text-ink">{step.counts}</p>
+        <p className="mt-2 flex flex-wrap items-baseline gap-x-6 gap-y-1 text-[0.875rem] text-ink tabular-nums">
           <span>
-            {failedStep ? `${stepName(failedStep.step)} failed: ` : ''}
-            {failure ? `${failure}.` : run.status === 'interrupted' ? 'The server stopped while the run was going.' : 'No message was recorded.'} The registry from
-            the run before is unchanged.
+            <span className="font-display text-[1.5rem] leading-8">{step.current.toLocaleString('en-GB')}</span>
+            <span className="text-ink-2"> of {step.total.toLocaleString('en-GB')} current</span>
           </span>
+          {step.outOfDate > 0 && <span>{plural(step.outOfDate, 'out of date', 'out of date')}</span>}
+          {step.missing > 0 && <span>{plural(step.missing, 'never done', 'never done')}</span>}
         </p>
-      )}
+      </PaneSection>
 
-      {/* The flow: each number once, each step's time on its arrow. */}
-      <ol aria-label="What the run did" className="flex flex-wrap items-center gap-x-1 gap-y-3 py-1">
-        <li className="grid">
-          <span className="font-display text-[1.75rem] leading-8 text-ink tabular-nums">{first?.items_in !== null && first?.items_in !== undefined ? first.items_in.toLocaleString('en-GB') : '—'}</span>
-          <span className="text-[0.8125rem] text-ink-2">{(first && IN_UNIT[first.step]) ?? 'items'}</span>
-        </li>
-        {steps.map((st) => {
-          const [one, many] = OUT_UNIT[st.step] ?? ['item', 'items']
-          const t = st.status === 'running' ? duration(st.started_at, nowIso) : duration(st.started_at, st.finished_at)
-          return (
-            <li key={st.position} className="contents">
-              <span aria-hidden className="mx-3 grid min-w-[7.5rem] justify-items-center text-[0.8125rem] text-ink-2">
-                <span>
-                  {stepName(st.step).toLowerCase()}
-                  {t && ` · ${t}`}
-                </span>
-                <span className={cn('h-px w-full', st.status === 'done' ? 'bg-ink' : 'bg-edge')} />
-                <ArrowRight className="-mt-[9px] size-4 self-end justify-self-end text-ink" />
-              </span>
-              <span className="grid">
-                <span className="font-display text-[1.75rem] leading-8 text-ink tabular-nums">
-                  {st.items_out !== null ? st.items_out.toLocaleString('en-GB') : st.status === 'running' ? '…' : '—'}
-                </span>
-                <span className="text-[0.8125rem] text-ink-2">
-                  {st.items_out === 1 ? one : many}
-                  {st.status !== 'done' && st.status !== 'running' && ` · ${st.status === 'failed' ? 'failed' : 'not run'}`}
-                </span>
-                <span className="sr-only">
-                  {stepName(st.step)}: {st.message}
-                </span>
-              </span>
-            </li>
-          )
-        })}
-      </ol>
-
-      {!live && !failed && run.operation === 'collect' && (
-        <PaneSection title="What changed">
-          <p className="text-[0.875rem] text-ink">{changeSentence(run.change)}</p>
-        </PaneSection>
-      )}
-
-      {facts.length > 0 && (
-        <PaneSection title="What the data showed">
-          <ul className="grid max-w-[880px] gap-x-10 md:grid-cols-2">
-            {facts.map((n) => (
-              <li key={n.code} title={n.text} className="grid grid-cols-[3.5rem_minmax(0,1fr)] items-baseline gap-3 border-b border-hairline py-[7px] text-[0.875rem]">
-                <span className="text-end font-medium text-ink tabular-nums">{n.count.toLocaleString('en-GB')}</span>
-                <span className="text-ink">{FACT[n.code] ?? n.text}</span>
-              </li>
+      {(step.reasons.length > 0 || step.next) && (
+        <PaneSection title={step.reasons.length ? 'Why it is not current' : 'Next'}>
+          <ul className="grid gap-1 text-[0.875rem] text-ink">
+            {step.reasons.map((r) => (
+              <li key={r}>{r}</li>
             ))}
           </ul>
+          {step.next && !notConfigured && <p className="mt-2 text-[0.875rem] text-ink">{step.next}</p>}
         </PaneSection>
       )}
+
+      {detail && (
+        <PaneSection title={`What ${detail.run.id === runs[0]?.id ? 'the last run' : 'this run'} found · ${labTime(detail.run.started_at)}`}>
+          {failure && (
+            <p role="alert" className="mb-2 flex items-start gap-2 border-s-[3px] border-destructive ps-2.5 text-[0.875rem] text-ink">
+              <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
+              <span>{failure.replace(/[.\s]+$/, '')}.</span>
+            </p>
+          )}
+          {detail.run.operation === 'collect' && detail.run.status === 'done' && step.operation === 'collect' && (
+            <p className="mb-2 text-[0.875rem] text-ink">{changeSentence(detail.run.change)}</p>
+          )}
+          {facts.length ? (
+            <ul className="grid max-w-[880px] gap-x-10 md:grid-cols-2">
+              {facts.map((n) => (
+                <li key={n.code} title={n.text} className="grid grid-cols-[3.5rem_minmax(0,1fr)] items-baseline gap-3 border-b border-hairline py-[7px] text-[0.875rem]">
+                  <span className="text-end font-medium text-ink tabular-nums">{n.count.toLocaleString('en-GB')}</span>
+                  <span className="text-ink">{FACT[n.code] ?? n.text}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            !failure && <p className="text-[0.875rem] text-ink">Nothing counted for this step in that run.</p>
+          )}
+        </PaneSection>
+      )}
+
+      <PaneSection title={runs.length ? `Runs · ${runs.length}` : 'Runs'}>
+        {runs.length ? (
+          <table className="w-full border-collapse tabular-nums">
+            <thead>
+              <tr>
+                {['Started', 'Operation', 'Took', 'Status'].map((h) => (
+                  <th key={h} scope="col" className={deskTh}>
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {runs.map((r) => {
+                const on = r.id === (selectedRun ?? detail?.run.id)
+                return (
+                  <tr key={r.id} className={cn('cursor-pointer hover:bg-surface', on && 'bg-surface')} onClick={() => navigate({ search: { step: step.operation, run: r.id }, replace: true })}>
+                    <td className={cn(deskTd, on && 'shadow-[inset_3px_0_0_var(--ink)]')}>
+                      <button type="button" className="text-start" aria-current={on ? 'true' : undefined} onClick={() => navigate({ search: { step: step.operation, run: r.id }, replace: true })}>
+                        {labTime(r.started_at)}
+                      </button>
+                    </td>
+                    <td className={deskTd}>{operationName(r.operation)}</td>
+                    <td className={deskTd}>{duration(r.started_at, r.finished_at) ?? 'running'}</td>
+                    <td className={deskTd}>
+                      <RunStatus status={r.status} />
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        ) : (
+          <p className="text-[0.875rem] text-ink">This step has never run.</p>
+        )}
+      </PaneSection>
     </DeskPane>
   )
 }
 
-/** What a run did to the registry, as one short sentence. */
+/** What a Collect did to the registry, as one short sentence. */
 function changeSentence(change: RunChange) {
   switch (change.kind) {
     case 'stored': {

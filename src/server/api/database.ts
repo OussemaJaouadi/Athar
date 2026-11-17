@@ -7,7 +7,7 @@ import { DB_PAGE_SIZE as PAGE_SIZE } from '#/shared/database'
 import { getDatabase } from '../db'
 import { displayRow } from '../pipeline/clean'
 import type { RegistryRow } from '../pipeline/registry'
-import { foundersOf, websiteCheckOf, type WebsiteCheck } from './trace'
+import { foundersOf, websiteCheckOf, type WebsiteCheck } from './startup-facts'
 
 // Every database call is operator-only, checked on the server, not only in the UI.
 function requireOperator() {

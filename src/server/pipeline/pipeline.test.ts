@@ -281,3 +281,53 @@ describe('state of the pipeline', () => {
     expect(JSON.stringify(entryView(db, id))).not.toContain('Secret')
   })
 })
+
+describe('the rows behind the numbers', () => {
+  const { factRows, downloads, downloadChanges, people, ideaChecks } = require('./facts') as typeof import('./facts')
+
+  test('a counted note opens as the startups it counts', () => {
+    const db = database()
+    ingest(db, body([row(), row({ name: 'Paymee', website: 'https://paymee.tn', desc: null }), row({ name: 'Urban Green', website: 'https://www.facebook.com/urbangreen.tn', founders: ['U G'] })]), null)
+    run(db)
+    db.query("INSERT INTO website_checks (startup_id, url, status, detail, checked_at, since) VALUES ('relead', 'https://relead.tn', 'unreachable', 'no such domain', 't', 't')").run()
+    expect(factRows(db, 'no_description')).toEqual({ rows: [{ startupId: 'paymee', name: 'Paymee', value: 'The registry publishes no description' }], total: 1 })
+    expect(factRows(db, 'unreachable:no such domain')?.rows).toEqual([{ startupId: 'relead', name: 'Relead', value: 'https://relead.tn · no such domain' }])
+    expect(factRows(db, 'social_not_checked')?.rows.map((r) => r.startupId)).toEqual(['urban-green'])
+    expect(factRows(db, 'startups_unchanged')).toBeNull()
+  })
+
+  test('a download says what it added, what was edited and what was withdrawn', () => {
+    const db = database()
+    const first = Array.from({ length: 4 }, (_, i) => row({ name: `Startup ${i}`, website: `https://s${i}.tn`, founders: [`Founder ${i}`] }))
+    ingest(db, body(first), null)
+    run(db)
+    ingest(db, body([first[1], { ...first[2], desc: 'Edited.' }, first[3], row({ name: 'Newcomer', website: 'https://new.tn', founders: ['N C'] })]), null)
+    run(db)
+    expect(downloads(db).map((d) => [d.id, d.entriesNew, d.entriesGone, d.startupsNew, d.startupsGone])).toEqual([[2, 2, 2, 1, 1], [1, 4, 0, 4, 0]])
+    expect(downloadChanges(db, 2)!.map((c) => [c.name, c.kind]).sort()).toEqual([['Newcomer', 'new startup'], ['Startup 0', 'startup withdrawn'], ['Startup 2', 'edited']])
+    expect(downloadChanges(db, 9)).toBeNull()
+  })
+
+  test('people are counted once whatever the spelling, and found by any of them', () => {
+    const db = database()
+    ingest(db, body([row(), row({ name: 'RGPD Tunisie', website: 'https://rgpd-tunisie.tn', founders: ['Rayen CHERNI', 'Slim Abdeljelil'] })]), null)
+    run(db)
+    expect(people(db).total).toBe(3)
+    const repeat = people(db, { repeat: true })
+    expect(repeat.rows).toHaveLength(1)
+    expect(repeat.rows[0]).toMatchObject({ slug: 'cherni-rayen', name: 'Rayen Cherni', spellings: ['Rayen CHERNI'] })
+    expect(repeat.rows[0].startups.map((s) => s.id).sort()).toEqual(['relead', 'rgpd-tunisie'])
+    expect(people(db, { q: 'CHERNI' }).rows.map((p) => p.slug)).toEqual(['cherni-rayen'])
+  })
+
+  test('stored idea checks list the startups they found close', () => {
+    const db = database()
+    ingest(db, body([row()]), null)
+    run(db)
+    db.query("INSERT INTO idea_checks (id, idea, language, checked_at, download, compared, matches_json, saved) VALUES ('abc', 'Free Wi-Fi for cafes', 'en', '2026-11-17T10:00:00Z', 1, 1, ?, 1)").run(
+      JSON.stringify([{ startupId: 'relead', closeness: 0.6, band: 'close' }, { startupId: 'gone', closeness: 0.58, band: 'close' }, { startupId: 'relead', closeness: 0.5, band: 'far' }]),
+    )
+    expect(ideaChecks(db)).toEqual([{ id: 'abc', idea: 'Free Wi-Fi for cafes', language: 'en', checkedAt: '2026-11-17T10:00:00Z', saved: true, explainedBy: null, close: [{ id: 'relead', name: 'Relead' }] }])
+    expect(ideaChecks(db, { savedOnly: true })).toHaveLength(1)
+  })
+})

@@ -10,6 +10,9 @@ import type { WebsiteCheck } from '#/shared/website'
 export const personSlug = (personKey: string) => personKey.replace(/ /g, '-')
 const keyOf = (slug: string) => slug.replace(/-/g, ' ')
 
+/** Words written all in capitals: "Rayen CHERNI" has one. Between two spellings used as often, the calmer one is shown. */
+const capitals = (name: string) => name.split(/\s+/).filter((w) => w.length > 1 && w === w.toUpperCase()).length
+
 export type PersonStartup = {
   id: string; name: string; sector: string | null; labelled: string | null; description: string | null
   /** The name as written on this startup's registry row. */
@@ -43,7 +46,7 @@ export const getPerson = createServerFn()
     // The spelling used most often is the name shown; the others are listed as written.
     const spellings = [...new Set(rows.map((r) => r.written))]
     const count = (s: string) => rows.filter((r) => r.written === s).length
-    const name = [...spellings].sort((a, b) => count(b) - count(a) || (a === a.toUpperCase() ? 1 : 0) - (b === b.toUpperCase() ? 1 : 0))[0]
+    const name = [...spellings].sort((a, b) => count(b) - count(a) || capitals(a) - capitals(b))[0]
 
     // Founded with: everyone named beside this person, and on which startups.
     const beside = db

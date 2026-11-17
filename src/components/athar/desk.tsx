@@ -267,11 +267,14 @@ export function DeskEmpty({ children }: { children: React.ReactNode }) {
 }
 
 /** A section inside the pane: a 13px ink-2 heading, then the content. No card. */
-export function PaneSection({ title, aside, children, className }: { title: React.ReactNode; aside?: React.ReactNode; children: React.ReactNode; className?: string }) {
+export function PaneSection({ title, aside, children, className, icon: Icon }: { title: React.ReactNode; aside?: React.ReactNode; children: React.ReactNode; className?: string; icon?: React.ComponentType<{ className?: string; 'aria-hidden'?: boolean; strokeWidth?: number }> }) {
   return (
     <section className={cn('min-w-0', className)}>
       <div className="mb-1.5 flex items-baseline justify-between gap-3">
-        <h3 className="font-sans text-[0.8125rem] font-medium text-ink-2">{title}</h3>
+        <h3 className="flex items-center gap-1.5 font-sans text-[0.8125rem] font-medium text-ink-2">
+          {Icon && <Icon className="size-4 shrink-0" strokeWidth={1.5} aria-hidden />}
+          {title}
+        </h3>
         {aside && <span className="text-[0.8125rem] text-ink-2">{aside}</span>}
       </div>
       {children}

@@ -1,6 +1,6 @@
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
-import { CircleAlert } from "lucide-react";
-import { useCallback, useEffect, useRef } from "react";
+import { Blocks, BookOpen, CircleAlert, Download, Gauge, Globe, History, KeyRound, Sparkles, TriangleAlert, Waypoints } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   RunStepButton,
@@ -13,6 +13,7 @@ import {
   DeskItem,
   DeskPane,
   PaneSection,
+  deskBtn,
   deskTd,
   deskTh,
   useDeskKeys,
@@ -130,6 +131,17 @@ const dateOnly = (iso: string) =>
 const runLabel = (s: StepState) =>
   s.operation === "rebuild" ? "Rebuild" : s.label;
 
+// One icon per step, the same in the list and in the pane, so a step is recognised before it is read.
+const STEP_ICON: Record<string, typeof Download> = {
+  collect: Download,
+  rebuild: Blocks,
+  check: Globe,
+  prepare: Sparkles,
+  embed: Waypoints,
+};
+// A step that needs the operator: its Run button becomes the pane's primary action.
+const NEEDS_RUN = new Set(["stale", "never_run", "failed"]);
+
 function Pipeline() {
   const {
     state,
@@ -199,22 +211,35 @@ function Pipeline() {
         backLabel="All steps"
         list={
           <div role="list" aria-label="Steps">
-            {state.steps.map((s, i) => (
-              <div role="listitem" key={s.operation}>
-                <DeskItem
-                  wrap
-                  selected={s.operation === key}
-                  onSelect={() => select(s.operation)}
-                  title={`${i + 1}. ${s.label}`}
-                  detail={
-                    s.state === "not_configured"
-                      ? "Needs an AI key"
-                      : (s.reasons[0] ?? s.counts)
-                  }
-                  end={<StepStateBadge state={s.state} />}
-                />
-              </div>
-            ))}
+            {state.steps.map((s, i) => {
+              const Icon = STEP_ICON[s.operation] ?? Download;
+              return (
+                <div role="listitem" key={s.operation}>
+                  <DeskItem
+                    wrap
+                    selected={s.operation === key}
+                    onSelect={() => select(s.operation)}
+                    title={<span className="font-medium">{s.label}</span>}
+                    detail={
+                      s.state === "not_configured"
+                        ? "Optional. Rewrites descriptions for matching."
+                        : (s.reasons[0] ?? s.counts).split(". ")[0].replace(/\.$/, "")
+                    }
+                    lead={
+                      // The pipeline, drawn: a node per step and the line that joins them.
+                      <span className="flex w-8 shrink-0 flex-col items-center self-stretch" aria-hidden>
+                        <span className={cn("w-px flex-1", i > 0 ? "bg-edge" : "bg-transparent")} />
+                        <span className="grid size-8 place-items-center rounded-full border border-edge bg-canvas text-ink">
+                          <Icon className="size-4" strokeWidth={1.5} />
+                        </span>
+                        <span className={cn("w-px flex-1", i < state.steps.length - 1 ? "bg-edge" : "bg-transparent")} />
+                      </span>
+                    }
+                    end={<StepStateBadge state={s.state} />}
+                  />
+                </div>
+              );
+            })}
           </div>
         }
         pane={
@@ -223,7 +248,7 @@ function Pipeline() {
             runs={runs}
             detail={detail}
             selectedRun={search.run}
-            position={`${keys.indexOf(key) + 1} of ${keys.length}`}
+            position={`Step ${keys.indexOf(key) + 1} of ${keys.length}`}
             busy={!!running}
             fact={search.fact}
             factResult={factResult}
@@ -313,6 +338,8 @@ function StepPane({
       ? (detail.run.error ?? "No message was recorded.")
       : null;
   const notConfigured = step.state === "not_configured";
+  const StepIcon = STEP_ICON[step.operation] ?? Download;
+  const [view, setView] = useState<"overview" | "runs" | "how">("overview");
   const factNote = fact ? facts.find((n) => n.code === fact) : undefined;
   const firstDownload = downloads.length
     ? Math.min(...downloads.map((d) => d.id))
@@ -320,25 +347,27 @@ function StepPane({
 
   return (
     <DeskPane
-      title={step.label}
+      title={
+        <span className="inline-flex items-center gap-2.5">
+          <StepIcon className="size-5 shrink-0" strokeWidth={1.5} aria-hidden />
+          {step.label}
+        </span>
+      }
       statement={<StepStateBadge state={step.state} />}
       position={position}
-      foot={
+      headerEnd={
         notConfigured ? (
-          <p className="text-[0.875rem] text-ink">
-            Needs an AI key.{" "}
-            <Link to="/portal/keys" className="text-glaze underline">
-              Add one under Keys
-            </Link>
-          </p>
+          <Link to="/portal/keys" className={deskBtn}>
+            <KeyRound aria-hidden />
+            Add an AI key
+          </Link>
         ) : (
           <RunStepButton
+            primary={NEEDS_RUN.has(step.state)}
             operation={step.operation}
             label={runLabel(step)}
             disabled={busy}
-          >
-            Run this step
-          </RunStepButton>
+          />
         )
       }
     >
@@ -364,17 +393,118 @@ function StepPane({
         />
       ) : (
         <>
-          <PaneSection title="What this step does">
+          <div role="tablist" aria-label="What to show about this step" className="-mt-1 flex gap-1 border-b border-hairline">
+            {(
+              [
+                ["overview", "Overview", Gauge],
+                ["runs", runs.length ? `Runs · ${runs.length}` : "Runs", History],
+                ["how", "How it works", BookOpen],
+              ] as const
+            ).map(([id, label, Icon]) => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={view === id}
+                onClick={() => setView(id)}
+                className={cn(
+                  "-mb-px inline-flex h-9 items-center gap-2 border-b-2 px-3 text-[0.875rem] whitespace-nowrap transition-colors duration-150 motion-reduce:transition-none",
+                  view === id ? "border-ink font-medium text-ink" : "border-transparent text-ink-2 hover:text-ink",
+                )}
+              >
+                <Icon className="size-4" strokeWidth={1.5} aria-hidden />
+                {label}
+              </button>
+            ))}
+          </div>
+          {view === "how" ? (
             <StepAbout operation={step.operation} />
+          ) : view === "runs" ? (
+          <PaneSection title="Every run of this step" icon={History}>
+            {runs.length ? (
+              <table className="w-full border-collapse tabular-nums">
+                <thead>
+                  <tr>
+                    {["Started", "Operation", "Took", "Status"].map((h) => (
+                      <th key={h} scope="col" className={deskTh}>
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {runs.map((r) => {
+                    const on = r.id === (selectedRun ?? detail?.run.id);
+                    return (
+                      <tr
+                        key={r.id}
+                        className={cn(
+                          "cursor-pointer hover:bg-surface",
+                          on && "bg-surface",
+                        )}
+                        onClick={() => {
+                          setView("overview");
+                          navigate({
+                            search: { step: step.operation, run: r.id },
+                            replace: true,
+                          });
+                        }}
+                      >
+                        <td
+                          className={cn(
+                            deskTd,
+                            on && "shadow-[inset_3px_0_0_var(--ink)]",
+                          )}
+                        >
+                          <button
+                            type="button"
+                            className="text-start"
+                            aria-current={on ? "true" : undefined}
+                            onClick={() =>
+                              navigate({
+                                search: { step: step.operation, run: r.id },
+                                replace: true,
+                              })
+                            }
+                          >
+                            {labTime(r.started_at)}
+                          </button>
+                        </td>
+                        <td className={deskTd}>{operationName(r.operation)}</td>
+                        <td className={deskTd}>
+                          {duration(r.started_at, r.finished_at) ?? "running"}
+                        </td>
+                        <td className={deskTd}>
+                          <RunStatus status={r.status} />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            ) : (
+              <p className="text-[0.875rem] text-ink">
+                This step has never run.
+              </p>
+            )}
           </PaneSection>
-
-          <PaneSection title="Where it stands now">
-            <p className="text-[0.875rem] text-ink">{step.counts}</p>
-            <p className="mt-2 flex flex-wrap items-baseline gap-x-6 gap-y-1 text-[0.875rem] text-ink tabular-nums">
+          ) : (
+            <>
+          <PaneSection title="Where it stands" icon={Gauge}>
+            <p className="max-w-[75ch] text-[0.9375rem] text-ink">{step.counts}</p>
+            {step.total > 0 && (
+              <div
+                className="mt-2.5 flex h-2 w-full max-w-[520px] overflow-hidden rounded-full bg-surface-raised"
+                role="img"
+                aria-label={`${step.current} of ${step.total} done and up to date`}
+              >
+                <span className="bg-ok" style={{ width: `${(step.current / step.total) * 100}%` }} />
+                <span className="bg-warn" style={{ width: `${(step.outOfDate / step.total) * 100}%` }} />
+              </div>
+            )}
+            <p className="mt-1.5 flex flex-wrap items-baseline gap-x-5 gap-y-1 text-[0.875rem] text-ink tabular-nums">
               <span>
-                <span className="font-display text-[1.5rem] leading-8">
-                  {step.current.toLocaleString("en-GB")}
-                </span>
+                <span className="font-medium">{step.current.toLocaleString("en-GB")}</span>
                 <span className="text-ink-2">
                   {" "}
                   of {step.total.toLocaleString("en-GB")} done and up to date
@@ -394,6 +524,8 @@ function StepPane({
           {(step.reasons.length > 0 || step.next) && (
             <PaneSection
               title={step.reasons.length ? "Why it is not current" : "Next"}
+              icon={TriangleAlert}
+              className="rounded-[6px] bg-warn-bg px-3.5 py-3"
             >
               <ul className="grid gap-1 text-[0.875rem] text-ink">
                 {step.reasons.map((r) => (
@@ -408,6 +540,7 @@ function StepPane({
 
           {detail && (
             <PaneSection
+              icon={History}
               title={`What ${detail.run.id === runs[0]?.id ? "the last run" : "this run"} found · ${labTime(detail.run.started_at)}`}
             >
               {failure && (
@@ -489,76 +622,9 @@ function StepPane({
             </PaneSection>
           )}
 
-          <PaneSection title={runs.length ? `Runs · ${runs.length}` : "Runs"}>
-            {runs.length ? (
-              <table className="w-full border-collapse tabular-nums">
-                <thead>
-                  <tr>
-                    {["Started", "Operation", "Took", "Status"].map((h) => (
-                      <th key={h} scope="col" className={deskTh}>
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {runs.map((r) => {
-                    const on = r.id === (selectedRun ?? detail?.run.id);
-                    return (
-                      <tr
-                        key={r.id}
-                        className={cn(
-                          "cursor-pointer hover:bg-surface",
-                          on && "bg-surface",
-                        )}
-                        onClick={() =>
-                          navigate({
-                            search: { step: step.operation, run: r.id },
-                            replace: true,
-                          })
-                        }
-                      >
-                        <td
-                          className={cn(
-                            deskTd,
-                            on && "shadow-[inset_3px_0_0_var(--ink)]",
-                          )}
-                        >
-                          <button
-                            type="button"
-                            className="text-start"
-                            aria-current={on ? "true" : undefined}
-                            onClick={() =>
-                              navigate({
-                                search: { step: step.operation, run: r.id },
-                                replace: true,
-                              })
-                            }
-                          >
-                            {labTime(r.started_at)}
-                          </button>
-                        </td>
-                        <td className={deskTd}>{operationName(r.operation)}</td>
-                        <td className={deskTd}>
-                          {duration(r.started_at, r.finished_at) ?? "running"}
-                        </td>
-                        <td className={deskTd}>
-                          <RunStatus status={r.status} />
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            ) : (
-              <p className="text-[0.875rem] text-ink">
-                This step has never run.
-              </p>
-            )}
-          </PaneSection>
-
           {step.operation === "collect" && (
             <PaneSection
+              icon={Download}
               title={
                 downloads.length
                   ? `Downloads · ${downloads.length}`
@@ -567,6 +633,8 @@ function StepPane({
             >
               <DownloadList downloads={downloads} onOpen={(id) => open({ download: id })} />
             </PaneSection>
+          )}
+            </>
           )}
         </>
       )}

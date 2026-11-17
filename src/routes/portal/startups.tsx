@@ -1,11 +1,12 @@
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
-import { Check, Copy, Search } from 'lucide-react'
+import { Archive, Bookmark, CalendarCheck, Check, CircleDashed, Copy, FileText, Files, Flag, Globe, Languages, Link2, ScanText, Search, Tag, Users } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { Desk, DeskBar, DeskEmpty, DeskItem, DeskPane, DeskSelect, Fields, JsonBlock, Kbd, PaneSection, deskBtn, deskInput, useDeskKeys } from '@/components/athar/desk'
+import { Desk, DeskBar, DeskEmpty, DeskItem, DeskPane, DeskSelect, JsonBlock, Kbd, PaneSection, deskBtn, deskInput, useDeskKeys } from '@/components/athar/desk'
 import { GROUP_NAME, costOf, factShort, groupFacts, isSilent } from '@/components/athar/quality-facts'
 import { Differences, HowRead, Namesakes, Observed } from '@/components/athar/ops-startup-sections'
 import { Disclosure } from '@/components/athar/startup-title'
+import { TileMark } from '@/components/athar/tile-mark'
 import { day, plural } from '@/components/athar/trace-parts'
 import { cn } from '@/lib/utils'
 import { getCorpus } from '#/server/api/app'
@@ -152,6 +153,7 @@ function StartupsPage() {
           <div role="listitem" key={it.id}>
             <DeskItem
               selected={isSelected(it)}
+              lead={it.sector ? <TileMark id={it.id} sector={it.sector} size={28} className="shrink-0" title={it.sector} /> : undefined}
               onSelect={() => select(it.id)}
               title={<span dir="auto">{it.name}</span>}
               qualifier={it.sector ?? (fact ? month(it.labelled ?? null) ?? undefined : undefined)}
@@ -197,18 +199,21 @@ function StartupsPage() {
       </DeskBar>
       <div className="flex min-h-0 flex-1">
         <nav aria-label="Facts about the data" className="hidden w-[272px] shrink-0 overflow-y-auto overscroll-contain border-e border-edge min-[1100px]:block">
-          <FactRowButton selected={!fact} label="To read first" onSelect={() => pickFact(undefined)} />
+          <FactRowButton selected={!fact} label="To read first" icon={Bookmark} onSelect={() => pickFact(undefined)} />
           {grouped.map((g) => {
             const silent = g.facts.filter(isSilent)
             const rest = g.facts.filter((f) => !isSilent(f))
             return (
               <div key={g.group}>
-                <p className="border-b border-hairline px-4 pt-4 pb-1.5 text-[0.8125rem] font-medium text-ink-2">{GROUP_NAME[g.group]}</p>
+                <p className="flex items-center gap-2 border-b border-hairline px-4 pt-4 pb-1.5 text-[0.8125rem] font-medium text-ink-2">
+                  <GroupIcon group={g.group} />
+                  {GROUP_NAME[g.group]}
+                </p>
                 {silent.length > 0 && (
                   <>
                     <p className="flex items-baseline gap-3 border-b border-hairline px-4 py-2 text-[0.875rem] text-ink">
                       <span className="min-w-0 flex-1">Does not answer, by reason</span>
-                      <span className="shrink-0 text-[0.8125rem] text-ink-2 tabular-nums">{silent.reduce((t, f) => t + f.count, 0).toLocaleString('en-GB')}</span>
+                      <span className="shrink-0 text-[0.8125rem] font-medium text-ink tabular-nums">{silent.reduce((t, f) => t + f.count, 0).toLocaleString('en-GB')}</span>
                     </p>
                     {silent.map((f) => (
                       <FactRowButton key={f.code} indent selected={fact?.code === f.code} label={factShort(f)} count={f.count} of={startups} onSelect={() => pickFact(f.code)} />
@@ -237,26 +242,66 @@ function StartupsPage() {
   )
 }
 
-/** One fact in the facts column: its words, then its count; the chosen one carries the desk's ink bar. */
-function FactRowButton({ selected, label, count, of, onSelect, indent }: { selected: boolean; label: string; count?: number; of?: number; onSelect: () => void; indent?: boolean }) {
+const GROUP_ICON = { missing: CircleDashed, website: Globe, listing: Files, reading: ScanText, registry: Archive } as const
+function GroupIcon({ group }: { group: keyof typeof GROUP_ICON }) {
+  const Icon = GROUP_ICON[group]
+  return <Icon className="size-4 shrink-0" strokeWidth={1.5} aria-hidden />
+}
+
+/** One fact in the facts column: its words, then its count in a pill; the chosen one carries the desk's ink bar. */
+function FactRowButton({
+  selected,
+  label,
+  count,
+  of,
+  onSelect,
+  indent,
+  icon: Icon,
+}: {
+  selected: boolean
+  label: string
+  count?: number
+  of?: number
+  onSelect: () => void
+  indent?: boolean
+  icon?: typeof Bookmark
+}) {
   return (
     <button
       type="button"
       onClick={onSelect}
       aria-current={selected ? 'true' : undefined}
       className={cn(
-        'flex w-full items-baseline gap-3 border-b border-hairline py-2 pe-4 text-start text-[0.875rem] text-ink',
-        indent ? 'ps-8' : 'ps-4',
-        selected ? 'bg-surface shadow-[inset_3px_0_0_var(--ink)]' : 'hover:bg-surface',
+        'flex w-full items-center gap-2 border-b border-hairline py-2 pe-3 text-start text-[0.875rem] text-ink transition-colors duration-150 motion-reduce:transition-none',
+        indent ? 'ps-10' : 'ps-4',
+        selected ? 'bg-surface font-medium shadow-[inset_3px_0_0_var(--ink)]' : 'hover:bg-surface',
       )}
     >
+      {Icon && <Icon className="size-4 shrink-0 text-ink-2" strokeWidth={1.5} aria-hidden />}
       <span className="min-w-0 flex-1">{label}</span>
-      {count !== undefined && (
-        <span className="shrink-0 text-[0.8125rem] text-ink-2 tabular-nums" title={of && count ? `${Math.round((count / of) * 100)}% of startups` : undefined}>
-          {count ? count.toLocaleString('en-GB') : 'none'}
-        </span>
-      )}
+      {count !== undefined &&
+        (count ? (
+          <span
+            className={cn('shrink-0 rounded-full px-2 text-[0.8125rem] leading-5 font-normal tabular-nums', selected ? 'bg-ink text-canvas' : 'bg-surface-raised text-ink')}
+            title={of ? `${Math.round((count / of) * 100)}% of startups` : undefined}
+          >
+            {count.toLocaleString('en-GB')}
+          </span>
+        ) : (
+          <span className="shrink-0 text-[0.8125rem] font-normal text-ink-3">none</span>
+        ))}
     </button>
+  )
+}
+
+/** One fact about the startup on the line under its description: an icon that names the kind, then the value. */
+function Meta({ icon: Icon, label, children }: { icon: typeof Bookmark; label: string; children: React.ReactNode }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 text-[0.875rem] text-ink" title={label}>
+      <Icon className="size-4 shrink-0 text-ink-2" strokeWidth={1.5} aria-hidden />
+      <span className="sr-only">{label}: </span>
+      {children}
+    </span>
   )
 }
 
@@ -316,41 +361,79 @@ function StartupPane({ d, openEntry }: { d: Detail; openEntry?: string }) {
 
   return (
     <DeskPane
-      title={s.name}
-      statement={<span className="font-mono text-[0.8125rem]">{s.id}</span>}
+      title={
+        <span className="inline-flex items-center gap-3">
+          <TileMark id={s.id} sector={s.sector} size={32} className="shrink-0" title={s.sector ?? undefined} />
+          <span dir="auto">{s.name}</span>
+        </span>
+      }
+      statement={<span className="font-mono text-[0.8125rem] text-ink-2">{s.id}</span>}
       position={`${plural(entries.length, 'entry', 'entries')}${page.source.withdrawnSince ? ` · not in the registry since ${day(page.source.withdrawnSince)}` : ''}`}
     >
-      <PaneSection title="Values" aside={`read from entry ${lead.id}`}>
-        <Fields
-          fields={[
-            { label: 'Name', value: s.name },
-            { label: 'Description', value: s.description },
-            { label: 'Language', value: s.language ? (LANGUAGE[s.language] ?? s.language) : null },
-            { label: 'Sector', value: s.sector },
-            { label: 'Labelled', value: month(s.labelled) },
-            { label: 'Founded', value: s.creationYear },
-            { label: 'Website', value: s.website, mono: true },
-            { label: 'Website kind', value: s.websiteKind ? (WEBSITE_KIND[s.websiteKind] ?? s.websiteKind) : null },
-            {
-              label: founders.length === 1 ? 'Founder' : 'Founders',
-              value: founders.length ? (
-                <span className="grid gap-0.5">
-                  {founders.map((f) => (
-                    <span key={f.position}>
-                      <Link to="/people/$slug" params={{ slug: f.slug }} className="text-glaze underline">
-                        {f.name}
-                      </Link>
-                      {f.startups > 1 && <span className="text-ink-2"> · {f.startups} startups</span>}
-                    </span>
-                  ))}
-                </span>
-              ) : null,
-            },
-          ]}
-        />
-      </PaneSection>
+      <section className="grid max-w-[980px] gap-3">
+        {s.description ? (
+          <p dir="auto" className="max-w-[75ch] text-[0.9375rem] leading-relaxed text-ink">
+            {s.description}
+          </p>
+        ) : (
+          <p className="text-[0.9375rem] text-ink-2">No description in the registry.</p>
+        )}
+        <p className="flex flex-wrap items-center gap-x-6 gap-y-2">
+          {s.sector && (
+            <Meta icon={Tag} label="Sector">
+              {s.sector}
+            </Meta>
+          )}
+          {s.labelled && (
+            <Meta icon={CalendarCheck} label="Labelled">
+              Labelled {month(s.labelled)}
+            </Meta>
+          )}
+          {s.creationYear && (
+            <Meta icon={Flag} label="Founded">
+              Founded {s.creationYear}
+            </Meta>
+          )}
+          {s.language && (
+            <Meta icon={Languages} label="Language of the description">
+              {LANGUAGE[s.language] ?? s.language}
+            </Meta>
+          )}
+        </p>
+        <p className="flex flex-wrap items-center gap-x-6 gap-y-2">
+          <Meta icon={Globe} label="Website">
+            {s.website ? (
+              <>
+                <a href={s.website} target="_blank" rel="noreferrer" className="font-mono text-[0.8125rem] text-glaze underline">
+                  {s.website}
+                </a>
+                {s.websiteKind && s.websiteKind !== 'own' && <span className="text-ink-2">· {(WEBSITE_KIND[s.websiteKind] ?? s.websiteKind).toLowerCase()}</span>}
+              </>
+            ) : (
+              <span className="text-ink-2">No website in the registry</span>
+            )}
+          </Meta>
+        </p>
+        <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <Meta icon={Users} label={founders.length === 1 ? 'Founder' : 'Founders'}>
+            {founders.length === 0 ? <span className="text-ink-2">No founder in the registry</span> : null}
+          </Meta>
+          {founders.map((f, i) => (
+            <span key={f.position} className="text-[0.875rem] text-ink">
+              <Link to="/people/$slug" params={{ slug: f.slug }} className="text-glaze underline">
+                {f.name}
+              </Link>
+              {f.startups > 1 && <span className="text-ink-2"> ({f.startups} startups)</span>}
+              {i < founders.length - 1 && <span className="text-ink-2">,</span>}
+            </span>
+          ))}
+        </p>
+        <p className="text-[0.8125rem] text-ink-2">
+          Read from <a href={`#entry-${lead.id}`} className="font-mono text-glaze underline">entry {lead.id}</a>
+        </p>
+      </section>
 
-      <PaneSection title="Why these entries belong together">
+      <PaneSection title="Why these entries belong together" icon={Link2}>
         {lead.siblings.length === 0 ? (
           <p className="text-[0.875rem] text-ink">The registry lists {s.name} once.</p>
         ) : (
@@ -368,7 +451,7 @@ function StartupPane({ d, openEntry }: { d: Detail; openEntry?: string }) {
         <Namesakes items={lead.namesakes} />
       </PaneSection>
 
-      <PaneSection title={entries.length === 1 ? 'The entry' : 'The entries'}>
+      <PaneSection title={entries.length === 1 ? 'The entry, as the registry published it' : 'The entries, as the registry published them'} icon={FileText}>
         <div className="grid gap-6">
           {entries.map((e) => {
             const x = e.id === lead.id ? null : sibling(e.id)

@@ -41,6 +41,10 @@
   --error: #b3261e;
   --warn: #7a5f00;
   --warn-bg: #f7edd6;
+  --ok: #0f7a66;
+  --ok-bg: #d9ece5;
+  --bad: #b3261e;
+  --bad-bg: #f7dfdc;
   --field: #2a211c;
   --field-ink: #f8f6f1;
   --field-ink-2: #a89c90;
@@ -112,6 +116,10 @@
   --error: #f08a80;
   --warn: #e0b84a;
   --warn-bg: #332a12;
+  --ok: #6fcdb4;
+  --ok-bg: #16302a;
+  --bad: #f08a80;
+  --bad-bg: #3b1d1a;
   --field: #2e231e;
   --field-ink: #f8f6f1;
   --field-ink-2: #ddd0c4;
@@ -155,6 +163,10 @@
   --error: #f08a80;
   --warn: #e0b84a;
   --warn-bg: #332a12;
+  --ok: #6fcdb4;
+  --ok-bg: #16302a;
+  --bad: #f08a80;
+  --bad-bg: #3b1d1a;
   --field: #2e231e;
   --field-ink: #f8f6f1;
   --field-ink-2: #ddd0c4;
@@ -217,6 +229,10 @@
   --color-ochre-text: var(--ochre-text);
   --color-warn: var(--warn);
   --color-warn-bg: var(--warn-bg);
+  --color-ok: var(--ok);
+  --color-ok-bg: var(--ok-bg);
+  --color-bad: var(--bad);
+  --color-bad-bg: var(--bad-bg);
   --color-field: var(--field);
   --color-field-ink: var(--field-ink);
   --color-field-ink-2: var(--field-ink-2);

@@ -14,10 +14,11 @@ export type StateKind = 'current' | 'stale' | 'none'
 
 /** An observation or a computed value is current, out of date, or absent: the same icon-plus-word as Status. */
 export function StateWord({ state }: { state: StateKind }) {
-  const { Icon, word } = state === 'current' ? { Icon: CircleCheck, word: 'Up to date' } : state === 'stale' ? { Icon: Clock, word: 'Stale' } : { Icon: CircleDashed, word: 'None' }
+  const { Icon, word, tone } =
+    state === 'current' ? { Icon: CircleCheck, word: 'Up to date', tone: 'text-ok' } : state === 'stale' ? { Icon: Clock, word: 'Out of date', tone: 'text-warn' } : { Icon: CircleDashed, word: 'None', tone: 'text-ink-2' }
   return (
     <span className="inline-flex items-center gap-1.5 text-[0.875rem] text-ink">
-      <Icon className="size-4 shrink-0" aria-hidden />
+      <Icon className={`size-4 shrink-0 ${tone}`} aria-hidden />
       {word}
     </span>
   )

@@ -21,7 +21,7 @@ export const Route = createFileRoute('/portal/keys')({
 
 const providerName = (p: string) => (isProvider(p) ? PROVIDER_NAME[p] : p)
 
-// Keys: a settings page, not a desk. A compact table; "Add a key" opens the form in the page, above the table.
+// Keys: a settings page, not a desk. A compact table; "Add a key" opens a small dialog with one action.
 function KeysPage() {
   const keys = Route.useLoaderData()
   const [adding, setAdding] = useState(false)
@@ -34,7 +34,7 @@ function KeysPage() {
         title="Keys"
         facts="Used by Prepare and the idea sentences"
         actions={
-          keys.length > 0 && !adding && (
+          keys.length > 0 && (
             <button type="button" className={deskPrimary} onClick={() => setAdding(true)}>
               <Plus aria-hidden />
               Add a key
@@ -43,11 +43,9 @@ function KeysPage() {
         }
       />
       <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4 [scrollbar-width:thin] [scrollbar-color:var(--edge)_transparent]">
-        <AddKeyForm open={adding} onOpenChange={setAdding} onSaved={setFresh} />
         {keys.length === 0 ? (
-          adding ? null : (
           <div className="mx-auto mt-[12vh] grid max-w-[420px] justify-items-center gap-3 text-center">
-            <span className="grid size-10 place-items-center rounded-full border border-edge text-ink-2">
+            <span className="grid size-10 place-items-center rounded-full bg-ok-bg text-ok">
               <KeyRound className="size-5" strokeWidth={1.5} aria-hidden />
             </span>
             <h2 className="font-display text-[1.375rem] leading-tight font-bold text-ink">No keys yet</h2>
@@ -59,7 +57,6 @@ function KeysPage() {
               Add a key
             </button>
           </div>
-          )
         ) : (
           <table className="w-full tabular-nums">
             <thead>
@@ -82,6 +79,7 @@ function KeysPage() {
           </table>
         )}
       </div>
+      <AddKeyForm open={adding} onOpenChange={setAdding} onSaved={setFresh} />
     </main>
   )
 }
@@ -140,7 +138,7 @@ function KeyRowView({ k, used, highlight }: { k: KeyRow; used: boolean; highligh
             'Testing…'
           ) : tested ? (
             <span className="inline-flex items-center gap-1.5" title={!ok && message ? message : undefined}>
-              <Icon className="size-4 shrink-0" aria-hidden />
+              <Icon className={cn('size-4 shrink-0', ok ? 'text-ok' : 'text-bad')} aria-hidden />
               {ok ? 'Passed' : 'Failed'}
               <span className="text-ink-2">· {result ? 'just now' : labTime(k.last_tested_at!)}</span>
             </span>

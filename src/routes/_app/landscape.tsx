@@ -1,31 +1,54 @@
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+
+import { Scroller } from '@/components/athar/scroller'
 
 import { SectorSwatch, TileMark, sectorStyle } from '@/components/athar/tile-mark'
 import { cn } from '@/lib/utils'
 import { getLandscapeRows, type LandscapeRow } from '#/server/api/app'
 
-type Search = { sector?: string }
+export type Basis = 'founded' | 'label'
+export type Show = 'each' | 'cum'
+export type As = 'count' | 'share'
+type Search = { sector?: string[]; basis?: Basis; show?: Show; as?: As; year?: number }
+
+const sectorList = (v: unknown) => {
+  const list = (Array.isArray(v) ? v : [v]).filter((x): x is string => typeof x === 'string' && x.length > 0)
+  return list.length ? [...new Set(list)].slice(0, 5) : undefined
+}
 
 export const Route = createFileRoute('/_app/landscape')({
-  validateSearch: (s: Record<string, unknown>): Search => ({ sector: typeof s.sector === 'string' && s.sector ? s.sector : undefined }),
+  validateSearch: (s: Record<string, unknown>): Search => ({
+    sector: sectorList(s.sector),
+    basis: s.basis === 'label' ? 'label' : undefined,
+    show: s.show === 'cum' ? 'cum' : undefined,
+    as: s.as === 'share' ? 'share' : undefined,
+    year: typeof s.year === 'number' ? s.year : typeof s.year === 'string' && /^\d{4}$/.test(s.year) ? Number(s.year) : undefined,
+  }),
   loader: () => getLandscapeRows(),
   component: LandscapePage,
 })
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 const OTHER = 'other'
+// Compare colours go by selection order, so two sectors that share a tile glaze never collide.
+const COMPARE = ['var(--glaze)', 'var(--ochre)', 'var(--tile-manganese)', 'var(--tile-terracotta)', 'var(--tile-steel)']
 const OTHER_FILL = 'color-mix(in oklab, var(--ink-2) 48%, var(--canvas))'
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
 
 // Landscape: how the scene grew, from the first founding to today, and what it is made of.
 function LandscapePage() {
   const rows = Route.useLoaderData()
-  const { sector } = Route.useSearch()
+  const search = Route.useSearch()
+  const selected = search.sector ?? []
   const navigate = useNavigate({ from: '/landscape' })
   const [preview, setPreview] = useState<string | undefined>()
+  const [full, setFull] = useState(false)
   const hoverTimer = useRef<number | undefined>(undefined)
-  const active = sector
+  const active = selected.length === 1 ? selected[0] : undefined
+  const comparing = selected.length > 1
+  const colour = (name: string) => COMPARE[selected.indexOf(name)]
 
   const sectors = useMemo(() => {
     const m = new Map<string, { name: string; total: number; before: number }>()
@@ -38,15 +61,15 @@ function LandscapePage() {
     return [...m.values()].sort((a, b) => b.total - a.total || a.name.localeCompare(b.name))
   }, [rows])
 
-  const cur = active ? rows.filter((r) => r.sector === active) : rows
+  const cur = selected.length ? rows.filter((r) => selected.includes(r.sector)) : rows
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && sector) navigate({ search: {}, resetScroll: false })
+      if (e.key === 'Escape' && selected.length) navigate({ search: (p) => ({ ...p, sector: undefined }), resetScroll: false })
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [sector, navigate])
+  }, [selected.length, navigate])
 
   if (rows.length === 0) {
     return (
@@ -60,8 +83,12 @@ function LandscapePage() {
   const pick = (name: string) => {
     window.clearTimeout(hoverTimer.current)
     setPreview(undefined)
-    navigate({ search: name === sector ? {} : { sector: name }, resetScroll: false })
+    if (!selected.includes(name) && selected.length >= 5) return setFull(true)
+    setFull(false)
+    const next = selected.includes(name) ? selected.filter((n) => n !== name) : [...selected, name]
+    navigate({ search: (p) => ({ ...p, sector: next.length ? next : undefined }), resetScroll: false })
   }
+  const pin = (year: number | undefined) => navigate({ search: (p) => ({ ...p, year }), resetScroll: false, replace: true })
   const hover = (name: string | undefined) => {
     window.clearTimeout(hoverTimer.current)
     hoverTimer.current = window.setTimeout(() => setPreview(name), name ? 80 : 0)
@@ -71,15 +98,22 @@ function LandscapePage() {
     <main className="grid flex-1 grid-cols-[minmax(0,1fr)] gap-x-8 gap-y-10 px-4 pt-10 pb-14 sm:px-8 xl:grid-cols-[minmax(0,1fr)_372px] 2xl:gap-x-14">
       <section className="min-w-0">
         <h1 className="text-[2.75rem] leading-[3rem]">Landscape</h1>
-        <Sentence cur={cur} active={active} />
-        <Growth rows={rows} sectors={sectors.map((s) => s.name)} active={active} highlight={active ? undefined : preview} />
-        <Facts cur={cur} />
+        <Sentence cur={cur} active={active} selected={selected} colour={colour} />
+        <Growth rows={rows} sectors={sectors.map((s) => s.name)} selected={selected} highlight={active ? undefined : preview} pinned={search.year} onPin={pin} colour={colour} />
+        <Numbers rows={rows} sectors={sectors.map((s) => s.name)} selected={selected} search={search} pinned={search.year} onHover={hover} />
         <Latest cur={cur} />
       </section>
 
       <aside aria-label="Sectors" className="xl:pt-3">
         <div className="grid grid-cols-[minmax(0,1fr)_3rem_5.5rem] border-b border-hairline px-1.5 pb-2 text-xs whitespace-nowrap text-ink-2">
-          <span>Sector</span>
+          <span className="flex gap-3">
+            Sector
+            {selected.length > 0 && (
+              <button type="button" onClick={() => (setFull(false), navigate({ search: (p) => ({ ...p, sector: undefined }), resetScroll: false }))} className="text-glaze hover:underline">
+                Clear
+              </button>
+            )}
+          </span>
           <span className="text-end">All</span>
           <span className="text-end">Before 2019</span>
         </div>
@@ -88,15 +122,16 @@ function LandscapePage() {
             <li key={s.name} className="break-inside-avoid">
               <button
                 type="button"
-                aria-pressed={sector === s.name}
+                role="checkbox"
+                aria-checked={selected.includes(s.name)}
                 onClick={() => pick(s.name)}
                 onPointerEnter={() => hover(s.name)}
                 className={cn(
                   'grid h-[27px] w-full grid-cols-[1.375rem_minmax(0,1fr)_3rem_5.5rem] items-center border-b border-hairline px-1.5 text-start text-[13.5px] transition-opacity duration-150 hover:bg-surface/60 motion-reduce:transition-none',
-                  active ? (active === s.name ? 'bg-surface' : 'opacity-40') : preview && preview !== s.name && sectors.slice(0, 5).some((t) => t.name === preview) && 'opacity-60',
+                  selected.length ? (selected.includes(s.name) ? 'bg-surface' : 'opacity-50') : preview && preview !== s.name && sectors.slice(0, 5).some((t) => t.name === preview) && 'opacity-60',
                 )}
               >
-                <SectorSwatch sector={s.name} size={15} />
+                {comparing && selected.includes(s.name) ? <span className="size-[15px] rounded-[3px]" style={{ background: colour(s.name) }} /> : <SectorSwatch sector={s.name} size={15} />}
                 <span className="truncate">{s.name}</span>
                 <span className="text-end tabular-nums">{s.total}</span>
                 <span className="text-end text-ink-2 tabular-nums">{s.before}</span>
@@ -105,15 +140,16 @@ function LandscapePage() {
           ))}
         </ul>
         <p className="mt-3.5 px-1.5 text-xs leading-5 text-ink-2">
+          {full ? <span className="me-1 text-ochre-text">Compare up to five.</span> : selected.length === 0 && <span className="me-1">Pick up to five sectors to compare.</span>}
           Founding years come from the registry, so only startups that later received the label are counted. Recent years are incomplete.
         </p>
-        {sector && (
+        {active && (
           <p className="mt-5 flex flex-col gap-2 px-1.5 text-sm">
-            <Link to="/search" search={{ sector }}>
-              See the {rows.filter((r) => r.sector === sector).length} in the Archive
+            <Link to="/search" search={{ sector: active }}>
+              See the {rows.filter((r) => r.sector === active).length} in the Archive
             </Link>
-            <Link to="/" search={{ draft: `${sector}: ` }}>
-              Check an idea in {sector}
+            <Link to="/" search={{ draft: `${active}: ` }}>
+              Check an idea in {active}
             </Link>
           </p>
         )}
@@ -129,10 +165,62 @@ function niceStep(max: number) {
   return ([1, 2, 5, 10].map((m) => m * p).find((s) => s >= raw) ?? 10 * p) || 1
 }
 
-type Band = { key: string; label: string; fill: string; total: number; cum: number[] }
+type Band = { key: string; label: string; fill: string; total: number; cum: number[]; per: number[] }
 
-/** Founded so far as stacked bands, labelled so far as a line, and new each year as paired bars, on one year axis. */
-function Growth({ rows, sectors, active, highlight }: { rows: LandscapeRow[]; sectors: string[]; active?: string; highlight?: string }) {
+/** Every year from the first founding to the latest label: the shared axis of the chart, the stepper and the table. */
+export function yearSpan(rows: LandscapeRow[]) {
+  const founded = rows.map((r) => r.founded).filter((y): y is number => y !== null)
+  const y0 = Math.min(...founded)
+  const y1 = Math.max(...founded, ...rows.map((r) => r.year))
+  return Array.from({ length: y1 - y0 + 1 }, (_, i) => y0 + i)
+}
+
+/** ‹ year ›: steps the year the chart is read at. With nothing pinned it says "All years". */
+function Stepper({ years, pinned, onPin, compact }: { years: number[]; pinned?: number; onPin: (y: number | undefined) => void; compact: boolean }) {
+  const i = pinned === undefined ? -1 : years.indexOf(pinned)
+  const btn = cn('grid place-items-center rounded-[3px] border border-hairline text-ink hover:bg-surface disabled:opacity-35 disabled:hover:bg-transparent', compact ? 'size-10' : 'size-8')
+  return (
+    <div className="flex items-center gap-1.5" role="group" aria-label="Year">
+      <button type="button" className={btn} aria-label="Previous year" disabled={i === 0} onClick={() => onPin(i < 0 ? years[years.length - 1] : years[i - 1])}>
+        <ChevronLeft className="size-4" aria-hidden />
+      </button>
+      <button
+        type="button"
+        onClick={() => onPin(undefined)}
+        disabled={i < 0}
+        aria-label={i < 0 ? 'All years' : `${pinned}, unpin`}
+        className="min-w-[5.5rem] text-center text-sm text-ink tabular-nums disabled:cursor-default"
+      >
+        {i < 0 ? 'All years' : pinned}
+      </button>
+      <button type="button" className={btn} aria-label="Next year" disabled={i === years.length - 1} onClick={() => onPin(i < 0 ? years[0] : years[i + 1])}>
+        <ChevronRight className="size-4" aria-hidden />
+      </button>
+    </div>
+  )
+}
+
+/**
+ * Founded so far as stacked bands (all sectors) or one band (one sector), labelled so far as a line, and new each year
+ * as paired bars. With two to five sectors it compares them: one founded-so-far line each, grouped bars under them.
+ */
+function Growth({
+  rows,
+  sectors,
+  selected,
+  highlight,
+  pinned,
+  onPin,
+  colour,
+}: {
+  rows: LandscapeRow[]
+  sectors: string[]
+  selected: string[]
+  highlight?: string
+  pinned?: number
+  onPin: (y: number | undefined) => void
+  colour: (s: string) => string
+}) {
   const box = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState(1200)
   useLayoutEffect(() => {
@@ -144,61 +232,59 @@ function Growth({ rows, sectors, active, highlight }: { rows: LandscapeRow[]; se
   }, [])
   const [hoverY, setHoverY] = useState<number | null>(null)
 
-  const cur = active ? rows.filter((r) => r.sector === active) : rows
-  const founded = rows.map((r) => r.founded).filter((y): y is number => y !== null)
-  const y0 = Math.min(...founded)
-  const y1 = Math.max(...founded, ...rows.map((r) => r.year))
-  const years = Array.from({ length: y1 - y0 + 1 }, (_, i) => y0 + i)
+  const comparing = selected.length > 1
+  const active = selected.length === 1 ? selected[0] : undefined
+  const cur = selected.length ? rows.filter((r) => selected.includes(r.sector)) : rows
+  const years = yearSpan(rows)
   const firstLabel = rows.reduce((a, r) => (r.year * 12 + r.month < a.year * 12 + a.month ? r : a), rows[0])
 
-  const cumBy = (list: LandscapeRow[], key: (r: LandscapeRow) => number | null) => {
+  const series = (list: LandscapeRow[], key: (r: LandscapeRow) => number | null) => {
     const per = years.map((y) => list.filter((r) => key(r) === y).length)
     let run = 0
     return { per, cum: per.map((n) => (run += n)) }
   }
+  const band = (key: string, label: string, fill: string, list: LandscapeRow[]): Band => ({ key, label, fill, total: list.length, ...series(list, (r) => r.founded) })
   const top5 = sectors.slice(0, 5)
-  const bands: Band[] = active
-    ? [{ key: active, label: active, fill: sectorStyle(active).glaze.fill, total: cur.length, cum: cumBy(cur, (r) => r.founded).cum }]
-    : [
-        ...top5.map((s) => {
-          const list = rows.filter((r) => r.sector === s)
-          return { key: s, label: s, fill: sectorStyle(s).glaze.fill, total: list.length, cum: cumBy(list, (r) => r.founded).cum }
-        }),
-        (() => {
-          const list = rows.filter((r) => !top5.includes(r.sector))
-          return { key: OTHER, label: `${sectors.length - 5} other sectors`, fill: OTHER_FILL, total: list.length, cum: cumBy(list, (r) => r.founded).cum }
-        })(),
-      ]
-  const f = cumBy(cur, (r) => r.founded)
-  const l = cumBy(cur, (r) => r.year)
+  const bands: Band[] = comparing
+    ? selected.map((s) => band(s, s, colour(s), rows.filter((r) => r.sector === s)))
+    : active
+      ? [band(active, active, sectorStyle(active).glaze.fill, cur)]
+      : [
+          ...top5.map((s) => band(s, s, sectorStyle(s).glaze.fill, rows.filter((r) => r.sector === s))),
+          band(OTHER, `${sectors.length - 5} other sectors`, OTHER_FILL, rows.filter((r) => !top5.includes(r.sector))),
+        ]
+  const f = series(cur, (r) => r.founded)
+  const l = series(cur, (r) => r.year)
 
   const compact = width < 720
-  const GUT = 24
+  const GUT = comparing && !compact ? 230 : 24
   const AH = compact ? 240 : 330
   const BH = compact ? 80 : 110
   const cw = Math.max(200, width - GUT)
   const step = cw / years.length
   const x = (i: number) => step * (i + 0.5)
-  const yMax = Math.max(1, f.cum[f.cum.length - 1], l.cum[l.cum.length - 1])
+  const yMax = Math.max(1, ...(comparing ? bands.map((b) => b.total) : [f.cum[f.cum.length - 1], l.cum[l.cum.length - 1]]))
   const tick = niceStep(yMax)
   const top = yMax * 1.06
   const ya = (v: number) => 20 + (AH - 20) * (1 - v / top)
   const barTop = AH + 44
-  const bMax = Math.max(1, ...f.per, ...l.per)
+  const bMax = Math.max(1, ...(comparing ? bands.flatMap((b) => b.per) : [...f.per, ...l.per]))
   const yb = (v: number) => barTop + 18 + (BH - 18) * (1 - v / bMax)
   const H = barTop + BH + 26
+  const pts = (arr: number[]) => arr.map((v, i) => `${x(i)},${ya(v)}`).join(' L')
 
-  // Stacked band paths.
+  // Stacked band paths (bands and single-sector modes).
   let base = years.map(() => 0)
-  const paths = bands.map((b) => {
-    const lo = base
-    const hi = base.map((v, i) => v + b.cum[i])
-    base = hi
-    const up = hi.map((v, i) => `${x(i)},${ya(v)}`).join(' L')
-    const down = lo.map((v, i) => `${x(i)},${ya(v)}`).reverse().join(' L')
-    return { b, d: `M${up} L${down} Z`, edge: `M${up}`, lo, hi }
-  })
-  // A band's value at any x, so an in-band label can sit on the band's midline where it actually is.
+  const paths = comparing
+    ? []
+    : bands.map((b) => {
+        const lo = base
+        const hi = base.map((v, i) => v + b.cum[i])
+        base = hi
+        const down = lo.map((v, i) => `${x(i)},${ya(v)}`).reverse().join(' L')
+        return { b, d: `M${pts(hi)} L${down} Z`, edge: `M${pts(hi)}`, lo, hi }
+      })
+  // A series' value at any x, so a label can sit where the band actually is.
   const at = (arr: number[], px: number) => {
     const t = Math.min(years.length - 1, Math.max(0, px / step - 0.5))
     const i = Math.floor(t)
@@ -206,6 +292,7 @@ function Growth({ rows, sectors, active, highlight }: { rows: LandscapeRow[]; se
     return arr[i] + (arr[j] - arr[i]) * (t - i)
   }
   const lit = highlight && bands.some((b) => b.key === highlight) ? highlight : undefined
+  const dim = (key: string) => (lit && lit !== key ? 0.3 : 1)
 
   const li = years.indexOf(firstLabel.year)
   const startX = x(li - 1) + ((firstLabel.month - 1) / 12) * step
@@ -213,13 +300,99 @@ function Growth({ rows, sectors, active, highlight }: { rows: LandscapeRow[]; se
   const bw = Math.min(16, step * 0.28)
   const gap = 3
   const last = years.length - 1
-  const hi = hoverY === null ? null : years.indexOf(hoverY)
+  const hov = hoverY === null ? -1 : years.indexOf(hoverY)
+  const pin = pinned === undefined ? -1 : years.indexOf(pinned)
+  const read = hov >= 0 ? hov : pin
   const pk = years.indexOf(2020)
   const p22 = Math.max(0, years.indexOf(2022))
 
+  // Compare: names at the right end of each line, pushed apart so they never touch.
+  const ends = bands.map((b) => ({ b, y: ya(b.cum[last]) })).sort((a, c) => a.y - c.y)
+  for (let i = 1; i < ends.length; i++) ends[i].y = Math.max(ends[i].y, ends[i - 1].y + 18)
+
+  const stepBy = (d: number) => onPin(years[Math.min(last, Math.max(0, (pin < 0 ? (d > 0 ? -1 : years.length) : pin) + d))])
+  const onKey = (e: React.KeyboardEvent) => {
+    const k = e.key
+    if (k === 'ArrowLeft' || k === 'ArrowRight') stepBy(k === 'ArrowLeft' ? -1 : 1)
+    else if (k === 'Home') onPin(years[0])
+    else if (k === 'End') onPin(years[last])
+    else if (k === 'Escape' && pinned !== undefined) (e.stopPropagation(), onPin(undefined))
+    else return
+    e.preventDefault()
+  }
+
+  const gw = comparing ? Math.min(9, (step * 0.8) / bands.length) : 0
+
+  const panel = read >= 0 && (
+    <div
+      role={hov >= 0 ? 'tooltip' : 'status'}
+      className={cn(
+        'z-20 rounded-[3px] border border-hairline bg-surface-raised px-3 py-2.5 text-sm',
+        compact ? 'mt-4 w-full' : 'pointer-events-none absolute top-14 w-64 shadow-lg',
+      )}
+      style={compact ? undefined : years[read] >= 2016 ? { left: x(0) } : { left: cw - 270 }}
+    >
+      <p className="font-medium">{years[read]}</p>
+      {comparing ? (
+        <dl className="mt-1.5 grid grid-cols-[0.625rem_1fr_auto_auto] items-center gap-x-2 gap-y-0.5 text-xs">
+          <span />
+          <span />
+          <span className="text-end text-ink-2">so far</span>
+          <span className="text-end text-ink-2">in {years[read]}</span>
+          {[...bands]
+            .sort((a, c) => c.cum[read] - a.cum[read])
+            .map((b) => (
+              <div key={b.key} className="contents">
+                <span className="size-2.5" style={{ background: b.fill }} />
+                <dt className="truncate text-ink-2">{b.label}</dt>
+                <dd className="m-0 text-end font-mono">{b.cum[read]}</dd>
+                <dd className="m-0 w-10 text-end font-mono text-ink-2">{b.per[read]}</dd>
+              </div>
+            ))}
+        </dl>
+      ) : (
+        <>
+          <dl className="mt-1.5 grid grid-cols-[1fr_auto] gap-x-4 gap-y-0.5 text-xs">
+            <dt className="text-ink-2">Founded so far</dt>
+            <dd className="m-0 text-end font-mono">{f.cum[read]}</dd>
+            <dt className="text-ink-2">Labelled so far</dt>
+            <dd className="m-0 text-end font-mono">{l.cum[read]}</dd>
+            <dt className="text-ink-2">Founded in {years[read]}</dt>
+            <dd className="m-0 text-end font-mono">{f.per[read]}</dd>
+            <dt className="text-ink-2">Labelled in {years[read]}</dt>
+            <dd className="m-0 text-end font-mono">{l.per[read]}</dd>
+          </dl>
+          {!active && (
+            <dl className="mt-2 grid grid-cols-[0.625rem_1fr_auto] items-center gap-x-2 gap-y-0.5 border-t border-hairline pt-2 text-xs">
+              {[...bands].reverse().map((b) => (
+                <div key={b.key} className="contents">
+                  <span className="size-2.5" style={{ background: b.fill }} />
+                  <dt className="truncate text-ink-2">{b.label}</dt>
+                  <dd className="m-0 text-end font-mono">{b.cum[read]}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
+        </>
+      )}
+    </div>
+  )
+
   return (
     <div ref={box} className="relative mt-6">
-      <svg width={width} height={H} className="block overflow-visible" onPointerLeave={() => setHoverY(null)}>
+      <div className={cn('flex items-center justify-between gap-4', compact ? 'mb-3' : 'mb-1')} onKeyDown={onKey}>
+        <p className="text-xs text-ink-2">{comparing ? 'Founded so far, by sector' : ''}</p>
+        <Stepper years={years} pinned={pinned} onPin={onPin} compact={compact} />
+      </div>
+      <svg
+        width={width}
+        height={H}
+        tabIndex={0}
+        aria-label="Growth by year. Left and right arrows step the year; Escape clears it."
+        onKeyDown={onKey}
+        className="block overflow-visible outline-none focus-visible:ring-2 focus-visible:ring-glaze"
+        onPointerLeave={() => setHoverY(null)}
+      >
         {Array.from({ length: Math.floor(top / tick) }, (_, k) => (k + 1) * tick).map((v) => (
           <g key={v}>
             <line x1={0} x2={cw} y1={ya(v) + 0.5} y2={ya(v) + 0.5} className="stroke-hairline" strokeDasharray="2 4" />
@@ -239,13 +412,24 @@ function Growth({ rows, sectors, active, highlight }: { rows: LandscapeRow[]; se
             <path
               key={b.key}
               d={d}
-              style={{ fill: b.fill, opacity: lit && lit !== b.key ? 0.3 : 1 }}
+              style={{ fill: b.fill, opacity: dim(b.key) }}
               className="stroke-canvas transition-opacity duration-150 motion-reduce:transition-none"
               strokeWidth={1}
               strokeLinejoin="round"
             />
           ),
         )}
+        {comparing &&
+          bands.map((b) => (
+            <path key={b.key} d={`M${pts(b.cum)}`} fill="none" style={{ stroke: b.fill, opacity: dim(b.key) }} strokeWidth={2} strokeLinejoin="round" className="transition-opacity duration-150" />
+          ))}
+        {comparing &&
+          !compact &&
+          ends.map(({ b, y }) => (
+            <text key={b.key} x={x(last) + 10} y={y + 4} className="font-sans text-[12.5px]" style={{ fill: b.fill, opacity: dim(b.key) }}>
+              {b.label}
+            </text>
+          ))}
         <line x1={0} x2={cw} y1={AH + 0.5} y2={AH + 0.5} className="stroke-control" />
 
         {/* The label begins */}
@@ -254,28 +438,32 @@ function Growth({ rows, sectors, active, highlight }: { rows: LandscapeRow[]; se
           {startX > 260 ? `The Startup Label begins, ${MONTHS[firstLabel.month - 1]} ${firstLabel.year}` : `Label begins, ${firstLabel.year}`}
         </text>
 
-        {/* Labelled so far */}
-        <path d={`M${linePts.map(([a, b]) => `${a},${b}`).join(' L')}`} fill="none" className="stroke-ink" strokeWidth={2.5} strokeLinejoin="round" />
-        {linePts.slice(1).map(([a, b]) => (
-          <circle key={a} cx={a} cy={b} r={3.5} className="fill-ink stroke-canvas" strokeWidth={1.5} />
-        ))}
-        {!compact && pk >= 0 && (
+        {!comparing && (
           <>
-            <text x={x(pk) - 6} y={ya(f.cum[pk]) - 10} textAnchor="end" className="fill-ink-2 font-sans text-[12.5px]">
-              Founded so far
-            </text>
-            <text x={active ? x(pk) + 10 : x(p22) + 16} y={active ? ya(l.cum[pk]) + 20 : ya(at(l.cum, x(p22) + 16)) + 24} className="fill-ink font-sans text-[12.5px] font-medium">
-              Labelled so far
+            <path d={`M${linePts.map(([a, b]) => `${a},${b}`).join(' L')}`} fill="none" className="stroke-ink" strokeWidth={2.5} strokeLinejoin="round" />
+            {linePts.slice(1).map(([a, b]) => (
+              <circle key={a} cx={a} cy={b} r={3.5} className="fill-ink stroke-canvas" strokeWidth={1.5} />
+            ))}
+            {!compact && pk >= 0 && (
+              <>
+                <text x={x(pk) - 6} y={ya(f.cum[pk]) - 10} textAnchor="end" className="fill-ink-2 font-sans text-[12.5px]">
+                  Founded so far
+                </text>
+                <text x={active ? x(pk) + 10 : x(p22) + 16} y={active ? ya(l.cum[pk]) + 20 : ya(at(l.cum, x(p22) + 16)) + 24} className="fill-ink font-sans text-[12.5px] font-medium">
+                  Labelled so far
+                </text>
+              </>
+            )}
+            <text x={x(last)} y={ya(Math.max(f.cum[last], l.cum[last])) - 12} textAnchor="middle" className="fill-ink font-display text-[22px]">
+              {cur.length}
             </text>
           </>
         )}
-        <text x={x(last)} y={ya(Math.max(f.cum[last], l.cum[last])) - 12} textAnchor="middle" className="fill-ink font-display text-[22px]">
-          {cur.length}
-        </text>
 
         {/* Band names, inside the bands at their 2025 edge */}
         {!compact &&
           !active &&
+          !comparing &&
           paths.map(({ b, lo, hi }) => {
             const right = x(last) - 12
             let size = 12.5
@@ -295,7 +483,7 @@ function Growth({ rows, sectors, active, highlight }: { rows: LandscapeRow[]; se
                 y={mid + size * 0.35}
                 textAnchor="end"
                 className={cn('pointer-events-none font-sans', b.key === OTHER ? 'fill-ink' : 'fill-canvas')}
-                style={{ fontSize: size, opacity: lit && lit !== b.key ? 0.3 : 1 }}
+                style={{ fontSize: size, opacity: dim(b.key) }}
               >
                 {b.label}
               </text>
@@ -304,43 +492,67 @@ function Growth({ rows, sectors, active, highlight }: { rows: LandscapeRow[]; se
 
         {/* New each year */}
         <text x={0} y={barTop} className="fill-ink-2 font-sans text-[12px]">
-          New each year:
-          <tspan dx={8}>founded</tspan>
-          <tspan dx={6} className="fill-tile-4">
-            ■
-          </tspan>
-          <tspan dx={10}>labelled</tspan>
-          <tspan dx={6} className="fill-ink">
-            ■
-          </tspan>
+          {comparing ? (
+            'Founded each year'
+          ) : (
+            <>
+              New each year:
+              <tspan dx={8}>founded</tspan>
+              <tspan dx={6} className="fill-tile-4">
+                ■
+              </tspan>
+              <tspan dx={10}>labelled</tspan>
+              <tspan dx={6} className="fill-ink">
+                ■
+              </tspan>
+            </>
+          )}
         </text>
         {years.map((yr, i) => {
-          const fv = f.per[i]
-          const lv = l.per[i]
-          const showVal = !compact || hi === i
+          const showVal = !compact || read === i
           return (
             <g key={yr}>
-              {fv > 0 && (
-                <>
-                  <rect x={x(i) - bw - gap} y={yb(fv)} width={bw} height={barTop + BH - yb(fv)} className="fill-tile-4" />
-                  {showVal && (
-                    <text x={x(i) - bw / 2 - gap} y={yb(fv) - 4} textAnchor="middle" className="fill-ink-2 font-mono text-[10.5px]">
-                      {fv}
-                    </text>
-                  )}
-                </>
-              )}
-              {lv > 0 && (
-                <>
-                  <rect x={x(i) + gap} y={yb(lv)} width={bw} height={barTop + BH - yb(lv)} className="fill-ink" />
-                  {showVal && (
-                    <text x={x(i) + bw / 2 + gap} y={yb(lv) - 4} textAnchor="middle" className="fill-ink font-mono text-[10.5px]">
-                      {lv}
-                    </text>
-                  )}
-                </>
-              )}
-              <text x={x(i)} y={barTop + BH + 18} textAnchor="middle" className={cn('font-sans', compact ? 'text-[10px]' : 'text-[12px]', hi === i ? 'fill-ink' : 'fill-ink-2')}>
+              {comparing
+                ? bands.map((b, k) =>
+                    b.per[i] > 0 ? (
+                      <rect
+                        key={b.key}
+                        x={x(i) - (gw * bands.length) / 2 + k * gw}
+                        y={yb(b.per[i])}
+                        width={Math.max(1, gw - 1)}
+                        height={barTop + BH - yb(b.per[i])}
+                        style={{ fill: b.fill, opacity: dim(b.key) }}
+                      />
+                    ) : null,
+                  )
+                : [
+                    f.per[i] > 0 && (
+                      <g key="f">
+                        <rect x={x(i) - bw - gap} y={yb(f.per[i])} width={bw} height={barTop + BH - yb(f.per[i])} className="fill-tile-4" />
+                        {showVal && (
+                          <text x={x(i) - bw / 2 - gap} y={yb(f.per[i]) - 4} textAnchor="middle" className="fill-ink-2 font-mono text-[10.5px]">
+                            {f.per[i]}
+                          </text>
+                        )}
+                      </g>
+                    ),
+                    l.per[i] > 0 && (
+                      <g key="l">
+                        <rect x={x(i) + gap} y={yb(l.per[i])} width={bw} height={barTop + BH - yb(l.per[i])} className="fill-ink" />
+                        {showVal && (
+                          <text x={x(i) + bw / 2 + gap} y={yb(l.per[i]) - 4} textAnchor="middle" className="fill-ink font-mono text-[10.5px]">
+                            {l.per[i]}
+                          </text>
+                        )}
+                      </g>
+                    ),
+                  ]}
+              <text
+                x={x(i)}
+                y={barTop + BH + 18}
+                textAnchor="middle"
+                className={cn('font-sans', compact ? 'text-[10px]' : 'text-[12px]', pin === i ? 'fill-ink font-semibold' : hov === i ? 'fill-ink' : 'fill-ink-2')}
+              >
                 {compact ? `’${String(yr).slice(2)}` : yr}
               </text>
             </g>
@@ -348,15 +560,16 @@ function Growth({ rows, sectors, active, highlight }: { rows: LandscapeRow[]; se
         })}
         <line x1={0} x2={cw} y1={barTop + BH + 0.5} y2={barTop + BH + 0.5} className="stroke-hairline" />
 
-        {hi !== null && hi >= 0 && <line x1={x(hi)} x2={x(hi)} y1={20} y2={barTop + BH} className="stroke-ink" strokeOpacity={0.5} />}
+        {pin >= 0 && <line x1={x(pin)} x2={x(pin)} y1={20} y2={barTop + BH} className="stroke-ink" strokeOpacity={0.85} />}
+        {hov >= 0 && hov !== pin && <line x1={x(hov)} x2={x(hov)} y1={20} y2={barTop + BH} className="stroke-ink" strokeOpacity={0.35} />}
         {years.map((yr, i) => (
-          <rect key={yr} x={i * step} y={0} width={step} height={H} fill="transparent" onPointerEnter={() => setHoverY(yr)} />
+          <rect key={yr} x={i * step} y={0} width={step} height={H} fill="transparent" className="cursor-pointer" onPointerEnter={() => setHoverY(yr)} onClick={() => onPin(pinned === yr ? undefined : yr)} />
         ))}
       </svg>
 
       {compact && (
         <ul className="mt-3 grid gap-y-1.5 text-xs">
-          {[...paths].reverse().map(({ b }) => (
+          {(comparing ? bands : [...bands].reverse()).map((b) => (
             <li key={b.key} className="flex items-center gap-2">
               <span className="size-2.5 shrink-0" style={{ background: b.fill }} />
               <span className="flex-1">{b.label}</span>
@@ -366,41 +579,242 @@ function Growth({ rows, sectors, active, highlight }: { rows: LandscapeRow[]; se
         </ul>
       )}
 
-      {hi !== null && hi >= 0 && (
-        <div
-          role="tooltip"
-          className="pointer-events-none absolute top-6 z-20 w-60 rounded-[3px] border border-hairline bg-surface-raised px-3 py-2.5 text-sm shadow-lg"
-          style={years[hi] >= 2016 ? { left: x(0) } : { left: cw - 260 }}
-        >
-          <p className="font-medium">{years[hi]}</p>
-          <dl className="mt-1.5 grid grid-cols-[1fr_auto] gap-x-4 gap-y-0.5 text-xs">
-            <dt className="text-ink-2">Founded so far</dt>
-            <dd className="m-0 text-end font-mono">{f.cum[hi]}</dd>
-            <dt className="text-ink-2">Labelled so far</dt>
-            <dd className="m-0 text-end font-mono">{l.cum[hi]}</dd>
-            <dt className="text-ink-2">Founded in {years[hi]}</dt>
-            <dd className="m-0 text-end font-mono">{f.per[hi]}</dd>
-            <dt className="text-ink-2">Labelled in {years[hi]}</dt>
-            <dd className="m-0 text-end font-mono">{l.per[hi]}</dd>
-          </dl>
-          {!active && (
-            <dl className="mt-2 grid grid-cols-[0.625rem_1fr_auto] items-center gap-x-2 gap-y-0.5 border-t border-hairline pt-2 text-xs">
-              {[...bands].reverse().map((b) => (
-                <div key={b.key} className="contents">
-                  <span className="size-2.5" style={{ background: b.fill }} />
-                  <dt className="truncate text-ink-2">{b.label}</dt>
-                  <dd className="m-0 text-end font-mono">{b.cum[hi]}</dd>
-                </div>
-              ))}
-            </dl>
-          )}
-        </div>
-      )}
+      {panel}
     </div>
   )
 }
 
-function Sentence({ cur, active }: { cur: LandscapeRow[]; active?: string }) {
+const csvCell = (v: string | number | null) => {
+  const s = v === null ? '' : String(v)
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+}
+function download(name: string, table: (string | number | null)[][]) {
+  const blob = new Blob([table.map((r) => r.map(csvCell).join(',')).join('\n')], { type: 'text/csv;charset=utf-8' })
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(blob)
+  a.download = name
+  a.click()
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000)
+}
+
+/** A square segmented control: one radio group, state lives in the URL. */
+function Segmented<T extends string>({ label, value, options, onChange }: { label: string; value: T; options: [T, string][]; onChange: (v: T) => void }) {
+  return (
+    <div className="flex items-center gap-2 text-xs">
+      <span className="text-ink-2">{label}</span>
+      <div role="radiogroup" aria-label={label} className="flex rounded-[3px] border border-hairline p-0.5">
+        {options.map(([v, text]) => (
+          <button
+            key={v}
+            type="button"
+            role="radio"
+            aria-checked={value === v}
+            onClick={() => onChange(v)}
+            className={cn('h-7 rounded-[2px] px-2.5 text-[12.5px]', value === v ? 'bg-surface-raised text-ink' : 'text-ink-2 hover:text-ink')}
+          >
+            {text}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+type SortKey = 'name' | 'total' | number
+
+/** The numbers behind the chart: sector by year, in the basis, mode and unit the reader picks. Every count opens its startups. */
+function Numbers({
+  rows,
+  sectors,
+  selected,
+  search,
+  pinned,
+  onHover,
+}: {
+  rows: LandscapeRow[]
+  sectors: string[]
+  selected: string[]
+  search: { basis?: Basis; show?: Show; as?: As }
+  pinned?: number
+  onHover: (s: string | undefined) => void
+}) {
+  const navigate = useNavigate({ from: '/landscape' })
+  const basis = search.basis ?? 'founded'
+  const show = search.show ?? 'each'
+  const unit = search.as ?? 'count'
+  const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({ key: 'total', dir: 'desc' })
+
+  const keyOf = (r: LandscapeRow) => (basis === 'founded' ? r.founded : r.year)
+  const span = yearSpan(rows)
+  const years = basis === 'founded' ? span.filter((y) => rows.some((r) => r.founded !== null && r.founded <= y)) : span.filter((y) => y >= Math.min(...rows.map((r) => r.year)))
+  const line = (list: LandscapeRow[]) => {
+    const per = years.map((y) => list.filter((r) => keyOf(r) === y).length)
+    let run = 0
+    const cum = per.map((n) => (run += n))
+    return { per, vals: show === 'cum' ? cum : per, total: list.length }
+  }
+  const all = line(rows)
+  const table = sectors.map((s) => ({ name: s, ...line(rows.filter((r) => r.sector === s)) }))
+  const cellOf = (v: number, i: number) => (unit === 'share' ? (all.vals[i] ? (v / all.vals[i]) * 100 : 0) : v)
+  const totalOf = (t: number) => (unit === 'share' ? (t / all.total) * 100 : t)
+  const fmt = (v: number) => (unit === 'share' ? `${v.toFixed(1)}%` : String(v))
+  const sorted = [...table].sort((a, b) => {
+    const d = sort.dir === 'asc' ? 1 : -1
+    if (sort.key === 'name') return d * a.name.localeCompare(b.name)
+    if (sort.key === 'total') return d * (a.total - b.total) || a.name.localeCompare(b.name)
+    const i = years.indexOf(sort.key)
+    return d * (a.vals[i] - b.vals[i]) || a.name.localeCompare(b.name)
+  })
+  const sortBy = (key: SortKey) => setSort((s) => ({ key, dir: s.key === key ? (s.dir === 'desc' ? 'asc' : 'desc') : key === 'name' ? 'asc' : 'desc' }))
+  const ariaSort = (key: SortKey) => (sort.key === key ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none')
+  const set = (patch: Partial<{ basis: Basis; show: Show; as: As }>) =>
+    navigate({
+      search: (p) => {
+        const n = { ...p, ...patch }
+        return { ...n, basis: n.basis === 'label' ? 'label' : undefined, show: n.show === 'cum' ? 'cum' : undefined, as: n.as === 'share' ? 'share' : undefined }
+      },
+      resetScroll: false,
+      replace: true,
+    })
+
+  const head = (key: SortKey, text: string, cls?: string) => (
+    <th key={String(key)} scope="col" aria-sort={ariaSort(key)} className={cn('h-8 border-b border-hairline px-2 font-normal', cls, typeof key === 'number' && key === pinned && 'bg-surface')}>
+      <button type="button" onClick={() => sortBy(key)} className={cn('inline-flex items-center gap-1 text-xs', sort.key === key ? 'text-ink' : 'text-ink-2 hover:text-ink')}>
+        {text}
+        {sort.key === key && <span aria-hidden>{sort.dir === 'asc' ? '↑' : '↓'}</span>}
+      </button>
+    </th>
+  )
+  const label = `${basis === 'founded' ? 'Year founded' : 'Year labelled'}, ${show === 'each' ? 'each year' : 'so far'}, ${unit === 'count' ? 'count' : 'share of the year'}`
+
+  const exportShown = () =>
+    download(`athar-landscape-${basis}-${show}-${unit}.csv`, [
+      ['Sector', ...years, 'Total'],
+      ['All sectors', ...all.vals.map((v, i) => (unit === 'share' ? (all.vals[i] ? 100 : 0) : v)), unit === 'share' ? 100 : all.total],
+      ...sorted.map((r) => [r.name, ...r.vals.map((v, i) => (unit === 'share' ? Number(cellOf(v, i).toFixed(1)) : v)), unit === 'share' ? Number(totalOf(r.total).toFixed(1)) : r.total]),
+    ])
+  const exportAll = () =>
+    download('athar-startups.csv', [
+      ['name', 'sector', 'founded', 'label_month', 'founders', 'website'],
+      ...rows.map((r) => [r.name, r.sector, r.founded, `${r.year}-${String(r.month).padStart(2, '0')}`, r.founders, r.website ? 'yes' : 'no']),
+    ])
+
+  const row = (name: string, vals: number[], total: number, opts: { all?: boolean; sector?: string }) => {
+    const shown = vals.map((v, i) => cellOf(v, i))
+    const peak = Math.max(...shown)
+    const on = opts.sector !== undefined && selected.includes(opts.sector)
+    return (
+      <tr
+        key={name}
+        className={cn('h-8 border-b border-hairline', on && 'bg-surface', opts.all && 'font-medium')}
+        onPointerEnter={() => opts.sector && onHover(opts.sector)}
+        onPointerLeave={() => opts.sector && onHover(undefined)}
+      >
+        <th scope="row" className={cn('sticky left-0 z-10 max-w-[16rem] truncate px-2 text-start text-[13px]', on ? 'bg-surface' : 'bg-canvas', opts.all ? 'font-medium text-ink' : 'font-normal text-ink')}>
+          {opts.sector ? (
+            <span className="flex items-center gap-2">
+              <SectorSwatch sector={opts.sector} size={12} />
+              <span className="truncate">{name}</span>
+            </span>
+          ) : (
+            name
+          )}
+        </th>
+        {shown.map((v, i) => {
+          const raw = (show === 'cum' ? vals : vals)[i]
+          const y = years[i]
+          const isPeak = !opts.all && v === peak && v > 0
+          const text = raw === 0 ? '·' : fmt(opts.all && unit === 'share' ? 100 : v)
+          const cls = cn('px-2 text-end font-mono text-[12.5px] tabular-nums', y === pinned && 'bg-surface', raw === 0 ? 'text-center text-ink-2' : isPeak || opts.all ? 'font-medium text-ink' : 'text-ink-2')
+          return (
+            <td key={y} className={cls}>
+              {show === 'each' && raw > 0 ? (
+                <Link
+                  to="/search"
+                  search={basis === 'label' ? { sector: opts.sector, from: y, to: y } : { sector: opts.sector, founded: y }}
+                  className="text-inherit no-underline hover:text-glaze hover:underline"
+                >
+                  {text}
+                </Link>
+              ) : (
+                text
+              )}
+            </td>
+          )
+        })}
+        <td className="border-s border-hairline px-2 text-end font-mono text-[12.5px] text-ink tabular-nums">{fmt(opts.all && unit === 'share' ? 100 : totalOf(total))}</td>
+      </tr>
+    )
+  }
+
+  return (
+    <section aria-labelledby="numbers-h" className="mt-12">
+      <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3 border-b border-hairline pb-3">
+        <div>
+          <h2 id="numbers-h" className="text-[1.75rem] leading-9">
+            The numbers
+          </h2>
+          <p className="mt-1 flex flex-wrap gap-x-5 text-sm">
+            <button type="button" onClick={exportShown} className="text-glaze hover:underline">
+              Download CSV
+            </button>
+            <button type="button" onClick={exportAll} className="text-glaze hover:underline">
+              All {rows.length} rows (CSV)
+            </button>
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-x-5 gap-y-2">
+          <Segmented label="Year of" value={basis} options={[['founded', 'Founding'], ['label', 'Label']]} onChange={(v) => set({ basis: v })} />
+          <Segmented label="Show" value={show} options={[['each', 'Each year'], ['cum', 'So far']]} onChange={(v) => set({ show: v })} />
+          <Segmented label="As" value={unit} options={[['count', 'Count'], ['share', 'Share']]} onChange={(v) => set({ as: v })} />
+        </div>
+      </div>
+      <Scroller axis="both" label={label}>
+        <table className="w-full min-w-[56rem] border-collapse text-sm">
+          <caption className="sr-only">{label}</caption>
+          <thead>
+            <tr>
+              <th scope="col" aria-sort={ariaSort('name')} className="sticky left-0 z-10 h-8 border-b border-hairline bg-canvas px-2 text-start font-normal">
+                <button type="button" onClick={() => sortBy('name')} className={cn('text-xs', sort.key === 'name' ? 'text-ink' : 'text-ink-2 hover:text-ink')}>
+                  Sector {sort.key === 'name' && <span aria-hidden>{sort.dir === 'asc' ? '↑' : '↓'}</span>}
+                </button>
+              </th>
+              {years.map((y) => head(y, String(y), 'text-end'))}
+              {head('total', 'Total', 'border-s border-hairline text-end')}
+            </tr>
+          </thead>
+          <tbody>
+            {row('All sectors', all.vals, all.total, { all: true })}
+            {sorted.map((r) => row(r.name, r.vals, r.total, { sector: r.name }))}
+          </tbody>
+        </table>
+      </Scroller>
+      <p className="mt-2 text-xs text-ink-2">
+        {unit === 'share' ? 'Share is the sector’s part of that year’s total. ' : ''}Bold marks each sector’s highest year. {show === 'each' ? 'Every count opens its startups in the Archive.' : ''}
+      </p>
+    </section>
+  )
+}
+
+function Sentence({ cur, active, selected, colour }: { cur: LandscapeRow[]; active?: string; selected: string[]; colour: (s: string) => string }) {
+  if (selected.length > 1) {
+    const size = selected.map((n) => [n, cur.filter((r) => r.sector === n).length] as const).sort((a, b) => b[1] - a[1])
+    const name = (n: string) => <span style={{ color: colour(n) }}>{n}</span>
+    const big = size[0]
+    const small = size[size.length - 1]
+    return (
+      <p className="mt-4 min-h-16 max-w-[60rem] font-display text-[1.375rem] leading-8">
+        Comparing{' '}
+        {selected.map((n, i) => (
+          <span key={n}>
+            {i > 0 && (i === selected.length - 1 ? ' and ' : ', ')}
+            {name(n)}
+          </span>
+        ))}
+        . {name(big[0])} is the largest, with {big[1]}; {name(small[0])} the smallest, with {small[1]}.
+      </p>
+    )
+  }
   const known = cur.filter((r) => r.founded !== null)
   const per = new Map<number, number>()
   for (const r of known) per.set(r.founded!, (per.get(r.founded!) ?? 0) + 1)
@@ -415,26 +829,6 @@ function Sentence({ cur, active }: { cur: LandscapeRow[]; active?: string }) {
       {subject} grew from {plural(firstN, 'startup', 'startups')} founded in {first} to {cur.length} today. {before === 0 ? 'None was' : `${before} ${before === 1 ? 'was' : 'were'}`} founded
       before the label existed. Founding peaked in {peak}, with {peakN}.
     </p>
-  )
-}
-
-function Facts({ cur }: { cur: LandscapeRow[] }) {
-  const two = cur.filter((r) => r.founders === 2).length
-  const one = cur.filter((r) => r.founders === 1).length
-  const facts = [
-    [`${cur.filter((r) => r.founded === r.year).length} of ${cur.length}`, 'labelled in the year they were founded'],
-    [`${two}`, `have two founders; ${one} have one`],
-    [`${cur.filter((r) => r.website).length}`, 'list a website'],
-  ]
-  return (
-    <dl className="mt-6 grid grid-cols-1 gap-x-10 gap-y-4 border-t border-hairline pt-5 sm:grid-cols-3">
-      {facts.map(([n, say]) => (
-        <div key={say} className="flex min-w-0 flex-col-reverse">
-          <dt className="truncate text-[13.5px] text-ink-2">{say}</dt>
-          <dd className="m-0 font-display text-2xl leading-8 tabular-nums">{n}</dd>
-        </div>
-      ))}
-    </dl>
   )
 }
 

@@ -1,5 +1,5 @@
 import { Link, createFileRoute, getRouteApi, useNavigate } from '@tanstack/react-router'
-import { CalendarDays, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Equal, FileCheck, FileText, FileX, Globe, Link2, Link2Off, Quote, Shapes, TextSearch } from 'lucide-react'
+import { CalendarDays, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Equal, FileCheck, FileText, FileX, Globe, Link2, Link2Off, Quote, Shapes, Sprout, TextSearch } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import { Profile } from '@/components/athar/profile'
@@ -28,6 +28,7 @@ export const Route = createFileRoute('/_app/search')({
     sector: str(s.sector),
     from: num(s.from),
     to: num(s.to),
+    founded: num(s.founded),
     website: s.website === 'yes' || s.website === 'no' ? s.website : undefined,
     described: s.described === 'yes' || s.described === 'no' ? s.described : undefined,
     page: int(s.page),
@@ -43,8 +44,8 @@ export const Route = createFileRoute('/_app/search')({
   component: ArchivePage,
 })
 
-// The filter bar's schema: five attributes, each with an icon and only the conditions the archive can answer.
-function filterFields(sectors: { sector: string; count: number }[], years: { year: number; count: number }[]): FilterField[] {
+// The filter bar's schema: six attributes, each with an icon and only the conditions the archive can answer.
+function filterFields(sectors: { sector: string; count: number }[], years: { year: number; count: number }[], founded: { year: number; count: number }[]): FilterField[] {
   return [
     { id: 'q', label: 'Words', icon: <TextSearch />, type: 'text', placeholder: 'olive, payment, tutoring', operators: [{ value: 'contains', label: 'contains', icon: <Quote /> }] },
     {
@@ -67,6 +68,14 @@ function filterFields(sectors: { sector: string; count: number }[], years: { yea
       ],
       options: years.map((y) => ({ value: String(y.year), label: String(y.year), icon: <CalendarDays />, description: `${y.count} labelled` })),
     },
+    {
+      id: 'founded',
+      label: 'Founded',
+      icon: <Sprout />,
+      type: 'select',
+      operators: [{ value: 'is', label: 'in', icon: <Equal /> }],
+      options: founded.map((y) => ({ value: String(y.year), label: String(y.year), icon: <Sprout />, description: `${y.count} founded` })),
+    },
     { id: 'website', label: 'Website', icon: <Globe />, type: 'select', searchable: false, operators: [{ value: 'is', label: 'is', icon: <Equal /> }], options: [{ value: 'yes', label: 'listed', icon: <Link2 /> }, { value: 'no', label: 'not listed', icon: <Link2Off /> }] },
     { id: 'described', label: 'Description', icon: <FileText />, type: 'select', searchable: false, operators: [{ value: 'is', label: 'is', icon: <Equal /> }], options: [{ value: 'yes', label: 'present', icon: <FileCheck /> }, { value: 'no', label: 'missing', icon: <FileX /> }] },
   ]
@@ -81,6 +90,7 @@ function toQuery(s: Filtering): FilterQuery {
   if (s.from && s.from === s.to) rules.push(createFilterRule({ id: 'labelled', path: ['labelled'], operator: 'is', value: String(s.from) }))
   else if (s.from) rules.push(createFilterRule({ id: 'labelled', path: ['labelled'], operator: 'after', value: String(s.from - 1) }))
   else if (s.to) rules.push(createFilterRule({ id: 'labelled', path: ['labelled'], operator: 'before', value: String(s.to + 1) }))
+  if (s.founded) rules.push(createFilterRule({ id: 'founded', path: ['founded'], operator: 'is', value: String(s.founded) }))
   if (s.website) rules.push(createFilterRule({ id: 'website', path: ['website'], operator: 'is', value: s.website }))
   if (s.described) rules.push(createFilterRule({ id: 'described', path: ['described'], operator: 'is', value: s.described }))
   return createFilterQuery(rules)
@@ -93,6 +103,7 @@ function fromQuery(q: FilterQuery): Filtering {
     if (!v) continue
     if (c.field === 'q') out.q = v
     if (c.field === 'sector') out.sector = v
+    if (c.field === 'founded') out.founded = Number(v)
     if (c.field === 'website' && (v === 'yes' || v === 'no')) out.website = v
     if (c.field === 'described' && (v === 'yes' || v === 'no')) out.described = v
     if (c.field === 'labelled') {
@@ -110,7 +121,7 @@ function ArchivePage() {
   const { viewer } = shell.useLoaderData()
   const search = Route.useSearch()
   const navigate = useNavigate({ from: Route.fullPath })
-  const { rows, matched, page, pages, sectors, years, total } = results
+  const { rows, matched, page, pages, sectors, years, foundedYears, total } = results
   const [query, setQuery] = useState<FilterQuery>(() => toQuery(search))
   const ledger = useRef<HTMLDivElement>(null)
   const pending = useRef<'first' | 'last' | null>(null)
@@ -152,14 +163,14 @@ function ArchivePage() {
 
   const first = (page - 1) * PAGE_SIZE + 1
   const last = Math.min(matched, page * PAGE_SIZE)
-  const pageLink = (n: number) => ({ to: '/search' as const, search: (p: Search) => ({ ...p, open: p.open ?? selected, page: n === 1 ? undefined : n }), resetScroll: false, preload: 'intent' as const })
+  const pageLink = (n: number) => ({ to: '/search' as const, search: (p: { open?: string }) => ({ ...(p as Search), open: p.open ?? selected, page: n === 1 ? undefined : n }), resetScroll: false, preload: 'intent' as const })
 
   return (
     <div className="grid w-full flex-1 grid-rows-[auto_minmax(0,1fr)] px-4 sm:px-8 xl:h-[calc(100dvh-57px)] xl:flex-none xl:overflow-hidden">
       <div className="-mx-4 flex items-center gap-5 border-b border-hairline px-4 py-3.5 sm:-mx-8 sm:px-8">
         <div className="min-w-0 flex-1">
           <Filters
-            fields={filterFields(sectors, years)}
+            fields={filterFields(sectors, years, foundedYears)}
             query={query}
             showClear
             className="gap-3 [&_[role=toolbar]]:gap-3"

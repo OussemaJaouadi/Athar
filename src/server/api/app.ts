@@ -20,6 +20,8 @@ export type SearchInput = {
   sector?: string
   from?: number
   to?: number
+  /** Year founded (creation_year). */
+  founded?: number
   website?: 'yes' | 'no'
   described?: 'yes' | 'no'
   /** 1-based page of PAGE_SIZE rows. Out of range is clamped to the last page. */
@@ -55,6 +57,9 @@ export const searchStartups = createServerFn()
       .query<{ year: number; count: number }, []>(`SELECT ${LABELLED} AS year, COUNT(*) AS count FROM startups s WHERE cohort IS NOT NULL GROUP BY year ORDER BY year`)
       .all()
     const total = db.query<{ n: number }, []>('SELECT COUNT(*) AS n FROM startups').get()?.n ?? 0
+    const foundedYears = db
+      .query<{ year: number; count: number }, []>('SELECT creation_year AS year, COUNT(*) AS count FROM startups WHERE creation_year IS NOT NULL GROUP BY year ORDER BY year')
+      .all()
 
     const read = data.ask ? readAsk(data.ask, sectors.map((s) => s.sector)) : null
     const f = { ...data, ...(read?.filters ?? {}) }
@@ -65,6 +70,7 @@ export const searchStartups = createServerFn()
     if (f.sector) (where.push('s.sector = $sector'), (params.$sector = f.sector))
     if (f.from) (where.push(`${LABELLED} >= $from`), (params.$from = f.from))
     if (f.to) (where.push(`${LABELLED} <= $to`), (params.$to = f.to))
+    if (f.founded) (where.push('s.creation_year = $founded'), (params.$founded = f.founded))
     if (f.website) where.push(f.website === 'yes' ? 's.website IS NOT NULL' : 's.website IS NULL')
     if (f.described) where.push(f.described === 'yes' ? 's.description IS NOT NULL' : 's.description IS NULL')
 
@@ -89,7 +95,7 @@ export const searchStartups = createServerFn()
     }
     page = Math.min(pages, Math.max(1, page || 1))
     const rows = db.query<StartupRow, typeof params>(`SELECT ${COLUMNS} FROM ${from}${clause} ORDER BY ${order} LIMIT ${PAGE_SIZE} OFFSET ${(page - 1) * PAGE_SIZE}`).all(params)
-    return { rows, matched, page, pages, sectors, years, total, read }
+    return { rows, matched, page, pages, sectors, years, foundedYears, total, read }
   })
 
 export type Change = { field: string; from: string | null; to: string | null; why: string }

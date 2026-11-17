@@ -1,112 +1,142 @@
-import { newId, now } from '../ids'
 import type { RegistryRow } from './registry'
-import type { Step } from './types'
 
+// Clean is a pure function of one raw registry row. Nothing it returns is stored per row:
+// Build keeps the result on the startup, and Trace calls it again to show how a value was read.
+
+/** A visible edit to what the registry published. Trimming spaces and typing a year are not listed. */
 export type Change = { field: string; from: unknown; to: unknown; why: string }
-type Finding = { code: string; message: string }
+/** A fact about the row. It never waits for a decision. */
+export type Note = { code: string; text: string }
 
-// Hosts where many startups share one domain; identity needs the page path too.
-const HOSTED = new Set(['facebook.com', 'sites.google.com', 'linkedin.com', 'instagram.com', 'linktr.ee', 'wixsite.com'])
+export type Cleaned = {
+  name: string
+  description: string | null
+  sector: string | null
+  website: string | null
+  /** Identity of the website: the host, plus the page on hosts many startups share. */
+  domain: string | null
+  otherWebsites: string[]
+  founders: string[]
+  cohort: string | null
+  cohortDate: string | null
+  creationYear: number | null
+}
+
+// Hosts where many startups share one domain; the page path is part of the identity.
+const SHARED_HOSTS = new Set([
+  'facebook.com',
+  'instagram.com',
+  'linkedin.com',
+  'linktr.ee',
+  'sites.google.com',
+  'play.google.com',
+  'youtube.com',
+  'github.com',
+])
+const CONNECTORS = /^(et|and|ou|or|&)$/i
 
 const collapse = (s: string) => s.replace(/\s+/g, ' ').trim()
 
-export function normalizeWebsite(value: string | null): { website: string | null; domain: string | null; ok: boolean } {
-  const raw = value?.trim()
-  if (!raw || /^n\.?a\.?$/i.test(raw)) return { website: null, domain: null, ok: true }
+// Typing errors with one possible reading: "htp://x", "http::/x", "http:// x", "www..x.tn".
+const repair = (text: string) =>
+  text
+    .replace(/^h+t+p+(s?)\s*:+\s*\/+\s*/i, (_m, secure: string) => `http${secure.toLowerCase()}://`)
+    .replace(/\.{2,}/g, '.')
+
+function toUrl(token: string): URL | null {
+  const hasScheme = /^https?:\/\//i.test(token)
+  if (!hasScheme && !/^[\w-]+(\.[\w-]+)+([/?#]\S*)?$/.test(token)) return null
   try {
-    const url = new URL(/^[a-z]+:\/\//i.test(raw) ? raw : `https://${raw}`)
-    if (!url.hostname.includes('.')) return { website: null, domain: null, ok: false }
-    const host = url.hostname.toLowerCase().replace(/^www\./, '')
-    const path = url.pathname.replace(/\/+$/, '')
-    const first = path.split('/').filter(Boolean)[0]
-    const domain = HOSTED.has(host) && first ? `${host}/${first.toLowerCase()}` : host
-    return { website: `${url.protocol}//${url.hostname.toLowerCase()}${path}`, domain, ok: true }
+    const url = new URL(hasScheme ? token : `https://${token}`)
+    return url.hostname.includes('.') ? url : null
   } catch {
-    return { website: null, domain: null, ok: false }
+    return null
   }
 }
 
-export function cleanRow(row: RegistryRow) {
-  const changes: Change[] = []
-  const findings: Finding[] = []
-  const note = (field: string, from: unknown, to: unknown, why: string) => {
-    // A change only counts when a reader would see a difference, not a type conversion.
-    const shown = (v: unknown) => (v === null || v === undefined ? '' : typeof v === 'string' ? v : JSON.stringify(v))
-    if (shown(from) !== shown(to)) changes.push({ field, from, to, why })
+const showUrl = (url: URL) => `${url.protocol}//${url.hostname.toLowerCase()}${url.pathname.replace(/\/+$/, '')}${url.search}`
+
+function domainOf(url: URL): string | null {
+  const host = url.hostname.toLowerCase().replace(/^(www|m)\./, '')
+  if (!SHARED_HOSTS.has(host)) return host
+  const page = `${url.pathname.replace(/^\/+|\/+$/g, '')}${url.search}`.toLowerCase()
+  return page ? `${host}/${page}` : null // a bare facebook.com identifies nobody
+}
+
+/**
+ * The website field is free text: it holds addresses, two addresses, typos, and sometimes notes
+ * such as login details. Only addresses are kept; the raw entry still holds what was published.
+ */
+export function parseWebsite(value: string | null) {
+  const raw = (value ?? '').trim()
+  const none = { website: null, domain: null, others: [] as string[], extraText: false, unreadable: false, repaired: false }
+  if (!raw || /^(n\.?a\.?|#|-+)$/i.test(raw)) return none
+  const fixed = repair(raw)
+  const tokens = fixed.split(/[\s|;]+/).filter(Boolean)
+  const urls = tokens.map(toUrl)
+  const found = urls.filter((u): u is URL => u !== null)
+  const extraText = tokens.some((t, i) => !urls[i] && !CONNECTORS.test(t))
+  if (!found.length) return { ...none, unreadable: true }
+  const [first, ...rest] = found
+  return {
+    website: showUrl(first),
+    domain: domainOf(first),
+    others: [...new Set(rest.map(showUrl))].filter((u) => u !== showUrl(first)),
+    extraText,
+    unreadable: false,
+    repaired: fixed !== raw,
   }
+}
+
+export function cleanEntry(row: RegistryRow): { cleaned: Cleaned; changes: Change[]; notes: Note[] } {
+  const changes: Change[] = []
+  const notes: Note[] = []
 
   const name = collapse(row.name ?? '')
-  note('name', row.name, name, 'Extra spaces removed')
-
-  const description = row.desc ? row.desc.trim() || null : null
-  note('desc', row.desc, description, 'Surrounding spaces removed')
-  if (!description) findings.push({ code: 'missing_description', message: 'The registry has no description' })
-
+  const description = row.desc?.trim() || null
+  if (!description) notes.push({ code: 'no_description', text: 'The registry publishes no description' })
   const sector = row.sector ? collapse(row.sector) : null
-  if (row.industry === row.sector) note('industry', row.industry, null, 'Identical to sector, so only sector is kept')
-  else findings.push({ code: 'industry_differs', message: `Industry "${row.industry}" differs from sector "${row.sector}"` })
 
-  const site = normalizeWebsite(row.website)
-  note('website', row.website, site.website, 'Normalized to a full URL')
-  if (!site.ok) findings.push({ code: 'website_unrepairable', message: `Website "${row.website}" is not a usable URL` })
+  const site = parseWebsite(row.website)
+  if (site.unreadable) {
+    notes.push({ code: 'website_unreadable', text: 'The website field holds no address' })
+    changes.push({ field: 'website', from: row.website, to: null, why: 'Not an address' })
+  }
+  if (site.extraText) {
+    notes.push({ code: 'website_text_removed', text: 'The website field held extra text; only the address is kept' })
+    changes.push({ field: 'website', from: row.website, to: site.website, why: 'Only the address is kept' })
+  }
+  if (site.others.length) {
+    notes.push({ code: 'second_website', text: `Second address: ${site.others.join(', ')}` })
+    if (!site.extraText) changes.push({ field: 'website', from: row.website, to: site.website, why: 'First of several addresses' })
+  }
 
-  const founders = [...new Set((row.founders ?? []).map(collapse).filter(Boolean))]
-  note('founders', row.founders, founders, 'Blank and repeated names removed')
+  if (site.repaired && !site.extraText && !site.others.length)
+    changes.push({ field: 'website', from: row.website, to: site.website, why: 'Typing error repaired' })
 
-  const cohortMatch = /^(\d{2})\/(\d{4})$/.exec(row.label?.trim() ?? '')
-  const cohort = cohortMatch ? row.label.trim() : null
-  const cohortDate = cohortMatch ? `${cohortMatch[2]}-${cohortMatch[1]}-01` : null
-  if (!cohortMatch) findings.push({ code: 'cohort_unreadable', message: `Label "${row.label}" is not MM/YYYY` })
+  const seen = new Set<string>()
+  const founders = (row.founders ?? []).map(collapse).filter((f) => {
+    const key = f.toLowerCase()
+    if (!f || seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+  if (founders.length !== (row.founders ?? []).length)
+    changes.push({ field: 'founders', from: row.founders, to: founders, why: 'Blank and repeated names removed' })
+
+  const label = /^(\d{2})\/(\d{4})$/.exec(row.label?.trim() ?? '')
+  const cohort = label ? label[0] : null
+  const cohortDate = label ? `${label[2]}-${label[1]}-01` : null
+  if (!label) notes.push({ code: 'cohort_unreadable', text: `Label "${row.label}" is not a month and year` })
 
   const year = Number.parseInt(row.creation_year, 10)
   const creationYear = Number.isFinite(year) ? year : null
-  note('creation_year', row.creation_year, creationYear, 'Text turned into a number')
-  if (cohortMatch && creationYear && Number(cohortMatch[2]) < creationYear)
-    findings.push({ code: 'cohort_before_creation', message: `Labelled in ${cohortMatch[2]}, created in ${creationYear}` })
-
-  note('logo', row.logo, null, 'The same placeholder image on every row')
+  if (label && creationYear && Number(label[2]) < creationYear)
+    notes.push({ code: 'label_before_creation', text: `Labelled in ${label[2]}, created in ${creationYear}` })
 
   return {
-    record: { name, description, sector, website: site.website, domain: site.domain, founders, cohort, cohortDate, creationYear },
+    cleaned: { name, description, sector, website: site.website, domain: site.domain, otherWebsites: site.others, founders, cohort, cohortDate, creationYear },
     changes,
-    findings,
+    notes,
   }
-}
-
-// Clean: one normalized record per source row, with every edit explained.
-export const clean: Step = {
-  name: 'clean',
-  label: 'Normalize fields',
-  run({ db, runId, state }) {
-    const snapshotId =
-      state.snapshotId ??
-      db.query<{ id: string }, []>('SELECT id FROM source_snapshots ORDER BY fetched_at DESC LIMIT 1').get()?.id
-    if (!snapshotId) throw new Error('No snapshot yet: run Collect first')
-    state.snapshotId = snapshotId
-
-    const rows = db
-      .query<{ id: string; raw_json: string }, [string]>('SELECT id, raw_json FROM source_rows WHERE snapshot_id = ? ORDER BY row_number')
-      .all(snapshotId)
-    let flagged = 0
-
-    db.transaction(() => {
-      const upsert = db.query(
-        `INSERT OR REPLACE INTO records (source_row_id, snapshot_id, name, description, sector, website, domain,
-           founders_json, cohort, cohort_date, creation_year, changes_json)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      const review = db.query(
-        `INSERT INTO review_items (id, source_row_id, step, code, message, run_id, created_at) VALUES (?, ?, 'clean', ?, ?, ?, ?)`,
-      )
-      for (const row of rows) {
-        const { record: r, changes, findings } = cleanRow(JSON.parse(row.raw_json) as RegistryRow)
-        upsert.run(row.id, snapshotId, r.name, r.description, r.sector, r.website, r.domain, JSON.stringify(r.founders),
-          r.cohort, r.cohortDate, r.creationYear, JSON.stringify(changes))
-        if (findings.length) flagged++
-        for (const f of findings) review.run(newId(), row.id, f.code, f.message, runId, now())
-      }
-    })()
-
-    return { itemsIn: rows.length, itemsOut: rows.length, message: `${rows.length} records cleaned; ${flagged} need review` }
-  },
 }

@@ -37,19 +37,19 @@ export function startRun(operationId: string): string {
 async function execute(runId: string, operationId: string) {
   const db = getDatabase()
   const operation = getOperation(operationId)!
-  const ctx: StepContext = { db, runId, state: {} }
+  const ctx: StepContext = { db, runId }
   const setStep = db.query(
-    'UPDATE run_steps SET status = ?, started_at = COALESCE(started_at, ?), finished_at = ?, items_in = ?, items_out = ?, message = ? WHERE run_id = ? AND position = ?',
+    'UPDATE run_steps SET status = ?, started_at = COALESCE(started_at, ?), finished_at = ?, items_in = ?, items_out = ?, message = ?, notes_json = ? WHERE run_id = ? AND position = ?',
   )
 
   for (const [position, step] of operation.steps.entries()) {
-    setStep.run('running', now(), null, null, null, null, runId, position)
+    setStep.run('running', now(), null, null, null, null, '[]', runId, position)
     try {
       const result = await step.run(ctx)
-      setStep.run(result.skipped ? 'skipped' : 'done', now(), now(), result.itemsIn, result.itemsOut, result.message, runId, position)
+      setStep.run(result.skipped ? 'skipped' : 'done', now(), now(), result.itemsIn, result.itemsOut, result.message, JSON.stringify(result.notes ?? []), runId, position)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      setStep.run('failed', now(), now(), null, null, message, runId, position)
+      setStep.run('failed', now(), now(), null, null, message, '[]', runId, position)
       db.query("UPDATE run_steps SET status = 'not run' WHERE run_id = ? AND status = 'pending'").run(runId)
       db.query("UPDATE runs SET status = 'failed', finished_at = ?, error = ? WHERE id = ?").run(now(), `${step.label} failed: ${message}`, runId)
       return

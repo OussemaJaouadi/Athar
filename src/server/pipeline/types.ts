@@ -4,14 +4,16 @@ import type { Database } from 'bun:sqlite'
 export type StepContext = {
   db: Database
   runId: string
-  /** Values a step hands to the next one, such as the snapshot id. */
-  state: Record<string, string | undefined>
 }
+
+/** A counted fact about the data. It informs; it never waits for a decision. */
+export type RunNote = { code: string; count: number; text: string }
 
 export type StepResult = {
   itemsIn: number
   itemsOut: number
   message: string
+  notes?: RunNote[]
   skipped?: boolean
 }
 

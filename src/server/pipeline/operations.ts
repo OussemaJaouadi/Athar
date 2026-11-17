@@ -1,7 +1,6 @@
-import { clean } from './clean'
+import { build } from './build'
 import { collect } from './collect'
 import { embed } from './embed'
-import { merge } from './merge'
 import { prepare } from './prepare'
 import type { Operation } from './types'
 
@@ -9,8 +8,8 @@ export const OPERATIONS: Operation[] = [
   {
     id: 'collect',
     label: 'Collect',
-    description: 'Download the registry, normalize every row and match rows to startups.',
-    steps: [collect, clean, merge],
+    description: 'Download the registry, keep every distinct row, and rebuild the startups from them.',
+    steps: [collect, build],
   },
   { id: 'prepare', label: 'Prepare', description: 'Clean descriptions with your AI key before embedding.', steps: [prepare] },
   { id: 'embed', label: 'Embed', description: 'Embed every startup locally for search and idea checks.', steps: [embed] },

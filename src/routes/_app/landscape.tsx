@@ -1,11 +1,9 @@
-import { barY, defineChart, lineY, rect, ruleY, text } from '@tanstack/charts'
+import { type ChartCurve, barY, defineChart, dot, lineY, rect, ruleY, text } from '@tanstack/charts'
 import { crosshair } from '@tanstack/charts/crosshair'
 import { motion } from '@tanstack/charts/motion'
 import { Chart } from '@tanstack/charts/react/core'
 import { scaleBand } from '@tanstack/charts/scales/band'
 import { scaleLinear } from '@tanstack/charts/scales/linear'
-import { scalePoint } from '@tanstack/charts/scales/point'
-import { ridgelineY } from '@tanstack/charts/ridgeline'
 import { tooltip } from '@tanstack/charts/tooltip'
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
 import { Check, ChevronDown, LayoutGrid, TrendingUp, Users } from 'lucide-react'
@@ -309,94 +307,139 @@ const lastBucket = (rows: LandscapeRow[]) => Math.max(0, ...rows.map((r) => buck
 
 /* ───────────────────────────── Fields ───────────────────────────── */
 
-/** Small multiples: one panel per field, its founding years (green) against the whole scene's (grey). */
+// A bump path: horizontal tangents at every point, so rank changes read as smooth S-steps.
+const bumpCurve: ChartCurve = {
+  line: (pts) =>
+    pts.length === 0
+      ? ''
+      : pts.reduce((d, [x, y], i) => {
+          if (i === 0) return `M${x},${y}`
+          const [px, py] = pts[i - 1]
+          const mx = (px + x) / 2
+          return `${d}C${mx},${py} ${mx},${y} ${x},${y}`
+        }, ''),
+  area: () => '',
+}
+
+type Move = 'up' | 'down' | 'same'
+
+/** A bump ranking: each field's rank by startups founded so far, year by year, in one chart. */
 function Fields({ all, t, renderer, by, onBy }: { all: LandscapeRow[]; t: Tokens | null; renderer: ReturnType<typeof motion>; by: 'sector' | 'theme'; onBy: (b: 'sector' | 'theme') => void }) {
   const navigate = useNavigate()
   const base = (by === 'theme' ? all.filter((r) => r.described) : all).filter((r) => bucketOf(r) !== null)
   const n = lastBucket(all) + 1
   const xs = Array.from({ length: n }, (_, i) => i)
-  const scene = xs.map((i) => base.filter((r) => bucketOf(r) === i).length)
-  const sceneMax = Math.max(1, ...scene)
+  const last = n - 1
   const ids = by === 'sector' ? [...new Set(all.map((r) => r.sector))] : THEMES.map((th) => th.id)
   const has = (r: LandscapeRow, id: string) => (by === 'sector' ? r.sector === id : r.themes.includes(id))
   const fields = ids
     .map((id) => {
       const per = xs.map((i) => base.filter((r) => bucketOf(r) === i && has(r, id)).length)
-      const total = per.reduce((a, b) => a + b, 0)
-      const peakAt = per.indexOf(Math.max(...per))
-      return { id, label: by === 'sector' ? id : (THEMES.find((th) => th.id === id)?.label ?? id), per, total, peakAt, peak: per[peakAt] }
+      let run = 0
+      const cum = per.map((v) => (run += v))
+      return { id, label: by === 'sector' ? id : (THEMES.find((th) => th.id === id)?.label ?? id), cum, total: run }
     })
     .filter((f) => f.total > 0)
-    .sort((a, b) => b.total - a.total)
-  // Findings: the biggest gainer and loser in share of foundings between 2019 and a recent year with enough startups, and the latest-peaking field.
-  const shareIn = (f: (typeof fields)[number], i: number) => (scene[i] ? f.per[i] / scene[i] : 0)
-  const from = 2019 - FIRST
-  const recent = [...xs].reverse().find((i) => scene[i] >= 30) ?? n - 1
-  const moves = fields.filter((f) => f.total >= 20).map((f) => ({ f, a: shareIn(f, from), b: shareIn(f, recent) }))
-  const up = [...moves].sort((x, y) => y.b - y.a - (x.b - x.a))[0]
-  const down = [...moves].sort((x, y) => x.b - x.a - (y.b - y.a))[0]
-  const late = fields.filter((f) => f.total >= 20).sort((a, b) => b.peakAt - a.peakAt || b.total - a.total)[0]
-  const p = (v: number) => `${Math.round(v * 100)}%`
-
-  // One chart: a ridge per field on a shared year axis, the whole scene's shape in grey behind each.
-  const ridges = fields.flatMap((f) => xs.map((i) => ({ id: f.id, field: f.label, x: i, h: f.per[i] / Math.max(1, f.peak), n: f.per[i], all: scene[i] })))
-  const ghosts = fields.flatMap((f) => xs.map((i) => ({ field: f.label, x: i, h: scene[i] / sceneMax })))
+  // Rank at each year among fields with at least one startup so far; ties go to the bigger final total, then the name.
+  const rankAt = xs.map((i) =>
+    fields
+      .filter((f) => f.cum[i] > 0)
+      .sort((a, b) => b.cum[i] - a.cum[i] || b.total - a.total || a.label.localeCompare(b.label))
+      .map((f) => f.id),
+  )
+  const ranked = fields.map((f) => {
+    const ranks = xs.map((i) => {
+      const k = rankAt[i].indexOf(f.id)
+      return k < 0 ? null : k + 1
+    })
+    const first = ranks.findIndex((r) => r !== null)
+    const delta = (ranks[first] ?? 0) - (ranks[last] ?? 0)
+    const move: Move = delta >= 2 ? 'up' : delta <= -2 ? 'down' : 'same'
+    return { ...f, ranks, first, delta, move }
+  })
+  const N = fields.length
+  const points = ranked.flatMap((f) => xs.filter((i) => f.ranks[i] !== null).map((i) => ({ id: f.id, field: f.label, x: i, rank: f.ranks[i]!, cum: f.cum[i], move: f.move })))
+  const [hl, setHl] = useState<string | null>(null)
+  // Findings only from fields big enough for a rank change to mean something.
+  const solid = ranked.filter((f) => f.total >= 20)
+  const climber = [...solid].sort((a, b) => b.delta - a.delta || b.total - a.total)[0]
+  const faller = [...solid].sort((a, b) => a.delta - b.delta || b.total - a.total)[0]
+  const always = ranked.find((f) => f.ranks.every((r) => r === 1))
+  const ord = (k: number) => `${k}${k % 10 === 1 && k !== 11 ? 'st' : k % 10 === 2 && k !== 12 ? 'nd' : k % 10 === 3 && k !== 13 ? 'rd' : 'th'}`
+  const moveText = (f: (typeof ranked)[number]) => (f.delta > 0 ? `▲ ${f.delta}` : f.delta < 0 ? `▼ ${-f.delta}` : '–')
+  const open = (id: string) => navigate({ to: '/search', search: by === 'sector' ? { sector: id } : { q: THEMES.find((th) => th.id === id)?.query } })
   const def = useMemo(() => {
     if (!t) return null
-    const last = xs.length - 1
+    const lit = ranked.find((f) => f.id === hl)
+    const litPts = points.filter((p) => p.id === hl)
+    const startLeft = ranked.filter((f) => f.first === 0)
+    const lateStart = ranked.filter((f) => f.first > 0)
     return defineChart({
       marks: [
-        ridgelineY(ghosts, { id: 'scene', x: 'x', y: 'field', height: 'h', overlap: 1.25, fill: t.edge, fillOpacity: 0.35, stroke: null, key: (d) => `g-${d.field}-${d.x}` }),
-        ridgelineY(ridges, { id: 'field', x: 'x', y: 'field', height: 'h', overlap: 1.25, fill: t.glaze, fillOpacity: 0.55, stroke: t.glaze, strokeWidth: 1.5, key: (d) => `${d.id}-${d.x}` }),
-        text(fields, { x: () => last, y: 'label', text: (f) => `${f.total} · peak ${f.peak} in ${bucketShort(f.peakAt)}`, anchor: 'start', dx: 14, dy: -8, fontSize: 13, fill: t.ink2 }),
-        crosshair({ x: { stroke: t.ink, strokeWidth: 1, label: true }, y: false }),
+        ...ranked.map((f) => lineY(points.filter((p) => p.id === f.id), { id: `l-${f.id}`, x: 'x', y: 'rank', key: (p) => `${p.id}-${p.x}`, color: 'move', strokeWidth: 2.5, curve: bumpCurve })),
+        dot(points, { x: 'x', y: 'rank', key: (p) => `${p.id}-${p.x}`, color: 'move', r: 5, stroke: t.canvas, strokeWidth: 2 }),
+        ...(lit
+          ? [
+              lineY(litPts, { id: 'lit', x: 'x', y: 'rank', key: (p) => `lit-${p.x}`, stroke: t.ink, strokeWidth: 4, curve: bumpCurve }),
+              text(litPts, { x: 'x', y: 'rank', text: (p) => String(p.rank), dy: -14, fontSize: 13, fill: t.ink }),
+            ]
+          : []),
+        text(startLeft, { x: () => 0, y: (f) => f.ranks[0]!, text: (f) => `${f.ranks[0]}  ${f.label}`, anchor: 'end', dx: -16, fontSize: 14, fill: t.ink }),
+        text(lateStart, { x: (f) => f.first, y: (f) => f.ranks[f.first]!, text: 'label', anchor: 'end', dx: -12, fontSize: 13, fill: t.ink2 }),
+        text(ranked, { x: () => last, y: (f) => f.ranks[last]!, text: (f) => `${f.ranks[last]}  ${f.label} · ${f.total} · ${moveText(f)}`, anchor: 'start', dx: 16, fontSize: 14, fill: t.ink }),
+        text(xs, { x: (i) => i, y: () => 0, text: (i) => bucketShort(i), fontSize: 13, fill: t.ink2 }),
       ],
       scales: {
-        x: { scale: scaleLinear().domain([0, last]), grid: { stroke: t.hairline }, axis: { tickLabels: { fontSize: 13 }, ticks: { values: xs, format: (v: number) => bucketShort(v) } } },
-        y: { scale: () => scalePoint<string>().domain(fields.map((f) => f.label)).padding(1.25), axis: { tickLabels: { fontSize: 14, dy: -8 }, ticks: { line: false } } },
+        x: { scale: scaleLinear().domain([0, last]), grid: { stroke: t.hairline }, axis: { line: false, tickLabels: { fontSize: 13 }, ticks: { values: xs, format: (v: number) => bucketShort(v), line: false } } },
+        y: { scale: scaleLinear().domain([N + 0.6, -0.3]), axis: false },
       },
-      focus: 'nearest-x',
-      maxFocusDistance: 24,
+      color: { domain: ['up', 'down', 'same'], range: [t.glaze, t.terracotta, t.edge] },
+      focus: 'nearest',
+      maxFocusDistance: 18,
       tooltip: {
         use: tooltip,
         format: (pt: { datum: unknown }) => {
-          const d = pt.datum as { field?: string; x?: number; n?: number; all?: number }
-          return d.field && d.n !== undefined ? `${d.field}\nFounded ${bucketLabel(d.x ?? 0)}: ${d.n}\nOf ${d.all} founded that year` : ''
+          const d = pt.datum as { field?: string; x?: number; rank?: number; cum?: number }
+          return d.field && d.rank ? `${d.field}\nFounded by ${bucketShort(d.x ?? 0)}: ${d.cum}\nRank ${d.rank}` : ''
         },
       },
-      theme: theme(t, [t.glaze]),
-      margin: { left: 230, right: 210, top: 8 },
+      theme: theme(t, [t.glaze, t.terracotta, t.edge]),
+      margin: { left: 300, right: 380, top: 4, bottom: 4 },
     })
-  }, [t, JSON.stringify(ridges)]) // eslint-disable-line react-hooks/exhaustive-deps
-
+  }, [t, JSON.stringify(points), hl]) // eslint-disable-line react-hooks/exhaustive-deps
+  const h = Math.round((N + 0.9) * 30) + 36
   return (
     <Section
-      question={by === 'sector' ? 'When was each sector founded, compared with the whole scene?' : 'When were startups in each theme founded, compared with the whole scene?'}
+      question={by === 'sector' ? 'Which sectors climbed the ranking as the scene grew?' : 'Which themes climbed the ranking as the scene grew?'}
       controls={<Segmented label="Fields" value={by} options={[['sector', 'Sectors'], ['theme', 'Themes']]} onChange={onBy} />}
       chart={
         <>
-          {def ? (
-            <Chart
-              definition={def}
-              renderer={renderer}
-              height={fields.length * 44 + 70}
-              ariaLabel={`Founding years per ${by}. ${up ? `${up.f.label} went from ${p(up.a)} to ${p(up.b)} of foundings.` : ''}`}
-              onSelect={(pt) => {
-                const d = pt?.datum as { id?: string } | undefined
-                if (d?.id) navigate({ to: '/search', search: by === 'sector' ? { sector: d.id } : { q: THEMES.find((th) => th.id === d.id)?.query } })
-              }}
-            />
-          ) : (
-            <Empty h={fields.length * 44 + 70} />
-          )}
-          <DataTable caption={`Startups founded per year, by ${by}`} head={[by === 'sector' ? 'Sector' : 'Theme', ...xs.map(bucketLabel)]} rows={fields.map((f) => [f.label, ...f.per])} />
+          {t && <Swatches items={[['Climbed 2 places or more', t.glaze], ['Fell 2 places or more', t.terracotta], ['Held its place', t.edge]]} />}
+          <div className="mt-3">
+            {def ? (
+              <Chart
+                definition={def}
+                renderer={renderer}
+                height={h}
+                ariaLabel={climber ? `${climber.label} climbed from ${ord(climber.ranks[climber.first]!)} to ${ord(climber.ranks[last]!)}.` : 'Ranking by startups founded so far.'}
+                onFocusChange={(pt) => setHl(pt ? ((pt.datum as { id?: string }).id ?? null) : null)}
+                onSelect={(pt) => {
+                  const id = (pt?.datum as { id?: string } | undefined)?.id
+                  if (id) open(id)
+                }}
+              />
+            ) : (
+              <Empty h={h} />
+            )}
+          </div>
+          <DataTable caption={`Rank by startups founded so far, by ${by}`} head={[by === 'sector' ? 'Sector' : 'Theme', ...xs.map(bucketLabel)]} rows={ranked.map((f) => [f.label, ...f.ranks.map((r) => (r === null ? '–' : r))])} />
         </>
       }
-      caption={`Green: this ${by === 'sector' ? 'sector' : 'theme'}. Grey: all ${base.length} ${by === 'theme' ? 'described ' : ''}startups, same years. Each row is scaled to its own peak, printed at the right. Hover for a year's count; click a row to open it in the Archive.${by === 'theme' ? ' Themes come from description keywords: an estimate.' : ''}`}
+      caption={`Rank by number of ${by === 'theme' ? 'described ' : ''}startups founded up to each year. Green climbed, red fell, grey held its place. Hover a line to follow it; click to open it in the Archive.${by === 'theme' ? ' Themes come from description keywords: an estimate.' : ''}`}
       findings={[
-        up ? { figure: `${p(up.a)} → ${p(up.b)}`, text: `of startups founded in ${FIRST + from} and in ${FIRST + recent} were ${up.f.label}.` } : { figure: '—', text: '' },
-        down ? { figure: `${p(down.a)} → ${p(down.b)}`, text: `for ${down.f.label}, the biggest drop between the same years.` } : { figure: '—', text: '' },
-        late ? { figure: bucketLabel(late.peakAt), text: `${late.label} peaked latest, with ${late.peak} founded that year.` } : { figure: '—', text: '' },
+        climber ? { figure: `${ord(climber.ranks[climber.first]!)} → ${ord(climber.ranks[last]!)}`, text: `${climber.label} climbed the most, to ${climber.total} startups.` } : { figure: '—', text: '' },
+        faller ? { figure: `${ord(faller.ranks[faller.first]!)} → ${ord(faller.ranks[last]!)}`, text: `${faller.label} fell the most.` } : { figure: '—', text: '' },
+        always ? { figure: '1st', text: `every year: ${always.label}.` } : { figure: ord(1), text: `today: ${ranked.find((f) => f.ranks[last] === 1)?.label}.` },
       ]}
     />
   )

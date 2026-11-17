@@ -295,8 +295,10 @@ describe('the rows behind the numbers', () => {
     ingest(db, body([row(), row({ name: 'Paymee', website: 'https://paymee.tn', desc: null }), row({ name: 'Urban Green', website: 'https://www.facebook.com/urbangreen.tn', founders: ['U G'] })]), null)
     run(db)
     db.query("INSERT INTO website_checks (startup_id, url, status, detail, checked_at, since) VALUES ('relead', 'https://relead.tn', 'unreachable', 'no such domain', 't', 't')").run()
-    expect(factRows(db, 'no_description')).toEqual({ rows: [{ startupId: 'paymee', name: 'Paymee', value: 'The registry publishes no description' }], total: 1 })
-    expect(factRows(db, 'unreachable:no such domain')?.rows).toEqual([{ startupId: 'relead', name: 'Relead', value: 'https://relead.tn · no such domain' }])
+    const seen = db.query<{ at: string }, []>('SELECT last_checked_at AS at FROM downloads').get()!.at
+    expect(factRows(db, 'no_description')).toEqual({ rows: [{ startupId: 'paymee', name: 'Paymee', value: 'The registry publishes no description', labelled: '2022-12', observedOn: seen }], total: 1 })
+    // a website fact is dated by its check, not by the download
+    expect(factRows(db, 'unreachable:no such domain')?.rows).toEqual([{ startupId: 'relead', name: 'Relead', value: 'https://relead.tn · no such domain', labelled: '2022-12', observedOn: 't' }])
     expect(factRows(db, 'social_not_checked')?.rows.map((r) => r.startupId)).toEqual(['urban-green'])
     expect(factRows(db, 'startups_unchanged')).toBeNull()
     const { qualitySummary, searchStartups } = require('./facts') as typeof import('./facts')

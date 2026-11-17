@@ -7,7 +7,16 @@ import { differences } from './state'
 // The rows behind the numbers. Every counted fact a step reports can be opened as the startups or entries it counts,
 // and the registry's own changes can be read download by download.
 
-export type FactRow = { startupId: string | null; name: string; value: string | null; entryId?: string }
+export type FactRow = {
+  startupId: string | null
+  name: string
+  value: string | null
+  /** 'YYYY-MM', the startup's label month. */
+  labelled: string | null
+  /** When this was seen: the website's last check for website facts, otherwise the last download that published the startup. */
+  observedOn: string | null
+  entryId?: string
+}
 
 const NOTE_CODES = ['no_description', 'listed_more_than_once', 'other_sector', 'other_name', 'website_text_removed', 'second_website', 'website_unreadable', 'label_unreadable', 'label_before_creation']
 
@@ -17,37 +26,46 @@ const NOTE_CODES = ['no_description', 'listed_more_than_once', 'other_sector', '
  */
 export function factRows(db: Database, code: string, limit = 500): { rows: FactRow[]; total: number } | null {
   const list = (sql: string, ...params: (string | number)[]) => {
-    const rows = db.query<{ id: string | null; name: string; value: string | null; entry_id?: string }, (string | number)[]>(sql).all(...params)
-    return { rows: rows.slice(0, limit).map((r) => ({ startupId: r.id, name: r.name, value: r.value, ...(r.entry_id ? { entryId: r.entry_id } : {}) })), total: rows.length }
+    const rows = db.query<{ id: string | null; name: string; value: string | null; labelled: string | null; observed: string | null; entry_id?: string }, (string | number)[]>(sql).all(...params)
+    return {
+      rows: rows.slice(0, limit).map((r): FactRow => ({ startupId: r.id, name: r.name, value: r.value, labelled: r.labelled, observedOn: r.observed, ...(r.entry_id ? { entryId: r.entry_id } : {}) })),
+      total: rows.length,
+    }
   }
   const latest = db.query<{ id: number | null }, []>('SELECT MAX(id) AS id FROM downloads').get()?.id ?? 0
+  // A fact read from the registry was last seen when the startup was last published.
+  const published = '(SELECT d.last_checked_at FROM downloads d WHERE d.id = s.last_download) AS observed'
 
   if (NOTE_CODES.includes(code))
     return list(
-      `SELECT s.id, s.name, json_extract(n.value, '$.text') AS value FROM startups s, json_each(s.notes_json) n
+      `SELECT s.id, s.name, json_extract(n.value, '$.text') AS value, s.labelled, ${published} FROM startups s, json_each(s.notes_json) n
        WHERE json_extract(n.value, '$.code') = ? AND s.last_download = ? ORDER BY s.name COLLATE NOCASE`,
       code, latest,
     )
   if (code === 'not_in_registry')
     return list(
-      `SELECT s.id, s.name, 'Last published on ' || substr(d.last_checked_at, 1, 10) AS value FROM startups s JOIN downloads d ON d.id = s.last_download
-       WHERE s.last_download < ? ORDER BY s.last_download DESC, s.name COLLATE NOCASE`,
+      `SELECT s.id, s.name, 'Last published on ' || substr(d.last_checked_at, 1, 10) AS value, s.labelled, d.last_checked_at AS observed
+       FROM startups s JOIN downloads d ON d.id = s.last_download WHERE s.last_download < ? ORDER BY s.last_download DESC, s.name COLLATE NOCASE`,
       latest,
     )
-  const check = `SELECT s.id, s.name, w.url || ' · ' || w.detail AS value FROM website_checks w JOIN startups s ON s.id = w.startup_id`
+  // A fact about a website was seen when the website was last asked.
+  const check = `SELECT s.id, s.name, w.url || ' · ' || w.detail AS value, s.labelled, w.checked_at AS observed FROM website_checks w JOIN startups s ON s.id = w.startup_id`
   if (code === 'reachable' || code === 'unreachable') return list(`${check} WHERE w.status = ? ORDER BY w.detail, s.name COLLATE NOCASE`, code)
   if (code.startsWith('unreachable:')) return list(`${check} WHERE w.status = 'unreachable' AND w.detail = ? ORDER BY s.name COLLATE NOCASE`, code.slice('unreachable:'.length))
   if (code === 'moved')
     return list(
-      `SELECT s.id, s.name, w.url || ' now answers from ' || w.final_host AS value FROM website_checks w JOIN startups s ON s.id = w.startup_id
-       WHERE w.status = 'reachable' AND w.final_host IS NOT NULL ORDER BY s.name COLLATE NOCASE`,
+      `SELECT s.id, s.name, w.url || ' now answers from ' || w.final_host AS value, s.labelled, w.checked_at AS observed
+       FROM website_checks w JOIN startups s ON s.id = w.startup_id WHERE w.status = 'reachable' AND w.final_host IS NOT NULL ORDER BY s.name COLLATE NOCASE`,
     )
-  if (code === 'social_not_checked') return list("SELECT id, name, website AS value FROM startups WHERE website_kind = 'social' ORDER BY name COLLATE NOCASE")
-  if (code === 'no_website') return list('SELECT id, name, NULL AS value FROM startups WHERE website IS NULL ORDER BY name COLLATE NOCASE')
-  if (code === 'from_prepared') return list('SELECT s.id, s.name, p.text AS value FROM prepared_texts p JOIN startups s ON s.id = p.startup_id ORDER BY s.name COLLATE NOCASE')
+  if (code === 'social_not_checked') return list(`SELECT s.id, s.name, s.website AS value, s.labelled, ${published} FROM startups s WHERE s.website_kind = 'social' ORDER BY s.name COLLATE NOCASE`)
+  if (code === 'no_website') return list(`SELECT s.id, s.name, NULL AS value, s.labelled, ${published} FROM startups s WHERE s.website IS NULL ORDER BY s.name COLLATE NOCASE`)
+  if (code === 'from_prepared')
+    return list('SELECT s.id, s.name, p.text AS value, s.labelled, p.created_at AS observed FROM prepared_texts p JOIN startups s ON s.id = p.startup_id ORDER BY s.name COLLATE NOCASE')
   if (code === 'exact_copies')
     return list(
-      `SELECT e.startup_id AS id, json_extract(e.raw_json, '$.name') AS name, 'Published ' || e.copies || ' times, character for character' AS value, e.id AS entry_id
+      `SELECT e.startup_id AS id, json_extract(e.raw_json, '$.name') AS name, 'Published ' || e.copies || ' times, character for character' AS value,
+              (SELECT s.labelled FROM startups s WHERE s.id = e.startup_id) AS labelled,
+              (SELECT d.last_checked_at FROM downloads d WHERE d.id = e.last_download) AS observed, e.id AS entry_id
        FROM entries e WHERE e.copies > 1 AND e.last_download = ? ORDER BY name COLLATE NOCASE`,
       latest,
     )

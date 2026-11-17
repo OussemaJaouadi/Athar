@@ -1,4 +1,4 @@
-import { barX, barY, cell, defineChart, group, lineY } from '@tanstack/charts'
+import { barY, cell, defineChart, lineY } from '@tanstack/charts'
 import { motion } from '@tanstack/charts/motion'
 import { Chart } from '@tanstack/charts/react/core'
 import { scaleBand } from '@tanstack/charts/scales/band'
@@ -18,19 +18,19 @@ import { THEMES } from '#/shared/themes'
 
 const TABS = [
   { id: 'growth', label: 'Growth' },
-  { id: 'speed', label: 'Speed to label' },
-  { id: 'themes', label: 'Themes' },
+  { id: 'fields', label: 'Sectors and themes' },
   { id: 'teams', label: 'Teams' },
   { id: 'rhythm', label: 'Label rhythm' },
 ] as const
 type Tab = (typeof TABS)[number]['id']
-type Search = { tab?: Tab; sector?: string; theme?: string }
+type Search = { tab?: Tab; sector?: string; by?: 'sector' | 'theme'; as?: 'count' | 'share' }
 
 export const Route = createFileRoute('/_app/landscape')({
   validateSearch: (s: Record<string, unknown>): Search => ({
     tab: TABS.some((t) => t.id === s.tab) ? (s.tab as Tab) : undefined,
     sector: typeof s.sector === 'string' && s.sector ? s.sector : Array.isArray(s.sector) && typeof s.sector[0] === 'string' ? s.sector[0] : undefined,
-    theme: typeof s.theme === 'string' && THEMES.some((t) => t.id === s.theme) ? s.theme : undefined,
+    by: s.by === 'theme' ? 'theme' : undefined,
+    as: s.as === 'share' ? 'share' : undefined,
   }),
   loader: () => getLandscapeRows(),
   component: LandscapePage,
@@ -41,7 +41,7 @@ const TEAMS = ['1 founder', '2 founders', '3 founders', '4 or more'] as const
 const pct = (a: number, b: number) => (b ? Math.round((a / b) * 100) : 0)
 const H = 340
 
-type Tokens = Record<'glaze' | 'ochre' | 'terracotta' | 'ink' | 'ink2' | 'ink3' | 'hairline' | 'edge' | 'canvas' | 'surface' | 'raised' | 'tile4', string>
+type Tokens = Record<'glaze' | 'ochre' | 'terracotta' | 'manganese' | 'steel' | 'ink' | 'ink2' | 'ink3' | 'hairline' | 'edge' | 'canvas' | 'surface' | 'raised' | 'tile4', string>
 
 /** Athar's tokens as real colours (SVG paint cannot read CSS variables); empty until mount so hydration matches. */
 function useTokens() {
@@ -50,7 +50,7 @@ function useTokens() {
     const read = () => {
       const s = getComputedStyle(document.documentElement)
       const v = (n: string) => s.getPropertyValue(n).trim()
-      setT({ glaze: v('--glaze'), ochre: v('--ochre'), terracotta: v('--tile-terracotta'), ink: v('--ink'), ink2: v('--ink-2'), ink3: v('--ink-3'), hairline: v('--hairline'), edge: v('--edge'), canvas: v('--canvas'), surface: v('--surface'), raised: v('--surface-raised'), tile4: v('--tile-4') })
+      setT({ glaze: v('--glaze'), ochre: v('--ochre'), terracotta: v('--tile-terracotta'), manganese: v('--tile-manganese'), steel: v('--tile-steel'), ink: v('--ink'), ink2: v('--ink-2'), ink3: v('--ink-3'), hairline: v('--hairline'), edge: v('--edge'), canvas: v('--canvas'), surface: v('--surface'), raised: v('--surface-raised'), tile4: v('--tile-4') })
     }
     read()
     const mo = new MutationObserver(read)
@@ -118,8 +118,15 @@ function LandscapePage() {
 
       <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} className="pt-8">
         {tab === 'growth' && <Growth {...props} />}
-        {tab === 'speed' && <Speed {...props} />}
-        {tab === 'themes' && <Themes {...props} selected={search.theme ?? 'ai'} onSelect={(id) => setSearch({ theme: id === 'ai' ? undefined : id })} sector={sector} />}
+        {tab === 'fields' && (
+          <Fields
+            {...props}
+            by={search.by ?? 'sector'}
+            as={search.as ?? 'count'}
+            onBy={(v) => setSearch({ by: v === 'theme' ? 'theme' : undefined })}
+            onAs={(v) => setSearch({ as: v === 'share' ? 'share' : undefined })}
+          />
+        )}
         {tab === 'teams' && <Teams {...props} founders={sector ? founders.filter((f) => f.startups.some((s) => rows.some((r) => r.id === s.id))) : founders} />}
         {tab === 'rhythm' && <Rhythm {...props} />}
       </div>
@@ -200,37 +207,45 @@ function Legend({ items }: { items: [string, string][] }) {
   )
 }
 
-/** Growth: how many were founded and how many labelled, each year. */
-function Growth({ rows, t, renderer }: PanelProps) {
+/** Growth: bars for startups founded each year, a line for labels granted each year. The gap between them is the lag. */
+function Growth({ rows, years: labelYears, t, renderer }: PanelProps) {
   const founded = rows.map((r) => r.founded).filter((y): y is number => y !== null)
   const y0 = Math.min(...founded)
   const y1 = Math.max(...founded, ...rows.map((r) => r.year))
-  const years = Array.from({ length: y1 - y0 + 1 }, (_, i) => y0 + i)
-  const data = years.flatMap((y) => [
-    { year: String(y), kind: 'Founded', count: rows.filter((r) => r.founded === y).length },
-    { year: String(y), kind: 'Labelled', count: rows.filter((r) => r.year === y).length },
-  ])
-  const peak = (kind: string) => data.filter((d) => d.kind === kind).sort((a, b) => b.count - a.count)[0]
-  const pf = peak('Founded')
-  const pl = peak('Labelled')
-  const lastL = data.filter((d) => d.kind === 'Labelled').at(-1)
-  const before = rows.filter((r) => r.founded !== null && r.founded < 2019).length
+  const years = Array.from({ length: y1 - y0 + 1 }, (_, i) => String(y0 + i))
+  const bars = years.map((y) => ({ year: y, count: rows.filter((r) => r.founded === Number(y)).length }))
+  const line = years.filter((y) => Number(y) >= labelYears[0]).map((y) => ({ year: y, count: rows.filter((r) => r.year === Number(y)).length }))
+  const pf = [...bars].sort((a, b) => b.count - a.count)[0]
+  const pl = [...line].sort((a, b) => b.count - a.count)[0]
+  const lastL = line.at(-1)
+  const before = rows.filter((r) => r.founded !== null && r.founded < labelYears[0]).length
+  const known = rows.filter((r) => r.founded !== null)
+  const same = known.filter((r) => r.year - r.founded! <= 0).length
+  const within1 = known.filter((r) => r.year - r.founded! <= 1).length
   const def = useMemo(
     () =>
       t &&
       defineChart({
-        marks: [barY(data, { x: 'year', y: 'count', color: 'kind', key: (d) => `${d.year}-${d.kind}`, layout: group({ padding: 0.12 }), inset: 1, radius: 2 })],
+        marks: [
+          barY(bars, { id: 'founded', x: 'year', y: 'count', key: 'year', fill: t.tile4, inset: 6, radius: 2 }),
+          lineY(line, { id: 'labelled', x: 'year', y: 'count', key: 'year', stroke: t.glaze, strokeWidth: 3, points: true }),
+        ],
         scales: {
-          x: { scale: () => scaleBand<string>().padding(0.18), axis: axisText },
+          x: { scale: () => scaleBand<string>().domain(years).padding(0.14), axis: axisText },
           y: { scale: scaleLinear, nice: true, grid: { stroke: t.hairline }, axis: axisText },
         },
-        color: { domain: ['Founded', 'Labelled'], range: [t.tile4, t.glaze] },
         focus: 'group-x',
-        tooltip: { use: tooltip, sort: 'color-domain' },
+        tooltip: {
+          use: tooltip,
+          items: [
+            { channel: 'x' },
+            { id: 'v', label: 'Count', text: (p: { datum: { count: number }; markId?: string }) => `${p.datum.count} ${p.markId === 'labelled' ? 'labelled' : 'founded'}` },
+          ],
+        },
         theme: theme(t, [t.tile4, t.glaze]),
         margin: { left: 44 },
       }),
-    [t, JSON.stringify(data)], // eslint-disable-line react-hooks/exhaustive-deps
+    [t, JSON.stringify(bars), JSON.stringify(line)], // eslint-disable-line react-hooks/exhaustive-deps
   )
   return (
     <Layout
@@ -242,214 +257,250 @@ function Growth({ rows, t, renderer }: PanelProps) {
       }
       chart={
         <>
-          <Legend items={t ? [['Founded that year', t.tile4], ['Labelled that year', t.glaze]] : []} />
-          {def ? <Chart definition={def} renderer={renderer} height={H} ariaLabel="Startups founded and labelled each year" /> : <Empty />}
+          <Legend items={t ? [['Founded that year (bars)', t.tile4], ['Labelled that year (line)', t.glaze]] : []} />
+          {def ? <Chart definition={def} renderer={renderer} height={H} ariaLabel="Startups founded each year as bars, and labelled each year as a line" /> : <Empty />}
         </>
       }
     >
       <p>
-        Founding peaked in {pf?.year} with {pf?.count}. {before} were founded before the label existed in 2019, and received it later.
+        Founding peaked in {pf?.year} with {pf?.count}. Where the line sits above the bars, the label was catching up on startups founded earlier: {before} were founded before {labelYears[0]}.
+      </p>
+      <p>
+        Most do not wait: {pct(same, known.length)}% get the label the year they are founded, {pct(within1, known.length)}% within a year.
       </p>
       <p className="text-ink-2">Recent founding years look small partly because young startups may not have applied yet.</p>
     </Layout>
   )
 }
 
-/** Speed: how soon after founding the label comes, as two lines over label years. */
-function Speed({ rows, years, t, renderer }: PanelProps) {
-  const lag = (r: LandscapeRow) => (r.founded === null ? null : r.year - r.founded)
-  const data = years.flatMap((y) => {
-    const list = rows.filter((r) => r.year === y && lag(r) !== null)
-    return [
-      { year: String(y), line: 'The same year', share: list.length ? list.filter((r) => lag(r)! <= 0).length / list.length : null, n: list.length },
-      { year: String(y), line: 'Within a year', share: list.length ? list.filter((r) => lag(r)! <= 1).length / list.length : null, n: list.length },
-    ]
-  })
-  const known = rows.filter((r) => lag(r) !== null)
-  const old = rows.filter((r) => r.year === years[0] && (lag(r) ?? 0) >= 4).length
-  const firstN = rows.filter((r) => r.year === years[0]).length
+const FIELD_COLOURS = (t: Tokens) => [t.glaze, t.ochre, t.manganese, t.terracotta, t.steel, t.ink2]
+const MAX_LINES = 6
+
+/** Fields: each sector or theme across label years, as a number or as its share of that year. */
+function Fields({ rows, years, t, renderer, by, as, onBy, onAs }: PanelProps & { by: 'sector' | 'theme'; as: 'count' | 'share'; onBy: (v: 'sector' | 'theme') => void; onAs: (v: 'count' | 'share') => void }) {
+  const base = by === 'theme' ? rows.filter((r) => r.described) : rows
+  const fields = useMemo(() => {
+    const names = by === 'sector' ? [...new Set(base.map((r) => r.sector))] : THEMES.map((th) => th.id)
+    const total = (f: string) => base.filter((r) => (by === 'sector' ? r.sector === f : r.themes.includes(f))).length
+    return names
+      .map((f) => ({ id: f, label: by === 'sector' ? f : (THEMES.find((th) => th.id === f)?.label ?? f), total: total(f) }))
+      .filter((f) => f.total > 0)
+      .sort((a, b) => b.total - a.total)
+  }, [by, base.length]) // eslint-disable-line react-hooks/exhaustive-deps
+  const [visible, setVisible] = useState<readonly string[]>([])
+  useEffect(() => setVisible(fields.slice(0, 5).map((f) => f.label)), [fields])
+  const data = fields.filter((f) => visible.includes(f.label)).flatMap((f) =>
+    years.map((y) => {
+      const n = base.filter((r) => r.year === y).length
+      const k = base.filter((r) => r.year === y && (by === 'sector' ? r.sector === f.id : r.themes.includes(f.id))).length
+      return { year: String(y), field: f.label, value: as === 'count' ? k : n >= 10 ? k / n : null, k, n }
+    }),
+  )
+  const top = fields[0]
+  const growth = fields
+    .map((f) => {
+      const share = (y: number) => {
+        const n = base.filter((r) => r.year === y).length
+        return n >= 10 ? base.filter((r) => r.year === y && (by === 'sector' ? r.sector === f.id : r.themes.includes(f.id))).length / n : null
+      }
+      const early = share(years[0])
+      const lateYear = [...years].reverse().find((y) => share(y) !== null)
+      return { f, early, late: lateYear ? share(lateYear) : null, lateYear }
+    })
+    .filter((g) => g.early !== null && g.late !== null && g.f.total >= 10)
+    .sort((a, b) => b.late! - b.early! - (a.late! - a.early!))
+  const riser = growth[0]
+  const colours = t ? FIELD_COLOURS(t) : []
+  const domain = fields.map((f) => f.label)
+  // A shown field keeps its colour while shown; colours go to the visible fields in the order they were picked.
+  const colourOf = (label: string) => colours[Math.max(0, visible.indexOf(label)) % Math.max(1, colours.length)]
+  const toggle = (label: string) => setVisible((v) => (v.includes(label) ? v.filter((x) => x !== label) : v.length >= MAX_LINES ? v : [...v, label]))
   const def = useMemo(
     () =>
       t &&
       defineChart({
-        marks: [lineY(data, { x: 'year', y: 'share', z: 'line', color: 'line', key: (d) => `${d.year}-${d.line}`, strokeWidth: 3, points: true })],
+        marks: [lineY(data, { x: 'year', y: 'value', color: 'field', key: (d) => `${d.field}-${d.year}`, strokeWidth: 2.5, points: true })],
         scales: {
           x: { scale: () => scaleBand<string>().padding(0.5), axis: axisText },
-          y: { scale: scaleLinear().domain([0, 1]), grid: { stroke: t.hairline }, axis: percentAxis },
+          y: { scale: scaleLinear, nice: true, grid: { stroke: t.hairline }, axis: as === 'share' ? { ...percentAxis } : axisText },
         },
-        color: { domain: ['Within a year', 'The same year'], range: [t.ochre, t.glaze] },
+        color: {
+          domain,
+          range: domain.map((d) => colourOf(d)),
+        },
         focus: 'group-x',
-        tooltip: { use: tooltip, sort: 'color-domain' },
-        theme: theme(t, [t.ochre, t.glaze]),
-        margin: { left: 44 },
+        maxFocusDistance: Number.POSITIVE_INFINITY,
+        tooltip: {
+          use: tooltip,
+          items: [{ channel: 'x' }, { id: 'v', label: as === 'count' ? 'Startups' : 'Share of the year', text: (p: { datum: { k: number; n: number; value: number | null } }) => (as === 'count' ? String(p.datum.k) : `${Math.round((p.datum.value ?? 0) * 100)}% (${p.datum.k} of ${p.datum.n})`) }],
+        },
+        theme: theme(t, colours),
+        margin: { left: 48 },
       }),
-    [t, JSON.stringify(data)], // eslint-disable-line react-hooks/exhaustive-deps
+    [t, JSON.stringify(data), visible, as], // eslint-disable-line react-hooks/exhaustive-deps
   )
   return (
     <Layout
-      question="How soon after founding does the label come?"
+      question={by === 'sector' ? 'Which sectors grow, and how big is each year?' : 'Which themes rise in the descriptions?'}
       finding={
-        <>
-          {pct(known.filter((r) => lag(r)! <= 0).length, known.length)}% get it the year they are founded; {pct(known.filter((r) => lag(r)! <= 1).length, known.length)}% within a year.
-        </>
+        riser ? (
+          <>
+            {riser.f.label} rose the most: {Math.round(riser.early! * 100)}% of {years[0]} {by === 'theme' ? 'descriptions' : 'labels'}, {Math.round(riser.late! * 100)}% in {riser.lateYear}.
+          </>
+        ) : (
+          <>{top?.label} is the largest, with {top?.total}.</>
+        )
       }
       chart={
         <>
-          <Legend items={t ? [['Labelled the same year they were founded', t.glaze], ['Within a year of founding', t.ochre]] : []} />
-          {def ? <Chart definition={def} renderer={renderer} height={H} ariaLabel="Share labelled the same year and within a year of founding, per label year" /> : <Empty />}
+          <div className="mb-4 flex flex-wrap items-center gap-x-5 gap-y-3">
+            <Segmented label="Fields" value={by} options={[['sector', 'Sectors'], ['theme', 'Themes']]} onChange={onBy} />
+            <Segmented label="Show" value={as} options={[['count', 'Number'], ['share', '% of that year']]} onChange={onAs} />
+          </div>
+          <ul aria-label={`Choose ${by === 'sector' ? 'sectors' : 'themes'}, up to ${MAX_LINES}`} className="mb-3 flex flex-wrap gap-1.5">
+            {fields.map((f) => {
+              const on = visible.includes(f.label)
+              return (
+                <li key={f.id}>
+                  <button
+                    type="button"
+                    aria-pressed={on}
+                    disabled={!on && visible.length >= MAX_LINES}
+                    onClick={() => toggle(f.label)}
+                    className={cn(
+                      'inline-flex h-8 items-center gap-2 rounded-md border px-2.5 text-sm transition-colors motion-reduce:transition-none',
+                      on ? 'border-ink bg-surface text-ink' : 'border-edge/70 text-ink-2 hover:border-ink hover:text-ink disabled:opacity-100 disabled:hover:border-edge/70 disabled:hover:text-ink-2',
+                    )}
+                  >
+                    <span aria-hidden className={cn('size-2.5 rounded-[2px]', !on && 'border border-edge')} style={on ? { background: colourOf(f.label) } : undefined} />
+                    {f.label}
+                    <span className="font-mono text-[0.8125rem] text-ink-3">{f.total}</span>
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+          {def ? <Chart definition={def} renderer={renderer} height={H + 40} ariaLabel={`${by === 'sector' ? 'Sectors' : 'Themes'} per label year, ${as === 'count' ? 'as a number' : 'as a share of that year'}`} /> : <Empty h={H + 40} />}
         </>
       }
     >
       <p>
-        The first year was a catch-up: in {years[0]}, {old} of {firstN} were already four or more years old.
+        Pick up to {MAX_LINES} {by === 'sector' ? 'sectors' : 'themes'} to compare. “% of that year” shows each field&apos;s share of the startups labelled that year, so a small year and a big year compare fairly.
       </p>
-      <p className="text-ink-2">Each point is one label year. Founding is known to the year only, so “the same year” can mean up to twelve months.</p>
+      {by === 'theme' && <p className="text-ink-2">Themes are read from description keywords, so they are an estimate, and only described startups count. Years with fewer than 10 descriptions are left out of the percentages.</p>}
     </Layout>
   )
 }
 
-/** Themes: a ranking of what descriptions mention, and how the picked theme moves. */
-function Themes({ rows, years, t, renderer, selected, onSelect, sector }: PanelProps & { selected: string; onSelect: (id: string) => void; sector?: string }) {
-  const described = rows.filter((r) => r.described)
-  const counts = THEMES.map((th) => ({ id: th.id, label: th.label, count: described.filter((r) => r.themes.includes(th.id)).length }))
-    .filter((c) => c.count > 0)
-    .sort((a, b) => b.count - a.count)
-  const sel = THEMES.find((th) => th.id === selected) ?? THEMES[0]
-  const trend = years.map((y) => {
-    const n = described.filter((r) => r.year === y).length
-    const k = described.filter((r) => r.year === y && r.themes.includes(sel.id)).length
-    return { year: String(y), share: n >= 10 ? k / n : null, k, n }
-  })
-  const firstYear = trend.find((d) => d.share !== null)
-  const lastYear = [...trend].reverse().find((d) => d.share !== null)
-  const bars = useMemo(
-    () =>
-      t &&
-      defineChart({
-        marks: [barX(counts, { y: 'label', x: 'count', key: 'id', fill: (d) => (d.id === sel.id ? t.glaze : t.tile4), inset: 3, radius: 2 })],
-        scales: {
-          y: { scale: () => scaleBand<string>().padding(0.18), axis: { tickLabels: { fontSize: 13 }, ticks: { line: false } } },
-          x: { scale: scaleLinear, grid: { stroke: t.hairline }, axis: axisText },
-        },
-        focus: 'nearest-y',
-        tooltip: { use: tooltip, items: [{ channel: 'y' }, { channel: 'x', text: (p: { datum: { count: number } }) => `${p.datum.count} of ${described.length} described` }] },
-        theme: theme(t, [t.glaze]),
-        margin: { left: 170 },
-      }),
-    [t, JSON.stringify(counts), sel.id], // eslint-disable-line react-hooks/exhaustive-deps
-  )
-  const line = useMemo(
-    () =>
-      t &&
-      defineChart({
-        marks: [lineY(trend, { x: 'year', y: 'share', key: 'year', stroke: t.glaze, strokeWidth: 2.5, points: true })],
-        scales: {
-          x: { scale: () => scaleBand<string>().padding(0.5), axis: axisText },
-          y: { scale: scaleLinear, nice: true, grid: { stroke: t.hairline }, axis: { ...percentAxis, ticks: { ...percentAxis.ticks, count: 3 } } },
-        },
-        focus: 'nearest-x',
-        tooltip: { use: tooltip, items: [{ channel: 'x' }, { channel: 'y', text: (p: { datum: { k: number; n: number } }) => `${p.datum.k} of ${p.datum.n} described` }] },
-        theme: theme(t, [t.glaze]),
-        margin: { left: 44 },
-      }),
-    [t, JSON.stringify(trend)], // eslint-disable-line react-hooks/exhaustive-deps
-  )
+function Segmented<T extends string>({ label, value, options, onChange }: { label: string; value: T; options: [T, string][]; onChange: (v: T) => void }) {
   return (
-    <Layout
-      question="What do they build?"
-      finding={
-        counts.length ? (
-          <>
-            {sel.label}: {pct(described.filter((r) => r.themes.includes(sel.id)).length, described.length)}% of descriptions
-            {firstYear && lastYear && firstYear !== lastYear ? `, from ${Math.round((firstYear.share ?? 0) * 100)}% in ${firstYear.year} to ${Math.round((lastYear.share ?? 0) * 100)}% in ${lastYear.year}` : ''}.
-          </>
-        ) : (
-          'Too few descriptions to read themes.'
-        )
-      }
-      chart={bars ? <Chart definition={bars} renderer={renderer} height={Math.max(220, counts.length * 24 + 30)} ariaLabel="Startups mentioning each theme" onSelect={(p) => p && onSelect((p.datum as { id: string }).id)} /> : <Empty />}
-    >
-      <p className="text-ink-2">Click a theme to follow it. Its share of each year&apos;s described startups:</p>
-      {line ? <Chart definition={line} renderer={renderer} height={170} ariaLabel={`Share mentioning ${sel.label} by label year`} /> : <Empty h={170} />}
-      <p>
-        <Link to="/search" search={{ q: sel.query, sector }}>
-          Open “{sel.label}” in the Archive
-        </Link>
-      </p>
-      <p className="text-ink-2">Read from description keywords, so an estimate. Years with fewer than 10 descriptions are left out.</p>
-    </Layout>
+    <div className="flex items-center gap-2.5">
+      <span className="text-[0.9375rem] text-ink-2">{label}</span>
+      <div role="radiogroup" aria-label={label} className="flex rounded-md border border-edge p-0.5">
+        {options.map(([v, text]) => (
+          <button
+            key={v}
+            type="button"
+            role="radio"
+            aria-checked={value === v}
+            onClick={() => onChange(v)}
+            className={cn('h-8 rounded-[4px] px-3 text-sm transition-colors motion-reduce:transition-none', value === v ? 'bg-ink text-canvas' : 'text-ink hover:bg-surface')}
+          >
+            {text}
+          </button>
+        ))}
+      </div>
+    </div>
   )
 }
 
-/** Teams: one waffle of team sizes, and the people behind more than one startup. */
-function Teams({ rows, years, t, renderer, founders }: PanelProps & { founders: RepeatFounder[] }) {
+const CELL = 13
+/** One label year as a waffle: one square per startup, coloured by team size. */
+function YearWaffle({ year, rows, t, renderer }: { year: number; rows: LandscapeRow[]; t: Tokens; renderer: ReturnType<typeof motion> }) {
   const size = (r: LandscapeRow) => (r.founders <= 1 ? TEAMS[0] : r.founders === 2 ? TEAMS[1] : r.founders === 3 ? TEAMS[2] : TEAMS[3])
-  const data = TEAMS.map((team) => ({ team, share: rows.length ? rows.filter((r) => size(r) === team).length / rows.length : 0, count: rows.filter((r) => size(r) === team).length }))
-  const early = rows.filter((r) => r.year === years[0])
-  const late = rows.filter((r) => r.year >= years[years.length - 3])
-  const avg = rows.length ? (rows.reduce((a, r) => a + r.founders, 0) / rows.length).toFixed(1) : '0'
-  const [more, setMore] = useState(false)
+  const list = rows.filter((r) => r.year === year)
+  const data = TEAMS.map((team) => ({ team, count: list.filter((r) => size(r) === team).length }))
+  const cols = 10
+  const h = Math.max(1, Math.ceil(list.length / cols)) * CELL
   const def = useMemo(
     () =>
-      t &&
       defineChart({
-        marks: [waffleY(data, { y: 'share', color: 'team', key: 'team', unit: 0.01, round: true, columns: 10, gap: 4, radius: 3 })],
+        marks: [waffleY(data, { y: 'count', color: 'team', key: 'team', unit: 1, columns: cols, gap: 2, radius: 2 })],
         scales: { x: null, y: null },
         color: { domain: [...TEAMS], range: four(t) },
-        tooltip: { use: tooltip, items: [{ field: 'team', label: 'Team' }, { id: 'n', label: 'Startups', text: (p: { datum: { count: number; share: number } }) => `${p.datum.count} (${Math.round(p.datum.share * 100)}%)` }] },
+        tooltip: { use: tooltip, items: [{ id: 'y', label: 'Year', text: () => String(year) }, { field: 'team', label: 'Team' }, { id: 'n', label: 'Startups', text: (p: { datum: { count: number } }) => `${p.datum.count} of ${list.length}` }] },
         theme: theme(t, four(t)),
         guides: false,
         margin: 0,
       }),
     [t, JSON.stringify(data)], // eslint-disable-line react-hooks/exhaustive-deps
   )
-  const shown = more ? founders : founders.slice(0, 8)
+  const solo = data[0].count
   return (
-    <Layout
-      question="Who builds them?"
-      finding={
-        <>
-          Teams average {avg} founders; solo founders went from {pct(early.filter((r) => r.founders <= 1).length, early.length)}% in {years[0]} to {pct(late.filter((r) => r.founders <= 1).length, late.length)}% since {years[years.length - 3]}.
-        </>
-      }
-      chart={
-        <div className="grid gap-x-10 gap-y-6 lg:grid-cols-[18rem_minmax(0,1fr)]">
-          <div>
-            <Legend items={TEAMS.map((l, i) => [`${l} · ${data[i].count}`, t ? four(t)[i] : 'transparent'])} />
-            {def ? <Chart definition={def} renderer={renderer} height={280} ariaLabel="Team sizes, one square per percent of startups" /> : <Empty h={280} />}
-            <p className="mt-2 text-sm text-ink-2">One square is one percent of startups.</p>
-          </div>
-          <div className="min-w-0">
-            <p className="text-[0.9375rem] font-medium text-ink">
-              {founders.length} {founders.length === 1 ? 'person is' : 'people are'} named on more than one startup
-            </p>
-            <ul className="mt-3 grid gap-2">
-              {shown.map((f) => (
-                <li key={f.name} className="min-w-0 text-[0.9375rem]">
-                  <span className="text-ink">{f.name}</span>
-                  <span className="text-ink-2"> · </span>
-                  {f.startups.map((s, i) => (
-                    <span key={s.id}>
-                      {i > 0 && <span className="text-ink-2">, </span>}
-                      <Link to="/startups/$id" params={{ id: s.id }}>
-                        {s.name}
-                      </Link>
-                    </span>
-                  ))}
-                </li>
-              ))}
-            </ul>
-            {founders.length > 8 && (
-              <button type="button" onClick={() => setMore((m) => !m)} className="mt-3 min-h-8 text-sm text-glaze underline underline-offset-4">
-                {more ? 'Show fewer' : `Show all ${founders.length}`}
-              </button>
-            )}
-          </div>
+    <figure className="m-0 flex flex-col items-start">
+      <div style={{ width: cols * CELL }}>
+        <Chart definition={def} renderer={renderer} height={h} width={cols * CELL} ariaLabel={`${year}: ${list.length} startups by team size`} />
+      </div>
+      <figcaption className="mt-2 text-sm">
+        <span className="font-medium text-ink">{year}</span> <span className="font-mono text-ink-3">{list.length}</span>
+        <span className="block text-ink-2">{pct(solo, list.length)}% solo</span>
+      </figcaption>
+    </figure>
+  )
+}
+
+/** Teams: one waffle per label year, one square per startup; and the people behind more than one startup. */
+function Teams({ rows, years, t, renderer, founders }: PanelProps & { founders: RepeatFounder[] }) {
+  const early = rows.filter((r) => r.year === years[0])
+  const late = rows.filter((r) => r.year >= years[years.length - 3])
+  const avg = rows.length ? (rows.reduce((a, r) => a + r.founders, 0) / rows.length).toFixed(1) : '0'
+  const [more, setMore] = useState(false)
+  const shown = more ? founders : founders.slice(0, 8)
+  const counts = TEAMS.map((team, i) => [team, rows.filter((r) => (i === 3 ? r.founders >= 4 : r.founders === i + 1) || (i === 0 && r.founders === 0)).length] as const)
+  return (
+    <div>
+      <div className="grid gap-x-12 gap-y-6 xl:grid-cols-[minmax(0,1fr)_26rem]">
+        <div className="min-w-0 xl:order-2">
+          <h2 className="font-sans text-[0.9375rem] font-medium text-ink-2">Who builds them?</h2>
+          <p className="mt-2 font-display text-[1.875rem] leading-10 text-ink">
+            Teams average {avg} founders; solo founders went from {pct(early.filter((r) => r.founders <= 1).length, early.length)}% in {years[0]} to {pct(late.filter((r) => r.founders <= 1).length, late.length)}% since {years[years.length - 3]}.
+          </p>
+          <p className="mt-4 text-[0.9375rem] leading-7 text-ink">Each square is one startup, in the year it was labelled, coloured by how many founders it lists. Hover a colour for its count.</p>
         </div>
-      }
-    >
-      <p className="text-ink-2">Founders are matched on the written name, so a namesake can appear in the list by mistake.</p>
-    </Layout>
+        <div className="min-w-0 xl:order-1">
+          <Legend items={counts.map(([l, n], i) => [`${l} · ${n}`, t ? four(t)[i] : 'transparent'])} />
+          <div className="mt-2 flex flex-wrap items-end gap-x-7 gap-y-6">{t ? years.map((y) => <YearWaffle key={y} year={y} rows={rows} t={t} renderer={renderer} />) : <Empty h={260} />}</div>
+        </div>
+      </div>
+
+      <div className="mt-10 border-t border-edge/60 pt-6">
+        <p className="text-[0.9375rem] font-medium text-ink">
+          {founders.length} {founders.length === 1 ? 'person is' : 'people are'} named on more than one startup
+        </p>
+        <ul className="mt-3 grid gap-x-10 gap-y-2 md:grid-cols-2 2xl:grid-cols-3">
+          {shown.map((f) => (
+            <li key={f.name} className="min-w-0 text-[0.9375rem]">
+              <span className="text-ink">{f.name}</span>
+              <span className="text-ink-2"> · </span>
+              {f.startups.map((s, i) => (
+                <span key={s.id}>
+                  {i > 0 && <span className="text-ink-2">, </span>}
+                  <Link to="/startups/$id" params={{ id: s.id }}>
+                    {s.name}
+                  </Link>
+                </span>
+              ))}
+            </li>
+          ))}
+        </ul>
+        {founders.length > 8 && (
+          <button type="button" onClick={() => setMore((m) => !m)} className="mt-3 min-h-8 text-sm text-glaze underline underline-offset-4">
+            {more ? 'Show fewer' : `Show all ${founders.length}`}
+          </button>
+        )}
+        <p className="mt-2 text-sm text-ink-2">Matched on the written name, so a namesake can appear here by mistake.</p>
+      </div>
+    </div>
   )
 }
 

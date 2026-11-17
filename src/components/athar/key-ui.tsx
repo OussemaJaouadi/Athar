@@ -1,8 +1,5 @@
-import { CircleAlert, CircleCheck, Trash2 } from 'lucide-react'
-import { motion, useReducedMotion } from 'motion/react'
-import { useId } from 'react'
+import { CircleAlert, CircleCheck } from 'lucide-react'
 
-import { useHoldToConfirm } from '@/components/interior/hold-to-confirm'
 import { cn } from '@/lib/utils'
 
 /** A test or save result in ink, with an icon and an edge bar: never colour alone. */
@@ -16,37 +13,5 @@ export function KeyNote({ ok, children, className }: { ok: boolean; children: Re
       <Icon className="mt-0.5 size-3.5 shrink-0" aria-hidden />
       <div className="min-w-0">{children}</div>
     </div>
-  )
-}
-
-/** Remove, held to confirm (Interior's hold hook, drawn in Athar's tokens). */
-export function HoldToRemove({ label, onConfirm }: { label: string; onConfirm: () => void }) {
-  const { bind, phase, progress } = useHoldToConfirm({ onConfirm, duration: 1200 })
-  const reduced = useReducedMotion()
-  const hint = useId()
-  const committed = phase === 'committed'
-  return (
-    <button
-      type="button"
-      {...bind}
-      aria-describedby={hint}
-      aria-disabled={committed}
-      aria-label={`Hold to remove ${label}`}
-      style={{ touchAction: 'manipulation' }}
-      className="relative isolate inline-flex h-8 select-none items-center gap-2 overflow-hidden rounded-[5px] border border-edge bg-canvas px-3 text-[0.875rem] whitespace-nowrap text-ink hover:bg-surface-raised"
-    >
-      <motion.span
-        aria-hidden
-        className="absolute inset-y-0 start-0 -z-10 bg-surface-raised"
-        initial={false}
-        animate={{ width: `${(committed ? 1 : progress) * 100}%` }}
-        transition={reduced ? { duration: 0 } : { duration: 0.06, ease: 'linear' }}
-      />
-      <Trash2 className="size-4" aria-hidden />
-      {committed ? 'Removing…' : 'Hold to remove'}
-      <span id={hint} className="sr-only">
-        Press and hold to remove the key. Releasing early cancels.
-      </span>
-    </button>
   )
 }

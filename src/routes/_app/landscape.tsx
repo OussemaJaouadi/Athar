@@ -25,7 +25,7 @@ function LandscapePage() {
   const navigate = useNavigate({ from: '/landscape' })
   const [preview, setPreview] = useState<string | undefined>()
   const hoverTimer = useRef<number | undefined>(undefined)
-  const active = preview ?? sector
+  const active = sector
 
   const sectors = useMemo(() => {
     const m = new Map<string, { name: string; total: number; before: number }>()
@@ -72,7 +72,7 @@ function LandscapePage() {
       <section className="min-w-0">
         <h1 className="text-[2.75rem] leading-[3rem]">Landscape</h1>
         <Sentence cur={cur} active={active} />
-        <Growth rows={rows} sectors={sectors.map((s) => s.name)} active={active} />
+        <Growth rows={rows} sectors={sectors.map((s) => s.name)} active={active} highlight={active ? undefined : preview} />
         <Facts cur={cur} />
         <Latest cur={cur} />
       </section>
@@ -93,7 +93,7 @@ function LandscapePage() {
                 onPointerEnter={() => hover(s.name)}
                 className={cn(
                   'grid h-[27px] w-full grid-cols-[1.375rem_minmax(0,1fr)_3rem_5.5rem] items-center border-b border-hairline px-1.5 text-start text-[13.5px] transition-opacity duration-150 hover:bg-surface/60 motion-reduce:transition-none',
-                  active && (active === s.name ? 'bg-surface' : 'opacity-40'),
+                  active ? (active === s.name ? 'bg-surface' : 'opacity-40') : preview && preview !== s.name && sectors.slice(0, 5).some((t) => t.name === preview) && 'opacity-60',
                 )}
               >
                 <SectorSwatch sector={s.name} size={15} />
@@ -132,7 +132,7 @@ function niceStep(max: number) {
 type Band = { key: string; label: string; fill: string; total: number; cum: number[] }
 
 /** Founded so far as stacked bands, labelled so far as a line, and new each year as paired bars, on one year axis. */
-function Growth({ rows, sectors, active }: { rows: LandscapeRow[]; sectors: string[]; active?: string }) {
+function Growth({ rows, sectors, active, highlight }: { rows: LandscapeRow[]; sectors: string[]; active?: string; highlight?: string }) {
   const box = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState(1200)
   useLayoutEffect(() => {
@@ -173,7 +173,7 @@ function Growth({ rows, sectors, active }: { rows: LandscapeRow[]; sectors: stri
   const l = cumBy(cur, (r) => r.year)
 
   const compact = width < 720
-  const GUT = compact ? 8 : 270
+  const GUT = 24
   const AH = compact ? 240 : 330
   const BH = compact ? 80 : 110
   const cw = Math.max(200, width - GUT)
@@ -196,21 +196,18 @@ function Growth({ rows, sectors, active }: { rows: LandscapeRow[]; sectors: stri
     base = hi
     const up = hi.map((v, i) => `${x(i)},${ya(v)}`).join(' L')
     const down = lo.map((v, i) => `${x(i)},${ya(v)}`).reverse().join(' L')
-    return { b, d: `M${up} L${down} Z`, edge: `M${up}`, mid: (ya(lo[lo.length - 1]) + ya(hi[hi.length - 1])) / 2 }
+    return { b, d: `M${up} L${down} Z`, edge: `M${up}`, mid: (ya(lo[lo.length - 1]) + ya(hi[hi.length - 1])) / 2, tall: ya(lo[lo.length - 1]) - ya(hi[hi.length - 1]) }
   })
-  // Direct labels: relax so they never collide.
-  const labels = [...paths].sort((a, b) => a.mid - b.mid).map((p) => ({ p, y: p.mid }))
-  for (let i = 1; i < labels.length; i++) labels[i].y = Math.max(labels[i].y, labels[i - 1].y + 20)
-  for (let i = labels.length - 2; i >= 0; i--) labels[i].y = Math.min(labels[i].y, labels[i + 1].y - 20)
+  const lit = highlight && bands.some((b) => b.key === highlight) ? highlight : undefined
 
   const li = years.indexOf(firstLabel.year)
   const startX = x(li - 1) + ((firstLabel.month - 1) / 12) * step
-  const lineFrom = Math.max(0, li - 1)
-  const linePts = l.cum.map((v, i) => [x(i), ya(v)] as const).slice(lineFrom)
+  const linePts = [[startX, ya(0)] as const, ...l.cum.map((v, i) => [x(i), ya(v)] as const).slice(li)]
   const bw = Math.min(16, step * 0.28)
   const gap = 3
   const last = years.length - 1
   const hi = hoverY === null ? null : years.indexOf(hoverY)
+  const pk = years.indexOf(2020)
 
   return (
     <div ref={box} className="relative mt-6">
@@ -227,19 +224,26 @@ function Growth({ rows, sectors, active }: { rows: LandscapeRow[]; sectors: stri
         {paths.map(({ b, d, edge }) =>
           active ? (
             <g key={b.key}>
-              <path d={d} style={{ fill: b.fill, fillOpacity: 0.35 }} />
+              <path d={d} style={{ fill: b.fill, fillOpacity: 0.24 }} />
               <path d={edge} fill="none" style={{ stroke: b.fill }} strokeWidth={2} strokeLinejoin="round" />
             </g>
           ) : (
-            <path key={b.key} d={d} style={{ fill: b.fill }} className="stroke-canvas" strokeWidth={1} strokeLinejoin="round" />
+            <path
+              key={b.key}
+              d={d}
+              style={{ fill: b.fill, opacity: lit && lit !== b.key ? 0.3 : 1 }}
+              className="stroke-canvas transition-opacity duration-150 motion-reduce:transition-none"
+              strokeWidth={1}
+              strokeLinejoin="round"
+            />
           ),
         )}
         <line x1={0} x2={cw} y1={AH + 0.5} y2={AH + 0.5} className="stroke-control" />
 
         {/* The label begins */}
         <line x1={startX} x2={startX} y1={6} y2={H - 26} className="stroke-control" strokeDasharray="3 3" />
-        <text x={startX < 300 ? startX + 8 : startX - 8} y={12} textAnchor={startX < 300 ? 'start' : 'end'} className="fill-ink-2 font-sans text-[12px]">
-          The Startup Label begins, {MONTHS[firstLabel.month - 1]} {firstLabel.year}
+        <text x={startX - 8} y={12} textAnchor="end" className="fill-ink-2 font-sans text-[12px]">
+          {startX > 260 ? `The Startup Label begins, ${MONTHS[firstLabel.month - 1]} ${firstLabel.year}` : `Label begins, ${firstLabel.year}`}
         </text>
 
         {/* Labelled so far */}
@@ -247,29 +251,37 @@ function Growth({ rows, sectors, active }: { rows: LandscapeRow[]; sectors: stri
         {linePts.slice(1).map(([a, b]) => (
           <circle key={a} cx={a} cy={b} r={3.5} className="fill-ink stroke-canvas" strokeWidth={1.5} />
         ))}
-        {!compact && (
+        {!compact && pk >= 0 && (
           <>
-            <text x={x(last) - 10} y={ya(l.cum[last]) - 12} textAnchor="end" className="fill-ink font-sans text-[12.5px] font-medium">
-              Labelled so far
-            </text>
-            <text x={x(Math.max(0, li - 3))} y={ya(f.cum[Math.max(0, li - 3)]) - 14} textAnchor="middle" className="fill-ink-2 font-sans text-[12.5px]">
+            <text x={x(pk) - 6} y={ya(f.cum[pk]) - 10} textAnchor="end" className="fill-ink-2 font-sans text-[12.5px]">
               Founded so far
+            </text>
+            <text x={x(pk) + 10} y={ya(l.cum[pk]) + 20} className="fill-ink font-sans text-[12.5px] font-medium">
+              Labelled so far
             </text>
           </>
         )}
+        <text x={x(last)} y={ya(Math.max(f.cum[last], l.cum[last])) - 12} textAnchor="middle" className="fill-ink font-display text-[22px]">
+          {cur.length}
+        </text>
 
+        {/* Band names, inside the bands at their 2025 edge */}
         {!compact &&
-          labels.map(({ p, y }) => (
-            <g key={p.b.key} transform={`translate(${cw + 14} ${y})`}>
-              <rect x={0} y={-5} width={10} height={10} style={{ fill: p.b.fill }} />
-              <text x={18} y={4} className="fill-ink font-sans text-[13px]">
-                {p.b.label}
-                <tspan dx={8} className="fill-ink-2 font-mono text-[11.5px]">
-                  {p.b.total}
-                </tspan>
+          !active &&
+          paths.map(({ b, mid, tall }) =>
+            tall >= 16 ? (
+              <text
+                key={b.key}
+                x={x(last) - 12}
+                y={mid + 4}
+                textAnchor="end"
+                className={cn('pointer-events-none font-sans text-[12.5px]', b.key === OTHER ? 'fill-ink' : 'fill-canvas')}
+                style={{ opacity: lit && lit !== b.key ? 0.3 : 1 }}
+              >
+                {b.label}
               </text>
-            </g>
-          ))}
+            ) : null,
+          )}
 
         {/* New each year */}
         <text x={0} y={barTop} className="fill-ink-2 font-sans text-[12px]">
@@ -324,11 +336,11 @@ function Growth({ rows, sectors, active }: { rows: LandscapeRow[]; sectors: stri
       </svg>
 
       {compact && (
-        <ul className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
-          {paths.map(({ b }) => (
+        <ul className="mt-3 grid gap-y-1.5 text-xs">
+          {[...paths].reverse().map(({ b }) => (
             <li key={b.key} className="flex items-center gap-2">
               <span className="size-2.5 shrink-0" style={{ background: b.fill }} />
-              <span className="truncate">{b.label}</span>
+              <span className="flex-1">{b.label}</span>
               <span className="font-mono text-ink-2">{b.total}</span>
             </li>
           ))}
@@ -339,7 +351,7 @@ function Growth({ rows, sectors, active }: { rows: LandscapeRow[]; sectors: stri
         <div
           role="tooltip"
           className="pointer-events-none absolute top-6 z-20 w-60 rounded-[3px] border border-hairline bg-surface-raised px-3 py-2.5 text-sm shadow-lg"
-          style={{ left: Math.min(Math.max(x(hi) + 14, 0), width - 250) }}
+          style={years[hi] >= 2016 ? { left: x(0) } : { left: cw - 260 }}
         >
           <p className="font-medium">{years[hi]}</p>
           <dl className="mt-1.5 grid grid-cols-[1fr_auto] gap-x-4 gap-y-0.5 text-xs">
@@ -347,9 +359,9 @@ function Growth({ rows, sectors, active }: { rows: LandscapeRow[]; sectors: stri
             <dd className="m-0 text-end font-mono">{f.cum[hi]}</dd>
             <dt className="text-ink-2">Labelled so far</dt>
             <dd className="m-0 text-end font-mono">{l.cum[hi]}</dd>
-            <dt className="text-ink-2">Founded that year</dt>
+            <dt className="text-ink-2">Founded in {years[hi]}</dt>
             <dd className="m-0 text-end font-mono">{f.per[hi]}</dd>
-            <dt className="text-ink-2">Labelled that year</dt>
+            <dt className="text-ink-2">Labelled in {years[hi]}</dt>
             <dd className="m-0 text-end font-mono">{l.per[hi]}</dd>
           </dl>
           {!active && (

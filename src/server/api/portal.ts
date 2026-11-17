@@ -57,6 +57,7 @@ export const startOperation = createServerFn({ method: 'POST' })
 export type RunNote = { code: string; count: number; text: string }
 export type StepView = StepRow & { notes: RunNote[] }
 
+const TALLIES = new Set(['startups_new', 'startups_changed', 'startups_unchanged'])
 const parseNotes = (json: string | null | undefined): RunNote[] => {
   if (!json) return []
   try {
@@ -99,8 +100,11 @@ function runSummary(db: ReturnType<typeof getDatabase>, run: RunRow): PipelineRu
   else if (download) {
     const notes = parseNotes(collect?.notes_json)
     const n = (code: string) => notes.find((x) => x.code === code)?.count ?? 0
-    // The build step says "… N new, M changed, K unchanged"; read the tally from it.
-    const tally = build?.message?.match(/(\d+) new, (\d+) changed, (\d+) unchanged/)
+    // Build counts its startups as notes (startups_new / _changed / _unchanged). Runs stored before those notes
+    // existed have no tally, and the page then shows none rather than guessing from the message.
+    const built = parseNotes(build?.notes_json)
+    const count = (code: string) => built.find((n) => n.code === code)?.count
+    const tally = count('startups_new') !== undefined ? [count('startups_new')!, count('startups_changed') ?? 0, count('startups_unchanged') ?? 0] : null
     change = {
       kind: 'stored',
       download: download.id,
@@ -108,7 +112,7 @@ function runSummary(db: ReturnType<typeof getDatabase>, run: RunRow): PipelineRu
       rows: download.row_count,
       entriesNew: n('entries_new'),
       entriesWithdrawn: n('entries_withdrawn'),
-      startups: tally ? { created: Number(tally[1]), changed: Number(tally[2]), unchanged: Number(tally[3]) } : null,
+      startups: tally ? { created: tally[0], changed: tally[1], unchanged: tally[2] } : null,
     }
   } else if (run.status === 'done' && collect?.message?.startsWith('Same rows')) {
     change = { kind: 'confirmed', sameAs: collect.message.match(/download of (\S+);/)?.[1] ?? '' }
@@ -155,6 +159,7 @@ export const getRunDetail = createServerFn()
     const steps: StepView[] = db
       .query<StepRow & { notes_json: string | null }, [string]>('SELECT * FROM run_steps WHERE run_id = ? ORDER BY position')
       .all(id)
-      .map(({ notes_json, ...s }) => ({ ...s, notes: parseNotes(notes_json) }))
+      // The startup tallies are told once, under "What changed"; the step's notes list keeps the facts.
+      .map(({ notes_json, ...s }) => ({ ...s, notes: parseNotes(notes_json).filter((n) => !TALLIES.has(n.code)) }))
     return { run: runSummary(db, run), steps }
   })

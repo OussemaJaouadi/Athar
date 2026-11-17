@@ -99,7 +99,7 @@ function DatabasePage() {
   return (
     <main className="flex min-h-0 flex-1 flex-col">
       <DeskBar
-        title="Database"
+        title="Raw tables"
         facts={list ? (list.total ? `${n(first)}–${n(last)} of ${n(list.total)}${list.q ? ` matching “${list.q}”` : ''}` : list.q ? 'No matches' : 'Empty') : undefined}
         actions={
           list && (

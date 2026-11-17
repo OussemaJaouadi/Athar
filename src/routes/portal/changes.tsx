@@ -14,13 +14,12 @@ export const Route = createFileRoute('/portal/changes')({
     return { download: Number.isInteger(d) && d > 0 ? d : undefined }
   },
   loaderDeps: ({ search }) => ({ download: search.download }),
-  // Every download's changes load with the list (there are few), so each item can count what it changed.
+  // The list counts come with each download; only the selected download's changes are read.
   loader: async ({ deps }) => {
     const downloads = await listDownloads()
-    const all = await Promise.all(downloads.map((d) => getDownloadChanges({ data: d.id }).then((c) => [d.id, c ?? []] as const)))
-    const byId = Object.fromEntries(all) as Record<number, DownloadChange[]>
     const id = deps.download ?? downloads[0]?.id
-    return { downloads, id, byId }
+    const changes = id ? await getDownloadChanges({ data: id }) : null
+    return { downloads, id, changes }
   },
   component: ChangesPage,
 })
@@ -31,8 +30,7 @@ const plural = (v: number, one: string, many: string) => `${n(v)} ${v === 1 ? on
 
 // Changes: what each download of the registry changed against the one before it. The first one is the baseline.
 function ChangesPage() {
-  const { downloads, id, byId } = Route.useLoaderData()
-  const changes = id ? byId[id] : undefined
+  const { downloads, id, changes } = Route.useLoaderData()
   const search = Route.useSearch()
   const navigate = useNavigate({ from: '/portal/changes' })
   const ids = downloads.map((d) => String(d.id))
@@ -67,7 +65,7 @@ function ChangesPage() {
                     selected={d.id === id}
                     onSelect={() => select(String(d.id))}
                     title={`Download ${d.id} · ${day(d.fetchedAt)}`}
-                    detail={d.id === baseline ? 'The first download: nothing to compare it with' : countLine(byId[d.id] ?? [])}
+                    detail={d.id === baseline ? 'The first download: nothing to compare it with' : countLine(d)}
                   />
                 </div>
               ))}
@@ -100,23 +98,18 @@ function ChangesPage() {
   )
 }
 
-const count = (rows: DownloadChange[], ...kinds: DownloadChange['kind'][]) => rows.filter((r) => kinds.includes(r.kind)).length
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const month = (labelled: string | null) => (labelled ? `${MONTHS[Number(labelled.slice(5, 7)) - 1]} ${labelled.slice(0, 4)}` : null)
 
 /** "4 new · 2 edited · 1 no longer published": startups first seen, startups whose entry changed, startups dropped. */
-function countLine(rows: DownloadChange[]) {
-  const parts = [
-    `${n(count(rows, 'new startup'))} new`,
-    `${n(count(rows, 'edited'))} edited`,
-    `${n(count(rows, 'startup withdrawn'))} no longer published`,
-  ]
-  return parts.join(' · ')
+function countLine(d: DownloadSummary) {
+  return [`${n(d.startupsNew)} new`, `${n(d.startupsEdited)} edited`, `${n(d.startupsGone)} no longer published`].join(' · ')
 }
 
 function DownloadPane({ d, previous, changes, baseline, position }: { d: DownloadSummary; previous?: DownloadSummary; changes: DownloadChange[]; baseline: boolean; position: string }) {
   const added = changes.filter((c) => c.kind === 'new startup' || c.kind === 'new listing of a known startup')
   const edited = changes.filter((c) => c.kind === 'edited')
   const dropped = changes.filter((c) => c.kind === 'startup withdrawn' || c.kind === 'withdrawn')
-  const startupsNew = new Set(changes.filter((c) => c.kind === 'new startup').map((c) => c.startupId)).size
 
   return (
     <DeskPane
@@ -124,13 +117,13 @@ function DownloadPane({ d, previous, changes, baseline, position }: { d: Downloa
       statement={
         baseline
           ? `${plural(d.rows, 'row', 'rows')}`
-          : `${countLine(changes)} · ${previous ? `${n(previous.rows)} → ${n(d.rows)} rows` : `${n(d.rows)} rows`}`
+          : `${countLine(d)} · ${previous ? `${n(previous.rows)} → ${n(d.rows)} rows` : `${n(d.rows)} rows`}`
       }
       position={position}
     >
       {baseline ? (
         <p className="max-w-[72ch] text-[0.875rem] leading-6 text-ink">
-          This is the first download, so there is nothing to compare it with. {plural(d.entriesNew, 'entry', 'entries')}, {plural(startupsNew || d.startupsNew, 'startup', 'startups')}.
+          This is the first download, so there is nothing to compare it with. {plural(d.entriesNew, 'entry', 'entries')}, {plural(d.startupsNew, 'startup', 'startups')}.
           {d.lastCheckedAt !== d.fetchedAt && ` The registry was compared again on ${day(d.lastCheckedAt)} and published the same rows.`}
         </p>
       ) : (
@@ -141,12 +134,23 @@ function DownloadPane({ d, previous, changes, baseline, position }: { d: Downloa
           {!changes.length && <p className="text-[0.875rem] text-ink">Nothing changed against the download before it.</p>}
           {added.length > 0 && (
             <PaneSection title={`New · ${n(added.length)}`}>
-              <ChangeTable rows={added} note={(r) => (r.kind === 'new listing of a known startup' ? 'another listing of a startup already in Athar' : null)} />
+              <ChangeTable
+                rows={added}
+                note={(r) =>
+                  [r.sector, month(r.labelled) && `labelled ${month(r.labelled)}`, r.kind === 'new listing of a known startup' ? 'another listing of a startup already in Athar' : null]
+                    .filter(Boolean)
+                    .join(' · ')
+                }
+              />
             </PaneSection>
           )}
           {edited.length > 0 && (
             <PaneSection title={`Edited · ${n(edited.length)}`}>
-              <ChangeTable rows={edited} note={() => 'see the entry for the difference'} />
+              <div className="grid gap-5">
+                {edited.map((r) => (
+                  <EditedBlock key={r.entryId} r={r} />
+                ))}
+              </div>
             </PaneSection>
           )}
           {dropped.length > 0 && (
@@ -197,5 +201,55 @@ function ChangeTable({ rows, note }: { rows: DownloadChange[]; note?: (r: Downlo
         ))}
       </tbody>
     </table>
+  )
+}
+
+/** One edited startup: its name and new entry, then only the fields that read differently, before and after. */
+function EditedBlock({ r }: { r: DownloadChange }) {
+  const diffs = r.differences ?? []
+  const cell = 'border-b border-hairline px-3 py-2 text-[0.875rem] [overflow-wrap:anywhere] text-ink'
+  return (
+    <div className="grid gap-2">
+      <p className="flex flex-wrap items-baseline gap-x-3 text-[0.875rem]">
+        {r.startupId ? (
+          <StartupLink id={r.startupId} className="font-medium text-glaze underline">
+            <span dir="auto">{r.startupName ?? r.name}</span>
+          </StartupLink>
+        ) : (
+          <span dir="auto" className="font-medium">
+            {r.name}
+          </span>
+        )}
+        <Link to="/portal/startups" search={{ entry: r.entryId }} className="font-mono text-[0.8125rem] text-glaze underline">
+          entry {r.entryId}
+        </Link>
+      </p>
+      {diffs.length ? (
+        <div role="table" className="grid grid-cols-[150px_minmax(0,1fr)_minmax(0,1fr)] border border-edge">
+          <div role="row" className="contents">
+            {['Field', 'Before', 'After'].map((h) => (
+              <div role="columnheader" key={h} className="border-b border-edge px-3 py-2 text-[0.8125rem] text-ink-2">
+                {h}
+              </div>
+            ))}
+          </div>
+          {diffs.map((f) => (
+            <div role="row" key={f.field} className="contents">
+              <div role="cell" className={cell}>
+                {f.field}
+              </div>
+              <div role="cell" className={cell} dir="auto">
+                {f.before ?? <span className="text-ink-3">empty</span>}
+              </div>
+              <div role="cell" className={cell} dir="auto">
+                {f.after ?? <span className="text-ink-3">empty</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-[0.875rem] text-ink">The new row reads the same in every field Athar uses.</p>
+      )}
+    </div>
   )
 }

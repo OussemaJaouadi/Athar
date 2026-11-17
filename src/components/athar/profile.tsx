@@ -10,7 +10,6 @@ export type ProfileData = NonNullable<Awaited<ReturnType<typeof getStartup>>>
 
 export const longDate = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 export const yearOf = (cohort: string | null) => (cohort ? cohort.slice(3) : null)
-export const catalogueNo = (row: number | null | undefined) => (row === null || row === undefined ? 'ATH-—' : `ATH-${String(row).padStart(4, '0')}`)
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 const monthYear = (cohort: string | null) => {
@@ -26,8 +25,9 @@ type Fact = { key: string; label: string; value: React.ReactNode }
  * a fact carries a note only when cleaning changed it.
  */
 export function Profile({ data, operator }: { data: ProfileData; compact?: boolean; operator?: boolean }) {
-  const { startup, sources, chain, neighbours, alsoFounded } = data
-  const row = chain?.rowNumber ?? sources[0]?.row_number
+  const { startup, entries, firstSeen, lastSeen, withdrawnSince, notes, chain, neighbours, alsoFounded } = data
+  // "Listed N times" is said by the entries themselves; the other notes are plain facts.
+  const facts2 = notes.filter((n) => n.code !== 'listed_more_than_once')
   const site = startup.website?.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '')
   const facts: Fact[] = [
     { key: 'sector', label: 'Sector', value: startup.sector },
@@ -74,12 +74,13 @@ export function Profile({ data, operator }: { data: ProfileData; compact?: boole
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-baseline gap-x-3">
               <h1 className="text-[2.75rem] leading-[3rem]">{startup.name}</h1>
-              <span className="font-mono text-[0.8125rem] text-ink-3 select-all">{catalogueNo(row)}</span>
             </div>
             <p className="mt-1.5 text-sm text-ink-2">
-              Startup Tunisia registry{row !== undefined && `, row ${row}`}
-              {chain && `, snapshot of ${longDate(chain.fetchedAt)}`}
+              Startup Tunisia registry
+              {firstSeen && ` · first seen ${longDate(firstSeen)}`}
+              {lastSeen && ` · last checked ${longDate(lastSeen)}`}
             </p>
+            {withdrawnSince && <p className="mt-1 text-sm text-ink">No longer in the registry since {longDate(withdrawnSince)}.</p>}
           </div>
           <Link to="/" search={{ draft: startup.description ?? startup.name }} className="inline-flex h-11 items-center rounded-[4px] border border-edge px-3.5 text-sm text-ink no-underline hover:bg-surface sm:h-9">
             Check a similar idea
@@ -101,11 +102,46 @@ export function Profile({ data, operator }: { data: ProfileData; compact?: boole
           ))}
         </dl>
 
-        {operator && startup.primary_row_id && (
-          <Link to="/portal/trace/$rowId" params={{ rowId: startup.primary_row_id }} className="mt-4 inline-block text-sm">
-            Open in the operator trace
-          </Link>
-        )}
+        <section aria-labelledby="source-h" className="mt-10 max-w-[48rem]">
+          <h2 id="source-h" className="border-b border-hairline pb-2 font-sans text-sm font-medium text-ink-2">
+            Where this comes from
+          </h2>
+          <dl className="border-hairline">
+            <div className="grid grid-cols-[9rem_minmax(0,1fr)] gap-x-4 border-b border-hairline py-2.5">
+              <dt className="text-sm text-ink-2">Listed</dt>
+              <dd className="m-0 grid min-w-0 gap-1 text-[0.9375rem] text-ink">
+                <span>{entries.length === 1 ? 'Once in the registry' : `${entries.length} times in the registry`}</span>
+                {entries.map((e) => (
+                  <span key={e.id} className="text-sm">
+                    <span className="font-mono text-[0.8125rem] select-all">entry {e.id}</span>
+                    <span className="text-ink-2">
+                      {' '}
+                      · seen {longDate(e.firstSeen)}
+                      {e.lastSeen.slice(0, 10) !== e.firstSeen.slice(0, 10) && ` to ${longDate(e.lastSeen)}`}
+                      {e.copies > 1 && ` · published ${e.copies} times, word for word`}
+                      {entries.length > 1 && e.primary && ' · the values above'}
+                    </span>
+                  </span>
+                ))}
+              </dd>
+            </div>
+            {facts2.length > 0 && (
+              <div className="grid grid-cols-[9rem_minmax(0,1fr)] gap-x-4 border-b border-hairline py-2.5">
+                <dt className="text-sm text-ink-2">Noted</dt>
+                <dd className="m-0 grid min-w-0 gap-1 text-[0.9375rem] text-ink">
+                  {facts2.map((n) => (
+                    <span key={n.code + n.text}>{n.text}</span>
+                  ))}
+                </dd>
+              </div>
+            )}
+          </dl>
+          {operator && (
+            <a href={`/portal/trace?startup=${encodeURIComponent(startup.id)}`} className="mt-4 inline-block text-sm">
+              Open in the operator trace
+            </a>
+          )}
+        </section>
       </div>
 
       {neighbours.length > 0 && (

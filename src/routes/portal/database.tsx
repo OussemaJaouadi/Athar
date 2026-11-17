@@ -4,13 +4,13 @@ import { useTable, type ColumnDef, type RowSelectionState, type SortingState } f
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Search } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { RecordPane, asJson, humanize, isId, isUrl, tableName, type DbColumn } from '@/components/athar/db-panel'
+import { RecordPane, asJson, humanize, idText, isUrl, tableName, type DbColumn } from '@/components/athar/db-panel'
 import { DeskBar, EmptyValue, deskBtn, deskInput, useDeskKeys } from '@/components/athar/desk'
 import { DataGrid, DataGridContainer, dataGridFeatures, type DataGridFeatures } from '@/components/reui/data-grid/data-grid'
 import { DataGridScrollArea } from '@/components/reui/data-grid/data-grid-scroll-area'
 import { DataGridTable } from '@/components/reui/data-grid/data-grid-table'
 import { cn } from '@/lib/utils'
-import { getDbRow, getDbRows, listDbTables, type DbRow } from '#/server/api/database'
+import { getDbRows, listDbTables, type DbRow } from '#/server/api/database'
 import { DB_PAGE_SIZE as PAGE_SIZE } from '#/shared/database'
 
 type Search = { table?: string; q?: string; sort?: string; dir?: 'asc' | 'desc'; page?: number; row?: string }
@@ -27,12 +27,15 @@ export const Route = createFileRoute('/portal/database')({
   // The selected row is not a loader dependency: selecting never refetches the grid.
   loaderDeps: ({ search: { table, q, sort, dir, page } }) => ({ table, q, sort, dir, page }),
   loader: async ({ deps }) => {
-    const table = deps.table ?? 'source_rows'
+    // Tables from before pipeline v2 open their successor; no table opens Entries.
+    const table = deps.table ? (LEGACY[deps.table] ?? deps.table) : 'entries'
     const [groups, data] = await Promise.all([listDbTables(), getDbRows({ data: { ...deps, table } })])
     return { groups, table, data }
   },
   component: DatabasePage,
 })
+
+const LEGACY: Record<string, string> = { source_rows: 'entries', source_snapshots: 'downloads', records: 'startups', review_items: 'startups' }
 
 const n = (v: number) => v.toLocaleString('en-GB')
 type Data = NonNullable<Awaited<ReturnType<typeof getDbRows>>>
@@ -187,8 +190,8 @@ function Unknown({ table }: { table: string }) {
       </p>
       <p>
         Pick one from the list, or{' '}
-        <Link to="/portal/database" search={{ table: 'source_rows' }} className="text-glaze underline">
-          open Source rows
+        <Link to="/portal/database" search={{ table: 'entries' }} className="text-glaze underline">
+          open Entries
         </Link>
         .
       </p>
@@ -202,10 +205,11 @@ function Cell({ col, v }: { col: DbColumn; v: DbRow[string] }) {
   if (col.secret) return <span>••••</span>
   if (col.blob) return <span className="tabular-nums">{`${(Number(v) / 1024).toFixed(0)} KB`}</span>
   if (typeof v === 'number') return <span className="tabular-nums">{v}</span>
-  if (isId(col.name, v))
+  const id = idText(col.name, v)
+  if (id)
     return (
-      <span className="font-mono text-[0.8125rem]" title={v}>
-        …{v.slice(-4)}
+      <span className={cn(id.mono && 'font-mono text-[0.8125rem]')} title={id.full}>
+        {id.text}
       </span>
     )
   const json = asJson(v)
@@ -230,22 +234,8 @@ function Workspace({
 }) {
   const keyOf = useCallback((r: DbRow) => String(r[data.key] ?? r.__rowid), [data.key])
   const ids = useMemo(() => data.rows.map(keyOf), [data.rows, keyOf])
-  // The first row is selected on load; a linked row may sit on another page and is fetched on its own.
+  // The first row is selected on load; a linked row may sit on another page: the record pane fetches it by key.
   const current = selected ?? ids[0]
-  const fromPage = current ? data.rows.find((r) => keyOf(r) === current) : undefined
-  const [fetched, setFetched] = useState<{ key: string; row: DbRow | null } | null>(null)
-  useEffect(() => {
-    if (!current || fromPage || fetched?.key === current) return
-    let live = true
-    getDbRow({ data: { table: data.table, key: current } }).then((row) => {
-      if (live) setFetched({ key: current, row })
-    })
-    return () => {
-      live = false
-    }
-  }, [current, fromPage, fetched?.key, data.table])
-  const row = fromPage ?? (fetched && fetched.key === current ? fetched.row : null)
-  const missing = Boolean(current && !fromPage && fetched && fetched.key === current && !fetched.row)
 
   const select = useCallback(
     (id: string) => {
@@ -261,8 +251,9 @@ function Workspace({
       data.columns.map((c) => ({
         id: c.name,
         accessorFn: (r: DbRow) => r[c.name] ?? null,
-        enableSorting: !c.blob && !c.secret,
+        enableSorting: !c.blob && !c.secret && !c.virtual,
         header: () => {
+          if (c.virtual) return <span className="text-[0.8125rem] font-normal whitespace-nowrap text-ink-2">{humanize(c.name)}</span>
           const sorted = data.sort === c.name ? data.dir : null
           return (
             <button
@@ -353,7 +344,7 @@ function Workspace({
           <ChevronLeft className="size-4" aria-hidden />
           Back to {name.toLowerCase()}
         </button>
-        <RecordPane table={data.table} columns={data.columns} row={row} rowKey={current} missing={missing} />
+        <RecordPane table={data.table} rowKey={current} />
       </aside>
     </>
   )

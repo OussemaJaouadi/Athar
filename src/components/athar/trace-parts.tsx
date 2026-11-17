@@ -1,53 +1,3 @@
-import { useState } from 'react'
-
-import { deskInput } from '@/components/athar/desk'
-import { cn } from '@/lib/utils'
-import { rowByNumber } from '#/server/api/trace'
-
-/** Exact jump by registry row number: 12 opens row 12, never a name that contains 12. */
-export function RowJump({ last, onOpen, className }: { last: number; onOpen: (rowId: string) => void; className?: string }) {
-  const [value, setValue] = useState('')
-  const [miss, setMiss] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
-  return (
-    <form
-      className={cn('flex items-center gap-2', className)}
-      onSubmit={async (e) => {
-        e.preventDefault()
-        if (!/^\d+$/.test(value.trim())) return setMiss('Type a row number.')
-        const n = Number(value)
-        setBusy(true)
-        const id = await rowByNumber({ data: n })
-          .catch(() => null)
-          .finally(() => setBusy(false))
-        if (!id) return setMiss(`No row ${n}. Rows go from 1 to ${last}.`)
-        setMiss(null)
-        setValue('')
-        onOpen(id)
-      }}
-    >
-      <label className="text-[0.8125rem] text-ink-2" htmlFor="row-jump">
-        Go to row
-      </label>
-      <input
-        id="row-jump"
-        inputMode="numeric"
-        value={value}
-        disabled={busy}
-        onChange={(e) => (setMiss(null), setValue(e.target.value))}
-        placeholder={`1–${last}`}
-        aria-describedby={miss ? 'row-jump-miss' : undefined}
-        className={cn(deskInput, 'w-20 tabular-nums')}
-      />
-      {miss && (
-        <span id="row-jump-miss" role="alert" className="text-[0.8125rem] text-ink">
-          {miss}
-        </span>
-      )}
-    </form>
-  )
-}
-
 const LABELS: Record<string, string> = {
   name: 'Name',
   desc: 'Description',
@@ -77,3 +27,7 @@ export function valueText(v: unknown): string {
 }
 
 export const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString('en-GB')} ${n === 1 ? one : many}`
+
+/** A download date as people say it: "17 Nov 2026". */
+export const day = (iso: string | null | undefined) =>
+  iso ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'

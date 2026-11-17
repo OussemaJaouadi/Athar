@@ -4,6 +4,14 @@ import { getCookie } from '@tanstack/react-start/server'
 import type { Database } from 'bun:sqlite'
 
 import { getDatabase } from '../db'
+import { cleanEntry, displayRow } from '../pipeline/clean'
+import type { RegistryRow } from '../pipeline/registry'
+
+/*
+ * Trace on pipeline v2: a startup, the registry entries it was built from, each entry's raw JSON as it may be shown
+ * on screen (displayRow), and the changes cleaning makes when reading it. Nothing here exposes the unfiltered
+ * raw_json, UUIDs, row positions or startup_keys.
+ */
 
 // Every trace call is operator-only, checked on the server, not only in the UI.
 function requireOperator() {
@@ -12,11 +20,7 @@ function requireOperator() {
 
 type Db = Database
 
-const latestSnapshot = (db: Db) =>
-  db.query<{ id: string }, []>('SELECT id FROM source_snapshots ORDER BY fetched_at DESC LIMIT 1').get()
-
-/** Parse stored JSON without letting one bad row blank the page. */
-export function safeJson<T>(text: string | null | undefined, fallback: T): T {
+function parse<T>(text: string | null | undefined, fallback: T): T {
   if (!text) return fallback
   try {
     return JSON.parse(text) as T
@@ -27,91 +31,117 @@ export function safeJson<T>(text: string | null | undefined, fallback: T): T {
 
 export type TraceHit = {
   id: string
-  row_number: number
   name: string
   sector: string | null
-  changes: number
-  open: number
+  entries: number
+  firstSeen: string | null
+  withdrawn: boolean
 }
 
-const OPEN_FOR_ROW = `(SELECT COUNT(*) FROM review_items ri WHERE ri.status = 'open' AND (ri.source_row_id = sr.id OR (r.startup_id IS NOT NULL AND ri.startup_id = r.startup_id)))`
+export type TraceGroup = { key: string; label: string; total: number; hits: TraceHit[] }
 
-// Changes that every row gets (placeholder logo, industry copied from sector) are not news for one row.
-const ROUTINE = `(SELECT COUNT(*) FROM json_each(r.changes_json) c WHERE json_extract(c.value, '$.field') NOT IN ('logo', 'industry'))`
+const LIMIT = 60
 
-export type TraceGroup = { key: 'open' | 'changed' | 'results'; label: string; total: number; rows: TraceHit[] }
+// One hit per startup: its entry count, the date it was first downloaded, and whether the registry still lists it.
+const HIT_SELECT = `
+  SELECT s.id, s.name, s.sector,
+    (SELECT COUNT(*) FROM entries e WHERE e.startup_id = s.id) AS entries,
+    (SELECT fetched_at FROM downloads d WHERE d.id = s.first_download) AS firstSeen,
+    s.last_download < (SELECT MAX(id) FROM downloads) AS withdrawn
+  FROM startups s`
 
-/**
- * The trace list. With a query: plain results, a number matching that registry row exactly and first, text matching
- * names (first 60 plus the full count). With no query: rows with open findings, then rows whose cleaning changed a
- * meaningful field (housekeeping on logo and industry does not count), 60 at most.
- */
-export const findTraceRows = createServerFn()
-  .validator((q: string) => q.trim())
+const hasNote = (codes: string[]) =>
+  `EXISTS (SELECT 1 FROM json_each(s.notes_json) n WHERE json_extract(n.value, '$.code') IN (${codes.map((c) => `'${c}'`).join(', ')}))`
+
+function hits(db: Db, where: string, params: string[], order: string, limit = LIMIT) {
+  const rows = db
+    .query<Omit<TraceHit, 'withdrawn'> & { withdrawn: number }, string[]>(`${HIT_SELECT} WHERE ${where} ORDER BY ${order} LIMIT ${limit}`)
+    .all(...params)
+  const total = db.query<{ n: number }, string[]>(`SELECT COUNT(*) AS n FROM startups s WHERE ${where}`).get(...params.slice(0, 1))?.n ?? 0
+  return { hits: rows.map((r) => ({ ...r, withdrawn: r.withdrawn === 1 })), total }
+}
+
+export const findTraceStartups = createServerFn()
+  .validator((q: string) => q.trim().slice(0, 120))
   .handler(async ({ data: q }) => {
     requireOperator()
     const db = getDatabase()
-    const snap = latestSnapshot(db)
-    if (!snap) return { groups: [] as TraceGroup[], total: 0, snapshotRows: 0, query: q }
-    const snapshotRows =
-      db.query<{ n: number }, [string]>('SELECT COUNT(*) AS n FROM source_rows WHERE snapshot_id = ?').get(snap.id)?.n ?? 0
-    const select = `SELECT sr.id, sr.row_number, COALESCE(r.name, json_extract(sr.raw_json, '$.name'), 'Unnamed source row') AS name, r.sector,
-                COALESCE(${ROUTINE}, 0) AS changes, ${OPEN_FOR_ROW} AS open
-         FROM source_rows sr LEFT JOIN records r ON r.source_row_id = sr.id`
+    const startups = db.query<{ n: number }, []>('SELECT COUNT(*) AS n FROM startups').get()?.n ?? 0
 
     if (q) {
-      const n = /^\d+$/.test(q) ? Number(q) : -1
-      const where = `sr.snapshot_id = $snap AND (sr.row_number = $n OR COALESCE(r.name, json_extract(sr.raw_json, '$.name')) LIKE '%' || $q || '%')`
-      const params = { $snap: snap.id, $q: q, $n: n }
-      const total =
-        db
-          .query<{ n: number }, typeof params>(`SELECT COUNT(*) AS n FROM source_rows sr LEFT JOIN records r ON r.source_row_id = sr.id WHERE ${where}`)
-          .get(params)?.n ?? 0
-      const rows = db
-        .query<TraceHit, typeof params>(`${select} WHERE ${where} ORDER BY (sr.row_number = $n) DESC, sr.row_number LIMIT 60`)
-        .all(params)
-      return { groups: [{ key: 'results', label: 'Matches', total, rows }] as TraceGroup[], total, snapshotRows, query: q }
+      // Name or slug; an exact slug or name comes first.
+      const like = `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`
+      const r = hits(
+        db,
+        "(s.name LIKE ?1 ESCAPE '\\' OR s.id LIKE ?1 ESCAPE '\\')",
+        [like, q.toLowerCase()],
+        '(lower(s.id) = ?2 OR lower(s.name) = ?2) DESC, s.name COLLATE NOCASE',
+      )
+      return { query: q, startups, total: r.total, groups: r.hits.length ? [{ key: 'results', label: 'Results', total: r.total, hits: r.hits }] : [] }
     }
 
-    const all = db.query<TraceHit, [string]>(`${select} WHERE sr.snapshot_id = ? ORDER BY sr.row_number`).all(snap.id)
-    const open = all.filter((h) => h.open > 0)
-    const changed = all.filter((h) => h.open === 0 && h.changes > 0)
-    const groups: TraceGroup[] = [
-      { key: 'open', label: 'Open findings', total: open.length, rows: open },
-      { key: 'changed', label: 'Changed by the last run', total: changed.length, rows: changed.slice(0, 60) },
-    ]
-    return { groups: groups.filter((g) => g.total > 0), total: snapshotRows, snapshotRows, query: q }
-  })
-
-/** Exact registry row number in the latest snapshot → its source row id. */
-export const rowByNumber = createServerFn()
-  .validator((n: number) => n)
-  .handler(async ({ data: n }) => {
-    requireOperator()
-    const db = getDatabase()
-    const snap = latestSnapshot(db)
-    if (!snap) return null
-    return (
-      db
-        .query<{ id: string }, [string, number]>('SELECT id FROM source_rows WHERE snapshot_id = ? AND row_number = ?')
-        .get(snap.id, n)?.id ?? null
+    const groups: TraceGroup[] = []
+    const several = hits(
+      db,
+      `((SELECT COUNT(*) FROM entries e WHERE e.startup_id = s.id) > 1 OR ${hasNote(['listed_more_than_once', 'other_name', 'other_sector'])})`,
+      [],
+      's.name COLLATE NOCASE',
     )
+    if (several.total) groups.push({ key: 'several', label: 'Listed more than once', ...several })
+    const website = hits(db, hasNote(['website_text_removed', 'second_website']), [], 's.name COLLATE NOCASE')
+    if (website.total) groups.push({ key: 'website', label: 'Text removed from the website', ...website })
+    const all = hits(db, '1 = 1', [], 's.name COLLATE NOCASE')
+    if (all.total) groups.push({ key: 'all', label: 'All startups', ...all })
+    return { query: '', startups, total: startups, groups }
   })
 
-export type TraceValues = {
-  name: string | null
+export type TraceChange = { field: string; from: string | null; to: string | null; why: string }
+
+/** A value as words for the screen: lists joined, empty as null. */
+const text = (v: unknown): string | null => {
+  if (v === null || v === undefined || v === '') return null
+  if (Array.isArray(v)) return v.map((x) => text(x) ?? '').filter(Boolean).join(', ') || null
+  if (typeof v === 'object') return JSON.stringify(v)
+  return String(v)
+}
+
+export type TraceEntry = {
+  id: string
+  copies: number
+  firstSeen: string | null
+  lastSeen: string | null
+  /** displayRow of the parsed raw entry: what may be shown on screen. */
+  row: RegistryRow | null
+  changes: TraceChange[]
+  /** The startup's values were read from this entry. */
+  source: boolean
+}
+
+export type TraceStartup = {
+  id: string
+  name: string
   description: string | null
   sector: string | null
   website: string | null
   founders: string[]
   cohort: string | null
-  creation_year: number | null
+  creationYear: number | null
+  websiteStatus: string | null
+  websiteCheckedAt: string | null
+  entryId: string
+  filled: Record<string, string>
+  notes: { code: string; text: string }[]
+  firstSeen: string | null
+  lastSeen: string | null
+  withdrawn: boolean
+  position: number
+  total: number
+  entries: TraceEntry[]
 }
 
-type RecordRow = {
-  source_row_id: string
-  startup_id: string | null
-  changes_json: string
+type StartupRow = {
+  id: string
+  entry_id: string
   name: string
   description: string | null
   sector: string | null
@@ -119,100 +149,82 @@ type RecordRow = {
   founders_json: string
   cohort: string | null
   creation_year: number | null
+  filled_json: string
+  notes_json: string
+  first_download: number
+  last_download: number
+  website_status: string | null
+  website_checked_at: string | null
 }
 
-const values = (r: Omit<RecordRow, 'source_row_id' | 'startup_id' | 'changes_json'>): TraceValues => ({
-  name: r.name,
-  description: r.description,
-  sector: r.sector,
-  website: r.website,
-  founders: safeJson<unknown[]>(r.founders_json, []).map(String),
-  cohort: r.cohort,
-  creation_year: r.creation_year,
-})
-
-const text = (v: unknown) => (v === null || v === undefined ? null : typeof v === 'string' ? v : JSON.stringify(v))
-
-function rawView(json: string): { rawFields: [string, string][]; pretty: string; rawValid: boolean } {
-  const raw = safeJson<Record<string, unknown> | null>(json, null)
-  if (!raw || typeof raw !== 'object') return { rawFields: [], pretty: json, rawValid: false }
-  const words = (v: unknown): string =>
-    v === null || v === undefined ? '' : Array.isArray(v) ? v.map(words).filter(Boolean).join(', ') : typeof v === 'object' ? JSON.stringify(v) : String(v)
-  return { rawFields: Object.entries(raw).map(([k, v]) => [k, words(v)]), pretty: JSON.stringify(raw, null, 2), rawValid: true }
-}
-
-type Step = { step: string; started_at: string | null; finished_at: string | null }
-
-/** One source row followed from the download to its startup, with its neighbours for paging. */
-export const getTraceRow = createServerFn()
-  .validator((rowId: string) => rowId)
-  .handler(async ({ data: rowId }) => {
+export const getTraceStartup = createServerFn()
+  .validator((id: string) => id)
+  .handler(async ({ data: id }): Promise<TraceStartup | null> => {
     requireOperator()
     const db = getDatabase()
-    const row = db
-      .query<
-        { id: string; row_number: number; raw_json: string; snapshot_id: string; fetched_at: string; content_hash: string; run_id: string | null; url: string },
-        [string]
-      >(
-        `SELECT sr.id, sr.row_number, sr.raw_json, sr.snapshot_id, ss.fetched_at, ss.content_hash, ss.run_id, ss.url
-         FROM source_rows sr JOIN source_snapshots ss ON ss.id = sr.snapshot_id WHERE sr.id = ?`,
-      )
-      .get(rowId)
-    if (!row) return null
+    const s = db.query<StartupRow, [string]>('SELECT * FROM startups WHERE id = ?').get(id)
+    if (!s) return null
 
-    const neighbour = (op: '<' | '>') =>
-      db
-        .query<{ id: string; row_number: number }, [string, number]>(
-          `SELECT id, row_number FROM source_rows WHERE snapshot_id = ? AND row_number ${op} ? ORDER BY row_number ${op === '<' ? 'DESC' : 'ASC'} LIMIT 1`,
+    const fetched = new Map(db.query<{ id: number; fetched_at: string }, []>('SELECT id, fetched_at FROM downloads').all().map((d) => [d.id, d.fetched_at]))
+    const newest = db.query<{ n: number | null }, []>('SELECT MAX(id) AS n FROM downloads').get()?.n ?? s.last_download
+    const total = db.query<{ n: number }, []>('SELECT COUNT(*) AS n FROM startups').get()?.n ?? 0
+    // Position in the alphabetical list, the same order the list uses.
+    const position =
+      (db
+        .query<{ n: number }, [string, string, string]>(
+          'SELECT COUNT(*) AS n FROM startups WHERE name < ?1 COLLATE NOCASE OR (name = ?2 COLLATE NOCASE AND id < ?3)',
         )
-        .get(row.snapshot_id, row.row_number)
-    const lastRow =
-      db.query<{ n: number }, [string]>('SELECT MAX(row_number) AS n FROM source_rows WHERE snapshot_id = ?').get(row.snapshot_id)?.n ?? row.row_number
+        .get(s.name, s.name, s.id)?.n ?? 0) + 1
 
-    const record = db.query<RecordRow, [string]>('SELECT * FROM records WHERE source_row_id = ?').get(rowId)
-    const changes = safeJson<{ field: string; from: unknown; to: unknown; why: string }[]>(record?.changes_json, []).map((c) => ({
-      field: c.field,
-      from: text(c.from),
-      to: text(c.to),
-      why: c.why,
-    }))
-
-    const startup = record?.startup_id
-      ? db
-          .query<RecordRow & { id: string; primary_row_id: string | null; website_status: string | null }, [string]>('SELECT * FROM startups WHERE id = ?')
-          .get(record.startup_id)
-      : null
-    const merged = record?.startup_id
-      ? db
-          .query<RecordRow & { row_number: number }, [string]>(
-            'SELECT r.*, sr.row_number FROM records r JOIN source_rows sr ON sr.id = r.source_row_id WHERE r.startup_id = ? ORDER BY sr.row_number',
-          )
-          .all(record.startup_id)
-          .map((r) => ({ id: r.source_row_id, row_number: r.row_number, values: values(r) }))
-      : []
-
-    const findings = db
-      .query<{ id: string; step: string; code: string; message: string; status: string; created_at: string }, [string, string]>(
-        'SELECT id, step, code, message, status, created_at FROM review_items WHERE source_row_id = ? OR startup_id = ? ORDER BY created_at',
+    const entries = db
+      .query<{ id: string; raw_json: string; copies: number; first_download: number; last_download: number }, [string]>(
+        'SELECT id, raw_json, copies, first_download, last_download FROM entries WHERE startup_id = ? ORDER BY first_download, id',
       )
-      .all(rowId, record?.startup_id ?? '')
-
-    const steps = row.run_id
-      ? db.query<Step, [string]>('SELECT step, started_at, finished_at FROM run_steps WHERE run_id = ? ORDER BY position').all(row.run_id)
-      : []
+      .all(s.id)
+      .map((e): TraceEntry => {
+        const raw = parse<RegistryRow | null>(e.raw_json, null)
+        const shown = raw ? displayRow(raw) : null
+        // Changes are computed from the verbatim row; what the registry wrote is shown as displayRow shows it.
+        const changes = raw
+          ? cleanEntry(raw).changes.map((c) => ({
+              field: c.field,
+              from: text(shown && c.field in shown ? shown[c.field as keyof RegistryRow] : c.from),
+              to: text(c.to),
+              why: c.why,
+            }))
+          : []
+        return {
+          id: e.id,
+          copies: e.copies,
+          firstSeen: fetched.get(e.first_download) ?? null,
+          lastSeen: fetched.get(e.last_download) ?? null,
+          row: shown,
+          changes,
+          source: e.id === s.entry_id,
+        }
+      })
+    // The entry the values were read from comes first.
+    entries.sort((a, b) => Number(b.source) - Number(a.source))
 
     return {
-      row,
-      // Plain strings only: the raw row's fields as words, and the row pretty-printed (or as stored, if it is not JSON).
-      ...rawView(row.raw_json),
-      prev: neighbour('<'),
-      next: neighbour('>'),
-      lastRow,
-      record: record ? values(record) : null,
-      changes,
-      startup: startup ? { id: startup.id, primary_row_id: startup.primary_row_id, website_status: startup.website_status, values: values(startup) } : null,
-      merged,
-      findings,
-      steps,
+      id: s.id,
+      name: s.name,
+      description: s.description,
+      sector: s.sector,
+      website: s.website,
+      founders: parse<string[]>(s.founders_json, []),
+      cohort: s.cohort,
+      creationYear: s.creation_year,
+      websiteStatus: s.website_status,
+      websiteCheckedAt: s.website_checked_at,
+      entryId: s.entry_id,
+      filled: parse<Record<string, string>>(s.filled_json, {}),
+      notes: parse<{ code: string; text: string }[]>(s.notes_json, []),
+      firstSeen: fetched.get(s.first_download) ?? null,
+      lastSeen: fetched.get(s.last_download) ?? null,
+      withdrawn: s.last_download < newest,
+      position,
+      total,
+      entries,
     }
   })

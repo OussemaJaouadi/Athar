@@ -85,10 +85,10 @@ function Ask({ cards, draft }: { cards: RegistryCard[]; draft?: string }) {
       <section aria-label="The registry" className="mx-auto w-full max-w-[90rem] px-4 pb-20 sm:px-8">
         <div className="mb-6 flex flex-wrap items-baseline justify-between gap-x-8 gap-y-2 border-t border-hairline pt-5 text-sm text-ink-2">
           <p className="max-w-[44rem] text-lg leading-8 text-ink">
-            Athar reads all {corpus.startups} startups in the Startup Tunisia registry and answers with the exact row each one comes from.
+            Athar reads all {corpus.startups} startups in the Startup Tunisia registry and answers with the registry entry each one comes from.
           </p>
           <span>
-            {corpus.startups} startups{corpus.fetchedAt && ` · snapshot of ${longDate(corpus.fetchedAt)}`}
+            {corpus.startups} startups{corpus.fetchedAt && ` · downloaded ${longDate(corpus.fetchedAt)}`}
           </span>
         </div>
         <div className="relative max-h-[52rem] overflow-hidden">
@@ -156,7 +156,6 @@ function Card({ card, words = [], lit, size = 'sm' }: { card: RegistryCard; word
         <TileMark id={card.id} sector={card.sector} size={size === 'lg' ? 36 : 24} />
         <span className="flex min-w-0 flex-1 items-baseline justify-between gap-2 text-[0.8125rem]">
           <span className="truncate text-ink-2">{card.sector ?? 'No sector'}</span>
-          {card.row !== null && <span className="shrink-0 font-mono text-ink-3">row {card.row}</span>}
         </span>
       </span>
       <span className={cn('mt-3 block font-display font-bold text-ink', size === 'lg' ? 'text-2xl' : 'text-[1.0625rem] leading-6')}>{card.name}</span>
@@ -179,7 +178,7 @@ function Answer({ report, cards }: { report: Report; cards: RegistryCard[] }) {
   const more = report.matches.slice(3)
   const n = report.strong
   const verdict = n === 0 ? 'No close precedent.' : n >= 6 ? 'Many tried parts of this.' : 'Tried before.'
-  const card = (m: IdeaMatch) => byId.get(m.id) ?? { id: m.id, name: m.name, sector: m.sector, row: null, cohort: m.cohort, description: m.description }
+  const card = (m: IdeaMatch) => byId.get(m.id) ?? { id: m.id, name: m.name, sector: m.sector, cohort: m.cohort, description: m.description }
 
   return (
     <main className="mx-auto w-full max-w-[90rem] flex-1 px-4 pt-10 pb-24 sm:px-8 lg:pt-14">

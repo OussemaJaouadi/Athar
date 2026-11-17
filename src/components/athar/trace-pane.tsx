@@ -1,184 +1,119 @@
 import { Link } from '@tanstack/react-router'
-import { useState } from 'react'
+import { ExternalLink, Database as DatabaseIcon } from 'lucide-react'
 
-import { duration } from '@/components/athar/collect-button'
-import { DeskPane, Evidence, Fields, JsonBlock, PaneSection, ShortId, type DeskField, type EvidenceRow } from '@/components/athar/desk'
-import { findingName, labTime } from '@/components/athar/lab'
-import { fieldLabel, plural, valueText } from '@/components/athar/trace-parts'
-import type { getTraceRow, TraceValues } from '#/server/api/trace'
+import { DeskPane, Evidence, Fields, JsonBlock, PaneSection, type DeskField } from '@/components/athar/desk'
+import { day, fieldLabel, plural, valueText } from '@/components/athar/trace-parts'
+import type { TraceStartup } from '#/server/api/trace'
 
-export type TraceData = NonNullable<Awaited<ReturnType<typeof getTraceRow>>>
+const link = 'inline-flex items-center gap-1.5 text-[0.875rem] text-glaze underline [&_svg]:size-4'
 
-// Which raw field a finding is about, so its value carries the ochre bar.
-const FINDING_FIELD: Record<string, string> = {
-  website_unrepairable: 'website',
-  missing_description: 'desc',
-  industry_differs: 'industry',
-  cohort_unreadable: 'label',
-  cohort_before_creation: 'label',
-}
-
-// Changes every row gets: said in the Why column, never hidden.
-const CLEAN_ACTION = (from: string | null, to: string | null) => (to === null || to === '' ? (from ? 'Dropped' : 'Left empty') : to === from ? 'Kept' : to)
-
-const MERGE_FIELDS: { key: keyof TraceValues; label: string }[] = [
-  { key: 'name', label: 'Name' },
-  { key: 'sector', label: 'Sector' },
-  { key: 'website', label: 'Website' },
-  { key: 'founders', label: 'Founders' },
-  { key: 'cohort', label: 'Label date' },
-  { key: 'creation_year', label: 'Founded' },
-  { key: 'description', label: 'Description' },
-]
-
-function RunLink({ runId, took }: { runId: string | null; took: string | null }) {
-  if (!runId) return null
-  return (
-    <span className="inline-flex items-baseline gap-3 tabular-nums">
-      {took && <span>{took}</span>}
-      <Link to="/portal/runs/$runId" params={{ runId }} className="text-glaze underline">
-        Run <span className="font-mono">{runId.slice(-4)}</span>
-      </Link>
-    </span>
-  )
-}
-
-/** One source row followed from the download to its startup, as the desk's pane. */
-export function TracePane({ data, foot }: { data: TraceData; foot?: React.ReactNode }) {
-  const [identical, setIdentical] = useState(false)
-  const { row, record, changes, startup, merged, findings, steps } = data
-  const name = record?.name ?? (data.rawFields.find(([k]) => k === 'name')?.[1] || 'Unnamed source row')
-  const open = findings.filter((f) => f.status === 'open')
-  const badFields = new Set(open.map((f) => FINDING_FIELD[f.code]).filter(Boolean))
-  const took = (id: string) => {
-    const s = steps.find((x) => x.step === id)
-    return s ? duration(s.started_at, s.finished_at) : null
-  }
-
-  const evidence: EvidenceRow[] = changes.map((c) => ({
-    field: fieldLabel(c.field),
-    wrote: c.from ?? '',
-    cleaning: CLEAN_ACTION(c.from, c.to),
-    why: c.why,
-    bad: badFields.has(c.field),
-  }))
-  // A finding on a field cleaning did not touch still shows what the registry wrote.
-  for (const f of badFields) {
-    if (changes.some((c) => c.field === f)) continue
-    const raw = data.rawFields.find(([k]) => k === f)?.[1] ?? ''
-    evidence.unshift({ field: fieldLabel(f), wrote: raw, cleaning: 'Kept', why: open.find((o) => FINDING_FIELD[o.code] === f)?.message ?? '', bad: true })
-  }
-
-  const same = (k: keyof TraceValues) => new Set(merged.map((m) => valueText(m.values[k]))).size <= 1
-  const differ = MERGE_FIELDS.filter((f) => !same(f.key))
-  const shown = identical ? MERGE_FIELDS : differ
-
-  const startupFields: DeskField[] = startup
-    ? [
-        { label: 'Name', value: startup.values.name },
-        { label: 'Sector', value: startup.values.sector },
-        { label: 'Website', value: startup.values.website, mono: true },
-        { label: 'Website check', value: startup.website_status ?? 'Not checked yet' },
-        { label: 'Founders', value: valueText(startup.values.founders) },
-        { label: 'Label date', value: startup.values.cohort },
-        { label: 'Founded', value: startup.values.creation_year },
-        { label: 'Description', value: startup.values.description },
-      ]
-    : []
+/**
+ * One startup traced back to the registry: what Athar shows, the facts found while building it, then every entry it
+ * was read from as the registry published it (on-screen form), with the changes cleaning makes. No decisions.
+ */
+export function TracePane({ data }: { data: TraceStartup }) {
+  const filled = Object.entries(data.filled)
+  const values: DeskField[] = [
+    { label: 'Name', value: data.name },
+    { label: 'Description', value: data.description },
+    { label: 'Sector', value: data.sector },
+    { label: 'Website', value: data.website, mono: !!data.website },
+    ...(data.websiteStatus
+      ? [{ label: 'Website check', value: `${data.websiteStatus}${data.websiteCheckedAt ? ` · ${day(data.websiteCheckedAt)}` : ''}` }]
+      : []),
+    { label: 'Founders', value: data.founders.length ? data.founders.join(', ') : null },
+    { label: 'Label date', value: data.cohort },
+    { label: 'Founded', value: data.creationYear },
+    {
+      label: 'In the registry',
+      value: data.withdrawn
+        ? `First seen ${day(data.firstSeen)} · no longer listed since ${day(data.lastSeen)}`
+        : `First seen ${day(data.firstSeen)} · last seen ${day(data.lastSeen)}`,
+    },
+  ]
 
   return (
     <DeskPane
-      title={`Row ${row.row_number} · ${name}`}
-      statement={open.length ? open.map((f) => findingName(f.code)).join(' · ') : (record?.sector ?? 'Not cleaned yet')}
-      position={`${row.row_number} of ${data.lastRow}`}
-      foot={foot}
+      title={data.name}
+      statement={<span className="font-mono text-[0.8125rem]">{data.id}</span>}
+      position={`${data.position} of ${data.total}`}
     >
-      <PaneSection title="Collected" aside={<RunLink runId={row.run_id} took={took('collect')} />}>
-        <Fields
-          fields={[
-            { label: 'Downloaded', value: labTime(row.fetched_at) },
-            { label: 'Source', value: row.url, mono: true },
-            { label: 'Fields', value: plural(data.rawFields.length, 'field') },
-            { label: 'Download hash', value: <ShortId id={row.content_hash} /> },
-          ]}
-        />
-      </PaneSection>
+      <p className="flex flex-wrap gap-x-[18px] gap-y-1">
+        <Link to="/startups/$id" params={{ id: data.id }} className={link}>
+          <ExternalLink aria-hidden />
+          Open the startup profile
+        </Link>
+        <Link to="/portal/database" search={{ table: 'startups', row: data.id }} className={link}>
+          <DatabaseIcon aria-hidden />
+          Open in database
+        </Link>
+      </p>
 
-      <PaneSection title="Cleaned" aside={<RunLink runId={row.run_id} took={took('clean')} />}>
-        {evidence.length ? <Evidence rows={evidence} /> : <p className="text-[0.875rem] text-ink">Cleaning changed nothing on this row.</p>}
-      </PaneSection>
-
-      <PaneSection title="Merged" aside={<RunLink runId={row.run_id} took={took('merge')} />}>
-        {merged.length <= 1 ? (
-          <p className="text-[0.875rem] text-ink">The only registration of {name}.</p>
-        ) : (
-          <div className="grid gap-2">
-            <p className="text-[0.875rem] text-ink">
-              {plural(merged.length, 'registration')} of {name}, merged into one startup.{' '}
-              {differ.length ? `${plural(differ.length, 'field')} differ.` : 'Every field is identical.'}
-            </p>
-            {shown.length > 0 && (
-              <div className="overflow-x-auto border border-edge">
-                <table className="w-full border-collapse">
-                  <thead>
-                    <tr>
-                      <th className="h-[34px] w-[150px] border-b border-edge px-3 text-start text-[0.8125rem] font-normal text-ink-2">Field</th>
-                      {merged.map((m) => (
-                        <th key={m.id} className="h-[34px] border-b border-edge px-3 text-start text-[0.8125rem] font-normal text-ink-2 tabular-nums">
-                          {m.id === row.id ? `Row ${m.row_number} (this row)` : `Row ${m.row_number}`}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {shown.map((f) => (
-                      <tr key={f.key}>
-                        <td className="border-b border-hairline px-3 py-2 text-[0.8125rem] text-ink-2">{f.label}</td>
-                        {merged.map((m) => {
-                          const t = valueText(m.values[f.key])
-                          return (
-                            <td key={m.id} className="border-b border-hairline px-3 py-2 text-[0.875rem] [overflow-wrap:anywhere] text-ink">
-                              {t || <span className="text-ink-3">empty</span>}
-                            </td>
-                          )
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-            {differ.length < MERGE_FIELDS.length && (
-              <button type="button" onClick={() => setIdentical((v) => !v)} className="w-fit text-[0.875rem] text-glaze underline">
-                {identical ? 'Only the fields that differ' : `Show ${plural(MERGE_FIELDS.length - differ.length, 'identical field')}`}
-              </button>
-            )}
-          </div>
+      <PaneSection title="Read from">
+        <p className="text-[0.875rem] text-ink">
+          entry <span className="font-mono text-[0.8125rem]">{data.entryId}</span>
+          {data.entries.length > 1 && ` (of ${plural(data.entries.length, 'entry', 'entries')})`}
+        </p>
+        {filled.length > 0 && (
+          <ul className="mt-1 grid gap-0.5 text-[0.875rem] text-ink">
+            {filled.map(([field, entry]) => (
+              <li key={field}>
+                {fieldLabel(field)} filled from entry <span className="font-mono text-[0.8125rem]">{entry}</span>
+              </li>
+            ))}
+          </ul>
         )}
       </PaneSection>
 
-      <PaneSection title="Startup">
-        {startup ? (
-          <div className="grid gap-2">
-            <Fields fields={startupFields} />
-            <Link to="/startups/$id" params={{ id: startup.id }} className="w-fit text-[0.875rem] text-glaze underline">
-              Open the startup profile
-            </Link>
-          </div>
-        ) : (
-          <p className="text-[0.875rem] text-ink">Not merged into a startup yet.</p>
-        )}
+      <PaneSection title="Values">
+        <Fields fields={values} />
       </PaneSection>
 
-      <PaneSection
-        title={`Row ${row.row_number} as downloaded`}
-        aside={
-          <Link to="/portal/database" search={{ table: 'source_rows', row: row.id }} className="text-glaze underline">
-            Open in database
-          </Link>
-        }
-      >
-        <JsonBlock text={data.pretty} title={data.rawValid ? 'raw_json' : 'raw_json (not valid JSON, shown as stored)'} />
+      {data.notes.length > 0 && (
+        <PaneSection title="Notes">
+          <ul className="grid gap-1 text-[0.875rem] text-ink">
+            {data.notes.map((n, i) => (
+              <li key={`${n.code}-${i}`} className="border-s-[3px] border-edge ps-2.5">
+                {n.text}
+              </li>
+            ))}
+          </ul>
+        </PaneSection>
+      )}
+
+      <PaneSection title={data.entries.length === 1 ? 'Entry' : `Entries · ${data.entries.length}`}>
+        <div className="grid gap-5">
+          {data.entries.map((e) => (
+            <section key={e.id} aria-label={`entry ${e.id}`} className="grid gap-2.5 border-t border-hairline pt-3 first:border-0 first:pt-0">
+              <h4 className="text-[0.875rem] text-ink">
+                entry <span className="font-mono text-[0.8125rem]">{e.id}</span>
+                <span className="text-ink-2">
+                  {' · '}
+                  {e.copies > 1 ? `listed ${e.copies}×` : 'listed once'}
+                  {' · first seen '}
+                  {day(e.firstSeen)}
+                  {' · last seen '}
+                  {day(e.lastSeen)}
+                  {e.source && ' · values read from this entry'}
+                </span>
+              </h4>
+              {e.changes.length > 0 ? (
+                <Evidence
+                  rows={e.changes.map((c, i) => ({
+                    field: fieldLabel(c.field),
+                    wrote: valueText(c.from),
+                    cleaning: valueText(c.to) || 'Left empty',
+                    why: c.why,
+                    bad: i === 0,
+                  }))}
+                />
+              ) : (
+                <p className="text-[0.875rem] text-ink">Read as published: cleaning changed nothing.</p>
+              )}
+              {e.row ? <JsonBlock value={e.row} title={`entry ${e.id} as published`} /> : <p className="text-[0.875rem] text-ink">This entry could not be read as JSON.</p>}
+            </section>
+          ))}
+        </div>
       </PaneSection>
     </DeskPane>
   )

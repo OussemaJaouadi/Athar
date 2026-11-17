@@ -1,6 +1,8 @@
 import { createServerFn } from '@tanstack/react-start'
 
 import { getDatabase } from '../db'
+import { cleanEntry, displayRow } from '../pipeline/clean'
+import type { RegistryRow } from '../pipeline/registry'
 import { readAsk } from './ask'
 import { themesOf } from '../../shared/themes'
 
@@ -12,7 +14,6 @@ export type StartupRow = {
   cohort: string | null
   creation_year: number | null
   website: string | null
-  row?: number | null
 }
 
 export type SearchInput = {
@@ -33,7 +34,7 @@ export type SearchInput = {
 
 export const PAGE_SIZE = 20
 
-const COLUMNS = 's.id, s.name, s.description, s.sector, s.cohort, s.creation_year, s.website, (SELECT row_number FROM source_rows WHERE id = s.primary_row_id) AS row'
+const COLUMNS = 's.id, s.name, s.description, s.sector, s.cohort, s.creation_year, s.website'
 const LABELLED = 'CAST(substr(s.cohort, 4, 4) AS INTEGER)'
 
 /** FTS5 query from free words: every word must match, as a prefix. */
@@ -100,50 +101,76 @@ export const searchStartups = createServerFn()
   })
 
 export type Change = { field: string; from: string | null; to: string | null; why: string }
-export type ChainInfo = { rowNumber: number; fetchedAt: string; snapshot: string; changes: Change[] }
+/** Where a startup's values come from: the registry entry they were read from and what cleaning changed in it. */
+export type ChainInfo = { entryId: string; changes: Change[] }
+export type EntryInfo = { id: string; copies: number; firstSeen: string; lastSeen: string; primary: boolean }
+export type StartupNote = { code: string; text: string }
 
 const text = (v: unknown) => (v === null || v === undefined ? null : typeof v === 'string' ? v : Array.isArray(v) ? v.join(', ') : JSON.stringify(v))
+// Registry field names to the startup's own, so a change lands on the fact it changed.
+const FIELD: Record<string, string> = { desc: 'description', label: 'cohort' }
 
-// Profile: the startup, the source rows behind it, and the chain behind its fields.
+const parseRow = (json: string): RegistryRow | null => {
+  try {
+    return JSON.parse(json) as RegistryRow
+  } catch {
+    return null
+  }
+}
+
+// Profile: the startup, the registry entries behind it, and what cleaning changed in the one its values come from.
 export const getStartup = createServerFn()
   .validator((id: string) => id)
   .handler(async ({ data: id }) => {
     const db = getDatabase()
     const startup = db
-      .query<StartupRow & { founders_json: string; primary_row_id: string | null; domain: string | null; created_at: string }, [string]>(
-        'SELECT * FROM startups WHERE id = ?',
-      )
+      .query<
+        StartupRow & {
+          founders_json: string
+          entry_id: string
+          notes_json: string
+          domain: string | null
+          first_download: number
+          last_download: number
+          created_at: string
+        },
+        [string]
+      >('SELECT * FROM startups WHERE id = ?')
       .get(id)
     if (!startup) return null
-    const sources = db
-      .query<{ source_row_id: string; row_number: number; fetched_at: string; raw_json: string }, [string]>(
-        `SELECT r.source_row_id, sr.row_number, ss.fetched_at, sr.raw_json FROM records r
-         JOIN source_rows sr ON sr.id = r.source_row_id JOIN source_snapshots ss ON ss.id = r.snapshot_id
-         WHERE r.startup_id = ? ORDER BY ss.fetched_at DESC, sr.row_number`,
+    // Every listing the registry published for this startup, with when it was first and last seen.
+    const entries = db
+      .query<{ id: string; copies: number; raw_json: string; first_seen: string; last_seen: string }, [string]>(
+        `SELECT e.id, e.copies, e.raw_json, d1.fetched_at AS first_seen, d2.last_checked_at AS last_seen
+         FROM entries e JOIN downloads d1 ON d1.id = e.first_download JOIN downloads d2 ON d2.id = e.last_download
+         WHERE e.startup_id = ? ORDER BY e.first_download, e.id`,
       )
       .all(id)
-    const primary = startup.primary_row_id
-      ? db
-          .query<{ row_number: number; fetched_at: string; content_hash: string; changes_json: string }, [string]>(
-            `SELECT sr.row_number, ss.fetched_at, ss.content_hash, r.changes_json FROM records r
-             JOIN source_rows sr ON sr.id = r.source_row_id JOIN source_snapshots ss ON ss.id = r.snapshot_id
-             WHERE r.source_row_id = ?`,
-          )
-          .get(startup.primary_row_id)
-      : null
-    const reviews = db
-      .query<{ code: string; message: string; status: string }, [string, string]>(
-        'SELECT code, message, status FROM review_items WHERE startup_id = ? OR source_row_id = ?',
+    const seen = db
+      .query<{ first_seen: string; last_seen: string }, [number, number]>(
+        'SELECT (SELECT fetched_at FROM downloads WHERE id = ?) AS first_seen, (SELECT last_checked_at FROM downloads WHERE id = ?) AS last_seen',
       )
-      .all(id, startup.primary_row_id ?? '')
-    const chain: ChainInfo | null = primary
+      .get(startup.first_download, startup.last_download)
+    // Withdrawn: the first download after the last one that still listed it.
+    const gone = db
+      .query<{ at: string }, [number]>('SELECT fetched_at AS at FROM downloads WHERE id > ? ORDER BY id LIMIT 1')
+      .get(startup.last_download)
+    // Changes are recomputed from the raw entry; a website field's extra text never leaves the server.
+    const primary = entries.find((e) => e.id === startup.entry_id)
+    const raw = primary ? parseRow(primary.raw_json) : null
+    const shown = raw ? displayRow(raw) : null
+    const chain: ChainInfo | null = raw
       ? {
-          rowNumber: primary.row_number,
-          fetchedAt: primary.fetched_at,
-          snapshot: primary.content_hash.slice(0, 8),
-          changes: (JSON.parse(primary.changes_json) as { field: string; from: unknown; to: unknown; why: string }[]).map((c) => ({ field: c.field, from: text(c.from), to: text(c.to), why: c.why })),
+          entryId: startup.entry_id,
+          changes: cleanEntry(raw).changes.map((c) => ({
+            field: FIELD[c.field] ?? c.field,
+            from: text(c.field in (shown ?? {}) ? (shown as Record<string, unknown>)[c.field] : c.from),
+            to: text(c.to),
+            why: c.why,
+          })),
         }
       : null
+    const notes = JSON.parse(startup.notes_json) as StartupNote[]
     // The same people on other startups: matched on the written name.
     const alsoFounded = db
       .query<{ fn: string; id: string; name: string }, [string, string]>(
@@ -160,7 +187,18 @@ export const getStartup = createServerFn()
           )
           .all(startup.sector, id, startup.cohort)
       : []
-    return { startup: { ...startup, founders: JSON.parse(startup.founders_json) as string[] }, sources, chain, reviews, neighbours, alsoFounded }
+    const { notes_json: _n, founders_json, ...rest } = startup
+    return {
+      startup: { ...rest, founders: JSON.parse(founders_json) as string[] },
+      entries: entries.map((e): EntryInfo => ({ id: e.id, copies: e.copies, firstSeen: e.first_seen, lastSeen: e.last_seen, primary: e.id === startup.entry_id })),
+      firstSeen: seen?.first_seen ?? null,
+      lastSeen: seen?.last_seen ?? null,
+      withdrawnSince: gone?.at ?? null,
+      notes,
+      chain,
+      neighbours,
+      alsoFounded,
+    }
   })
 
 export type WallTile = { id: string; name: string; sector: string | null; year: number | null; described: boolean }
@@ -196,7 +234,7 @@ export const getLandscape = createServerFn().handler(async () => {
     .query<{ total: number; described: number; websites: number; lag: number | null; rows: number }, []>(
       `SELECT COUNT(*) AS total, SUM(description IS NOT NULL) AS described, SUM(website IS NOT NULL) AS websites,
               AVG(CAST(substr(cohort, 4, 4) AS INTEGER) - creation_year) AS lag,
-              (SELECT COUNT(*) FROM records) AS rows
+              (SELECT COUNT(*) FROM entries) AS rows
        FROM startups`,
     )
     .get()
@@ -251,16 +289,18 @@ export const getEmbeddingCount = createServerFn().handler(async () => {
 // The corpus line shown in every reading-room page: what the archive holds and how fresh it is.
 export const getCorpus = createServerFn().handler(async () => {
   const db = getDatabase()
-  const snap = db.query<{ fetched_at: string; row_count: number }, []>('SELECT fetched_at, row_count FROM source_snapshots ORDER BY fetched_at DESC LIMIT 1').get()
+  // The newest download: when the registry was downloaded, and when it was last checked unchanged.
+  const snap = db
+    .query<{ fetched_at: string; last_checked_at: string; row_count: number }, []>('SELECT fetched_at, last_checked_at, row_count FROM downloads ORDER BY id DESC LIMIT 1')
+    .get()
   const startups = db.query<{ n: number }, []>('SELECT COUNT(*) AS n FROM startups').get()?.n ?? 0
   const embedded = db.query<{ n: number }, []>('SELECT COUNT(*) AS n FROM embedding_meta').get()?.n ?? 0
-  return { startups, rows: snap?.row_count ?? 0, fetchedAt: snap?.fetched_at ?? null, embedded }
+  return { startups, rows: snap?.row_count ?? 0, fetchedAt: snap?.fetched_at ?? null, checkedAt: snap?.last_checked_at ?? null, embedded }
 })
 
-export type RegistryCard = { id: string; name: string; sector: string | null; row: number | null; cohort: string | null; description: string | null }
+export type RegistryCard = { id: string; name: string; sector: string | null; cohort: string | null; description: string | null }
 
-const CARD_SQL = `SELECT s.id, s.name, s.sector, sr.row_number AS row, s.cohort, substr(s.description, 1, 320) AS description
-  FROM startups s LEFT JOIN source_rows sr ON sr.id = s.primary_row_id`
+const CARD_SQL = `SELECT s.id, s.name, s.sector, s.cohort, substr(s.description, 1, 320) AS description FROM startups s`
 
 // The wall on the home page: a few startups from every sector, the same ones on every visit.
 export const getWallCards = createServerFn()
@@ -275,7 +315,7 @@ export const getWallCards = createServerFn()
     const per = Math.min(8, Math.max(1, data.perSector ?? 3))
     return db
       .query<RegistryCard, [number]>(
-        `SELECT id, name, sector, row, cohort, description FROM (
+        `SELECT id, name, sector, cohort, description FROM (
            SELECT c.*, ROW_NUMBER() OVER (PARTITION BY c.sector ORDER BY length(c.description) DESC, c.name) AS k
            FROM (${CARD_SQL} WHERE s.description IS NOT NULL) c
          ) WHERE k <= ? ORDER BY k, sector`,

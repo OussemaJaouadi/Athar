@@ -1,5 +1,5 @@
 import { Outlet, createFileRoute, redirect } from '@tanstack/react-router'
-import { Database, KeyRound, ListChecks, Route as RouteIcon, Workflow } from 'lucide-react'
+import { Database, KeyRound, Route as RouteIcon, Workflow } from 'lucide-react'
 
 import { AccountMenu } from '@/components/athar/account-menu'
 import { LabInstruments } from '@/components/athar/lab'
@@ -16,7 +16,6 @@ export const Route = createFileRoute('/portal')({
 
 const NAV: NavItem[] = [
   { to: '/portal', label: 'Pipeline', Icon: Workflow, exact: true, also: ['/portal/runs'] },
-  { to: '/portal/review', label: 'Review', Icon: ListChecks },
   { to: '/portal/trace', label: 'Trace', Icon: RouteIcon },
   { to: '/portal/database', label: 'Database', Icon: Database },
   { to: '/portal/keys', label: 'Keys', Icon: KeyRound },

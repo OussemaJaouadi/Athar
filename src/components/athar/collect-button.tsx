@@ -52,18 +52,6 @@ export function CollectButton({ running, again, className }: { running: boolean;
 
 export const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString('en-GB')} ${n === 1 ? one : many}`
 
-/** What a collect changed against the one before, in words. */
-export function diffSentence(diff: { added: number; removed: number; changed: number; first: boolean } | null) {
-  if (!diff) return '—'
-  if (diff.first) return 'First collect'
-  const parts = [
-    diff.added && `${diff.added} new`,
-    diff.removed && `${diff.removed} gone`,
-    diff.changed && `${diff.changed} changed`,
-  ].filter(Boolean)
-  return parts.length ? parts.join(', ') : 'No change'
-}
-
 export const shortId = (id: string) => id.slice(-4)
 
 export function duration(start: string | null, end: string | null) {

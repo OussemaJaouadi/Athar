@@ -49,7 +49,7 @@ function run(idea: string, saved = false): IdeaCheck {
   const db = getDatabase()
   const words = ideaWords(idea)
   const against = db.query<{ n: number }, []>('SELECT COUNT(*) AS n FROM startups').get()?.n ?? 0
-  const snapshotAt = db.query<{ at: string }, []>('SELECT fetched_at AS at FROM source_snapshots ORDER BY fetched_at DESC LIMIT 1').get()?.at ?? null
+  const snapshotAt = db.query<{ at: string }, []>('SELECT fetched_at AS at FROM downloads ORDER BY id DESC LIMIT 1').get()?.at ?? null
   // Rare words carry more: "saffron" says more about an idea than "market".
   const count = db.query<{ n: number }, [string]>('SELECT COUNT(*) AS n FROM startups_fts WHERE startups_fts MATCH ?')
   const weight = new Map(words.map((w) => [w, Math.log((against + 1) / ((count.get(fts(w))?.n ?? 0) + 1))]))

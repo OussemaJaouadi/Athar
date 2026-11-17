@@ -143,6 +143,7 @@ export const operationName = (value: string) =>
     collect: 'Collect',
     clean: 'Clean',
     merge: 'Merge',
+    build: 'Build',
     prepare: 'Prepare',
     embed: 'Embed',
   })[value] ?? 'Operation'

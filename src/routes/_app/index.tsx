@@ -313,7 +313,7 @@ function Crowd({ report }: { report: Report }) {
         })}
       </ol>
       {report.sector && (
-        <Link to="/landscape" search={{ sector: [report.sector.name] }} className="text-sm">
+        <Link to="/landscape" search={{ sector: report.sector.name }} className="text-sm">
           {report.sector.name} in the registry: {report.sector.total} startups, {report.sector.recent} since {report.sector.since}
         </Link>
       )}

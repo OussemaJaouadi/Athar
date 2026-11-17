@@ -26,14 +26,43 @@ type Fact = { key: string; label: string; value: React.ReactNode }
  * a fact carries a note only when cleaning changed it.
  */
 export function Profile({ data, operator }: { data: ProfileData; compact?: boolean; operator?: boolean }) {
-  const { startup, sources, chain, neighbours } = data
+  const { startup, sources, chain, neighbours, alsoFounded } = data
   const row = chain?.rowNumber ?? sources[0]?.row_number
   const site = startup.website?.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '')
   const facts: Fact[] = [
     { key: 'sector', label: 'Sector', value: startup.sector },
     { key: 'cohort', label: 'Startup label', value: startup.cohort && `since ${monthYear(startup.cohort)}` },
     { key: 'creation_year', label: 'Founded', value: startup.creation_year },
-    { key: 'founders', label: 'Founders', value: startup.founders.length ? startup.founders.join(', ') : null },
+    {
+      key: 'founders',
+      label: 'Founders',
+      value: startup.founders.length ? (
+        <span className="grid gap-1">
+          {startup.founders.map((f) => {
+            const other = alsoFounded.filter((a) => a.fn.toLowerCase() === f.trim().toLowerCase())
+            return (
+              <span key={f}>
+                {f}
+                {other.length > 0 && (
+                  <span className="text-ink-2">
+                    {' '}
+                    · also on{' '}
+                    {other.map((o, i) => (
+                      <span key={o.id}>
+                        {i > 0 && ', '}
+                        <Link to="/startups/$id" params={{ id: o.id }}>
+                          {o.name}
+                        </Link>
+                      </span>
+                    ))}
+                  </span>
+                )}
+              </span>
+            )
+          })}
+        </span>
+      ) : null,
+    },
     { key: 'website', label: 'Website', value: site && <a href={startup.website ?? undefined} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 [overflow-wrap:anywhere]">{site}<ArrowUpRight className="size-3.5 shrink-0" aria-hidden /></a> },
   ]
 

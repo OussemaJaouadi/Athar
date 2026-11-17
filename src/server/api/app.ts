@@ -2,6 +2,7 @@ import { createServerFn } from '@tanstack/react-start'
 
 import { getDatabase } from '../db'
 import { readAsk } from './ask'
+import { themesOf } from '../../shared/themes'
 
 export type StartupRow = {
   id: string
@@ -143,6 +144,13 @@ export const getStartup = createServerFn()
           changes: (JSON.parse(primary.changes_json) as { field: string; from: unknown; to: unknown; why: string }[]).map((c) => ({ field: c.field, from: text(c.from), to: text(c.to), why: c.why })),
         }
       : null
+    // The same people on other startups: matched on the written name.
+    const alsoFounded = db
+      .query<{ fn: string; id: string; name: string }, [string, string]>(
+        `SELECT trim(j.value) AS fn, s.id, s.name FROM startups s, json_each(s.founders_json) j
+         WHERE s.id != ? AND lower(trim(j.value)) IN (SELECT lower(trim(value)) FROM json_each(?))`,
+      )
+      .all(id, startup.founders_json)
     // Neighbours are facts, not guesses: same sector, closest labelling year first.
     const neighbours = startup.sector
       ? db
@@ -152,7 +160,7 @@ export const getStartup = createServerFn()
           )
           .all(startup.sector, id, startup.cohort)
       : []
-    return { startup: { ...startup, founders: JSON.parse(startup.founders_json) as string[] }, sources, chain, reviews, neighbours }
+    return { startup: { ...startup, founders: JSON.parse(startup.founders_json) as string[] }, sources, chain, reviews, neighbours, alsoFounded }
   })
 
 export type WallTile = { id: string; name: string; sector: string | null; year: number | null; described: boolean }
@@ -195,18 +203,45 @@ export const getLandscape = createServerFn().handler(async () => {
   return { byYear, bySector, grid, facts }
 })
 
-export type LandscapeRow = { id: string; name: string; sector: string; month: number; year: number; founded: number | null; founders: number; website: boolean }
+export type LandscapeRow = {
+  id: string
+  name: string
+  sector: string
+  month: number
+  year: number
+  founded: number | null
+  founders: number
+  website: boolean
+  described: boolean
+  themes: string[]
+}
+export type RepeatFounder = { name: string; startups: { id: string; name: string; year: number }[] }
 
-// Landscape wall: every labelled startup, small enough to send whole (about 70 KB).
+// Landscape: every labelled startup with what can be read from its row, small enough to send whole.
 export const getLandscapeRows = createServerFn().handler(async () => {
-  return getDatabase()
-    .query<{ id: string; name: string; sector: string; month: number; year: number; founded: number | null; founders: number; website: number }, []>(
+  const db = getDatabase()
+  const rows = db
+    .query<{ id: string; name: string; sector: string; month: number; year: number; founded: number | null; founders: number; website: number; description: string | null }, []>(
       `SELECT id, name, sector, CAST(substr(cohort, 1, 2) AS INTEGER) AS month, CAST(substr(cohort, 4, 4) AS INTEGER) AS year,
-              creation_year AS founded, json_array_length(founders_json) AS founders, website IS NOT NULL AS website
+              creation_year AS founded, json_array_length(founders_json) AS founders, website IS NOT NULL AS website, description
        FROM startups WHERE sector IS NOT NULL AND cohort IS NOT NULL ORDER BY name COLLATE NOCASE`,
     )
     .all()
-    .map((r): LandscapeRow => ({ ...r, website: r.website === 1 }))
+    .map(({ description, ...r }): LandscapeRow => ({ ...r, website: r.website === 1, described: !!description?.trim(), themes: themesOf(description) }))
+  // People named on two or more startups. Matched on the written name, so a namesake can join by mistake.
+  const repeat = db
+    .query<{ fn: string; ids: string }, []>(
+      `WITH f AS (SELECT s.id, trim(j.value) AS fn FROM startups s, json_each(s.founders_json) j WHERE s.cohort IS NOT NULL)
+       SELECT min(fn) AS fn, json_group_array(DISTINCT id) AS ids FROM f GROUP BY lower(fn) HAVING count(DISTINCT id) > 1
+       ORDER BY count(DISTINCT id) DESC, lower(fn)`,
+    )
+    .all()
+  const byId = new Map(rows.map((r) => [r.id, r]))
+  const founders: RepeatFounder[] = repeat.map((f) => ({
+    name: f.fn,
+    startups: (JSON.parse(f.ids) as string[]).map((id) => byId.get(id)).filter((r): r is LandscapeRow => !!r).map((r) => ({ id: r.id, name: r.name, year: r.year })),
+  }))
+  return { rows, founders }
 })
 
 export const getEmbeddingCount = createServerFn().handler(async () => {

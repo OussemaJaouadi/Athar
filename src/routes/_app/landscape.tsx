@@ -196,8 +196,15 @@ function Growth({ rows, sectors, active, highlight }: { rows: LandscapeRow[]; se
     base = hi
     const up = hi.map((v, i) => `${x(i)},${ya(v)}`).join(' L')
     const down = lo.map((v, i) => `${x(i)},${ya(v)}`).reverse().join(' L')
-    return { b, d: `M${up} L${down} Z`, edge: `M${up}`, mid: (ya(lo[lo.length - 1]) + ya(hi[hi.length - 1])) / 2, tall: ya(lo[lo.length - 1]) - ya(hi[hi.length - 1]) }
+    return { b, d: `M${up} L${down} Z`, edge: `M${up}`, lo, hi }
   })
+  // A band's value at any x, so an in-band label can sit on the band's midline where it actually is.
+  const at = (arr: number[], px: number) => {
+    const t = Math.min(years.length - 1, Math.max(0, px / step - 0.5))
+    const i = Math.floor(t)
+    const j = Math.min(arr.length - 1, i + 1)
+    return arr[i] + (arr[j] - arr[i]) * (t - i)
+  }
   const lit = highlight && bands.some((b) => b.key === highlight) ? highlight : undefined
 
   const li = years.indexOf(firstLabel.year)
@@ -208,6 +215,7 @@ function Growth({ rows, sectors, active, highlight }: { rows: LandscapeRow[]; se
   const last = years.length - 1
   const hi = hoverY === null ? null : years.indexOf(hoverY)
   const pk = years.indexOf(2020)
+  const p22 = Math.max(0, years.indexOf(2022))
 
   return (
     <div ref={box} className="relative mt-6">
@@ -256,7 +264,7 @@ function Growth({ rows, sectors, active, highlight }: { rows: LandscapeRow[]; se
             <text x={x(pk) - 6} y={ya(f.cum[pk]) - 10} textAnchor="end" className="fill-ink-2 font-sans text-[12.5px]">
               Founded so far
             </text>
-            <text x={x(pk) + 10} y={ya(l.cum[pk]) + 20} className="fill-ink font-sans text-[12.5px] font-medium">
+            <text x={active ? x(pk) + 10 : x(p22) + 16} y={active ? ya(l.cum[pk]) + 20 : ya(at(l.cum, x(p22) + 16)) + 24} className="fill-ink font-sans text-[12.5px] font-medium">
               Labelled so far
             </text>
           </>
@@ -268,20 +276,31 @@ function Growth({ rows, sectors, active, highlight }: { rows: LandscapeRow[]; se
         {/* Band names, inside the bands at their 2025 edge */}
         {!compact &&
           !active &&
-          paths.map(({ b, mid, tall }) =>
-            tall >= 16 ? (
+          paths.map(({ b, lo, hi }) => {
+            const right = x(last) - 12
+            let size = 12.5
+            let cx = right - b.label.length * 3.4
+            let tall = ya(at(lo, cx)) - ya(at(hi, cx))
+            if (tall < 18) {
+              size = 11.5
+              cx = right - b.label.length * 3.1
+              tall = ya(at(lo, cx)) - ya(at(hi, cx))
+            }
+            if (tall < 14) return null
+            const mid = (ya(at(lo, cx)) + ya(at(hi, cx))) / 2
+            return (
               <text
                 key={b.key}
-                x={x(last) - 12}
-                y={mid + 4}
+                x={right}
+                y={mid + size * 0.35}
                 textAnchor="end"
-                className={cn('pointer-events-none font-sans text-[12.5px]', b.key === OTHER ? 'fill-ink' : 'fill-canvas')}
-                style={{ opacity: lit && lit !== b.key ? 0.3 : 1 }}
+                className={cn('pointer-events-none font-sans', b.key === OTHER ? 'fill-ink' : 'fill-canvas')}
+                style={{ fontSize: size, opacity: lit && lit !== b.key ? 0.3 : 1 }}
               >
                 {b.label}
               </text>
-            ) : null,
-          )}
+            )
+          })}
 
         {/* New each year */}
         <text x={0} y={barTop} className="fill-ink-2 font-sans text-[12px]">

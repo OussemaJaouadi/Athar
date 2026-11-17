@@ -299,6 +299,17 @@ describe('the rows behind the numbers', () => {
     expect(factRows(db, 'unreachable:no such domain')?.rows).toEqual([{ startupId: 'relead', name: 'Relead', value: 'https://relead.tn · no such domain' }])
     expect(factRows(db, 'social_not_checked')?.rows.map((r) => r.startupId)).toEqual(['urban-green'])
     expect(factRows(db, 'startups_unchanged')).toBeNull()
+    const { qualitySummary, searchStartups } = require('./facts') as typeof import('./facts')
+    const q = Object.fromEntries(qualitySummary(db).map((f) => [f.code, f]))
+    expect(q.no_description).toMatchObject({ group: 'missing', count: 1 })
+    expect(q['unreachable:no such domain']).toEqual({ code: 'unreachable:no such domain', group: 'website', label: 'Website does not answer: the domain no longer exists', count: 1 })
+    expect(q.social_not_checked.count).toBe(1)
+    expect(q.other_sector.count).toBe(0) // none is said, not left out
+    for (const f of qualitySummary(db)) expect(factRows(db, f.code)?.total).toBe(f.count)
+    expect(searchStartups(db, 'paymee')).toEqual([{ id: 'paymee', name: 'Paymee', sector: 'Ad Tech and Creative Tech', entries: 1, notes: ['no_description'], withdrawn: false }])
+    expect(searchStartups(db, 'facebook.com').map((x) => x.id)).toEqual(['urban-green'])
+    expect(searchStartups(db, entryId(row()).slice(0, 5)).map((x) => x.id)).toEqual(['relead'])
+    expect(searchStartups(db, '  ')).toEqual([])
   })
 
   test('a download says what it added, what was edited and what was withdrawn', () => {

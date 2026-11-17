@@ -27,7 +27,7 @@ export const getEntry = createServerFn()
 // ── The rows behind the numbers ─────────────────────────────────────────────────────────────────
 
 import { askModel } from '../ai/ask'
-import { downloadChanges, downloads, factRows, foundersOf, ideaCheck, ideaChecks, people, person } from '../pipeline/facts'
+import { downloadChanges, downloads, factRows, foundersOf, ideaCheck, ideaChecks, people, person, qualitySummary, searchStartups } from '../pipeline/facts'
 import type { Provider } from '#/shared/providers'
 
 /** The startups or entries a counted fact stands for, by the note's code. Null when the code has no rows behind it. */
@@ -95,3 +95,11 @@ export const getPersonRow = createServerFn()
 export const getIdeaCheckRow = createServerFn()
   .validator((id: string) => id)
   .handler(async ({ data }) => ideaCheck(getDatabase(), data))
+
+/** Every doubtful or missing thing, counted on today's data; each code opens with getFactRows. */
+export const getQualitySummary = createServerFn().handler(async () => qualitySummary(getDatabase()))
+
+/** Startups by name, exact slug, website or the start of an entry id, for the operator's Startups page. */
+export const searchStartupsOps = createServerFn()
+  .validator((q: string) => q)
+  .handler(async ({ data }) => searchStartups(getDatabase(), data))

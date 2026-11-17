@@ -206,3 +206,77 @@ export function ideaCheck(db: Database, id: string): IdeaCheckRow | null {
       }),
   }
 }
+
+// ── Quality: what is doubtful or missing now ────────────────────────────────────────────────────
+
+export type QualityGroup = 'missing' | 'website' | 'listing' | 'reading' | 'registry'
+export type QualityFact = { code: string; group: QualityGroup; label: string; count: number }
+
+const QUALITY: [string, QualityGroup, string][] = [
+  ['no_description', 'missing', 'No description in the registry'],
+  ['no_website', 'missing', 'No website in the registry'],
+  ['moved', 'website', 'Website answers from a different domain'],
+  ['social_not_checked', 'website', 'Only a page on a social network'],
+  ['listed_more_than_once', 'listing', 'Listed more than once'],
+  ['exact_copies', 'listing', 'Published twice, character for character'],
+  ['other_sector', 'listing', 'Listed under two sectors'],
+  ['other_name', 'listing', 'Listed under two names'],
+  ['website_text_removed', 'reading', 'Website field held extra text'],
+  ['second_website', 'reading', 'Website field held two addresses'],
+  ['website_unreadable', 'reading', 'Website field holds no address'],
+  ['label_unreadable', 'reading', 'Label is not a month and year'],
+  ['label_before_creation', 'reading', 'Labelled before its creation year'],
+  ['not_in_registry', 'registry', 'No longer published by the registry'],
+]
+const REASON: Record<string, string> = {
+  'no such domain': 'the domain no longer exists', 'certificate problem': 'its security certificate is not valid', 'timed out': 'no answer within 15 seconds',
+  'connection refused': 'the server refused the connection', 'connection dropped': 'the server dropped the connection', 'redirects without end': 'it redirects without end',
+}
+
+/**
+ * Every fact getFactRows can open, counted on today's data, zero included for the fixed ones so that "none" is said.
+ * A website that does not answer is one fact per reason, largest first; each code opens with factRows(code).
+ */
+export function qualitySummary(db: Database): QualityFact[] {
+  const fixed = QUALITY.map(([code, group, label]): QualityFact => ({ code, group, label, count: factRows(db, code, 0)?.total ?? 0 }))
+  const silent = db
+    .query<{ detail: string; n: number }, []>("SELECT detail, COUNT(*) AS n FROM website_checks WHERE status = 'unreachable' GROUP BY detail ORDER BY n DESC, detail")
+    .all()
+    .map((d): QualityFact => {
+      const code = /answered (\d{3})/.exec(d.detail)?.[1]
+      return { code: `unreachable:${d.detail}`, group: 'website', label: `Website does not answer: ${REASON[d.detail] ?? (code ? `the server answered ${code}` : d.detail)}`, count: d.n }
+    })
+  const at = fixed.findIndex((f) => f.group === 'website')
+  return [...fixed.slice(0, at), ...silent, ...fixed.slice(at)]
+}
+
+// ── Startups, for the operator ──────────────────────────────────────────────────────────────────
+
+export type StartupHit = {
+  id: string; name: string; sector: string | null
+  /** Entries the registry has published for it, and the codes of the notes it carries. */
+  entries: number
+  notes: string[]
+  /** No longer published by the registry. */
+  withdrawn: boolean
+}
+
+/** Startups by name, exact slug, website, or the start of one of their entries' ids. An exact slug or entry id comes first. */
+export function searchStartups(db: Database, q: string, limit = 30): StartupHit[] {
+  const text = q.trim()
+  if (!text) return []
+  const like = `%${text.replace(/[\\%_]/g, (c) => `\\${c}`)}%`
+  const hex = /^[0-9a-f]{3,12}$/i.test(text) ? text.toLowerCase() : null
+  return db
+    .query<{ id: string; name: string; sector: string | null; entries: number; notes_json: string; withdrawn: number }, [string, string, string, number]>(
+      `SELECT s.id, s.name, s.sector, (SELECT COUNT(*) FROM entries e WHERE e.startup_id = s.id) AS entries, s.notes_json,
+              s.last_download < (SELECT MAX(id) FROM downloads) AS withdrawn
+       FROM startups s
+       WHERE s.id = ?1 OR s.name LIKE ?2 ESCAPE '\\' OR s.website LIKE ?2 ESCAPE '\\'
+          OR (?3 <> '' AND EXISTS (SELECT 1 FROM entries e WHERE e.startup_id = s.id AND e.id LIKE ?3 || '%'))
+       ORDER BY s.id = ?1 DESC, (?3 <> '' AND EXISTS (SELECT 1 FROM entries e WHERE e.startup_id = s.id AND e.id LIKE ?3 || '%')) DESC,
+                s.name LIKE ?1 || '%' DESC, s.name COLLATE NOCASE LIMIT ?4`,
+    )
+    .all(text.toLowerCase(), like, hex ?? '', limit)
+    .map((s) => ({ id: s.id, name: s.name, sector: s.sector, entries: s.entries, notes: (JSON.parse(s.notes_json) as { code: string }[]).map((n) => n.code), withdrawn: s.withdrawn === 1 }))
+}

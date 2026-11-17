@@ -31,7 +31,7 @@ function ReadingRoom() {
             <ActionSearchBar items={items} label="Go to a startup" placeholder="Go to a startup" shortcut onSelect={(item) => navigate({ to: '/startups/$id', params: { id: item.id } })} />
           </div>
         )}
-        <Link to={viewer.role === 'operator' ? '/portal' : '/sign-in'} className="text-sm whitespace-nowrap text-ink-2 no-underline hover:text-ink">
+        <Link to={viewer.role === 'operator' ? '/portal' : '/sign-in'} className="inline-flex min-h-11 items-center text-sm whitespace-nowrap text-ink no-underline hover:underline sm:min-h-8">
           {viewer.role === 'operator' ? 'Operator' : 'Sign in'}
         </Link>
       </SiteHeader>

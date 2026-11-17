@@ -26,9 +26,9 @@ function SignInPage() {
       <main className="mx-auto grid w-full max-w-[44rem] flex-1 content-start gap-10 px-4 pt-16 pb-16 sm:px-8 sm:pt-28">
         <div>
           <h1 className="text-[2.25rem] leading-[2.75rem] tracking-[-0.015em]">
-            Tunisian startups, <span className="text-ochre-text">each with the registry row it came from.</span>
+            Tunisian startups, <span>each with the registry row it came from.</span>
           </h1>
-          <p className="mt-4 max-w-[56ch] text-ink-2">Choose how you use this install. You can switch at any time from the top bar.</p>
+          <p className="mt-4 max-w-[56ch] text-ink">Choose how you use this install. You can switch at any time from the top bar.</p>
         </div>
         <ul className="m-0 grid list-none border-t border-control p-0">
           {ROOMS.map((r) => (
@@ -42,13 +42,13 @@ function SignInPage() {
                 className="group grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-6 gap-y-1 py-5 text-start"
               >
                 <span className="font-display text-xl font-medium group-hover:text-glaze">{r.title}</span>
-                <ArrowRight className="row-span-2 size-5 text-ink-2 transition-transform duration-150 group-hover:translate-x-1 group-hover:text-glaze" aria-hidden />
-                <span className="text-sm text-ink-2">{r.body}</span>
+                <ArrowRight className="row-span-2 size-5 text-ink-2 transition-transform duration-150 group-hover:translate-x-1 motion-reduce:transition-none group-hover:text-glaze" aria-hidden />
+                <span className="text-sm text-ink">{r.body}</span>
               </button>
             </li>
           ))}
         </ul>
-        <p className="text-[0.8125rem] text-ink-2">Accounts are not set up on this install yet, so anyone using this browser can choose either role.</p>
+        <p className="text-sm text-ink-2">Accounts are not set up on this install yet, so anyone using this browser can choose either role.</p>
       </main>
     </div>
   )

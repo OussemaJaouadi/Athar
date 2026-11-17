@@ -21,7 +21,7 @@ export const Route = createFileRoute('/_app/idea')({
 
 const EXAMPLES = ['Home-cooked meals delivered to office workers in Tunis', 'تطبيق لحجز موعد مع الطبيب في المناطق الريفية', 'Location de matériel agricole entre fermiers voisins']
 
-const fieldBtn = 'inline-flex min-h-10 items-center justify-center gap-2 rounded-[4px] border px-4 text-sm font-medium transition-colors duration-150'
+const fieldBtn = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-[4px] border px-4 text-sm font-medium transition-colors duration-150 motion-reduce:transition-none sm:min-h-10'
 const fieldPrimary = cn(fieldBtn, 'border-[#6fcdb4] bg-[#6fcdb4] text-[#171412] hover:border-[#86d8c3] hover:bg-[#86d8c3]')
 const fieldQuiet = cn(fieldBtn, 'border-field-rule bg-transparent text-field-ink hover:border-field-ink-2 hover:bg-white/5')
 
@@ -73,7 +73,7 @@ function Compose({ initial }: { initial?: string }) {
         placeholder="For example: a marketplace where olive farmers around Sfax sell directly to small foreign buyers."
         className="mt-3 w-full resize-y rounded-[4px] border border-field-rule bg-field-well px-4 py-3.5 font-display text-[1.375rem] leading-[1.875rem] text-field-ink caret-[#6fcdb4] placeholder:font-sans placeholder:text-base placeholder:leading-6 placeholder:text-field-ink-2"
       />
-      <p className="mt-2 text-[0.8125rem] leading-[1.125rem] text-field-ink-2">Arabic, French or English. Say who it serves and what it does.</p>
+      <p className="mt-2 text-sm leading-5 text-field-ink-2">Arabic, French or English. Say who it serves and what it does.</p>
       {error && <p className="mt-3 text-sm text-[#f08a80]">{error}</p>}
       <div className="mt-5 flex flex-wrap gap-2">
         <button type="submit" disabled={busy} className={cn(fieldPrimary, busy && 'cursor-progress')}>
@@ -116,7 +116,7 @@ function IdeaField({ report }: { report: IdeaCheck }) {
         </div>
       )}
       <div className="mt-auto pt-10">
-        <p className="max-w-[36ch] text-[0.8125rem] leading-[1.125rem] text-field-ink-2">
+        <p className="max-w-[36ch] text-sm leading-5 text-field-ink-2">
           Compared with the name, description and sector of {report.against} startups{report.snapshotAt && `, registry snapshot of ${longDate(report.snapshotAt)}`}.
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
@@ -148,7 +148,7 @@ function SavedChecks({ saved }: { saved: Awaited<ReturnType<typeof listIdeaCheck
   return (
     <div className="max-w-[60rem] px-4 py-10 sm:px-10 lg:px-16 lg:py-14">
       <h2 className="text-[1.75rem] leading-9">Was it tried before?</h2>
-      <p className="mt-3 max-w-[62ch] text-ink-2">
+      <p className="mt-3 max-w-[62ch] text-ink">
         Athar compares your idea with every startup in the Startup Tunisia registry and shows the closest ones with the registry row each rests on. Save a check to come back to it when the registry grows.
       </p>
       <h3 className="mt-12 border-b border-control pb-2 font-sans text-sm font-medium text-ink-2">Saved idea checks</h3>
@@ -201,7 +201,7 @@ function Report({ report }: { report: IdeaCheck }) {
       {!lead ? (
         <>
           <h2 className="max-w-[19em] text-[2.25rem] leading-[2.75rem] tracking-[-0.015em] sm:text-[2.75rem] sm:leading-[3.25rem]">No startup in the registry describes this.</h2>
-          <p className="mt-4 max-w-[62ch] text-ink-2">
+          <p className="mt-4 max-w-[62ch] text-ink">
             Athar compared it with all {report.against} startups. {report.any === 0 ? `None uses ${quoted(report.words) || 'these words'}.` : `${report.weakTotal === 1 ? 'One shares' : `${report.weakTotal} share`} a single word with it, which is not enough to call it a precedent.${report.weakTotal > report.weak.length ? ` The ${report.weak.length} with the rarest words are below.` : ''}`}
           </p>
           {report.weak.length > 0 && (
@@ -234,18 +234,18 @@ function Report({ report }: { report: IdeaCheck }) {
           <h2 className="max-w-[19em] text-[2.25rem] leading-[2.75rem] tracking-[-0.015em] sm:text-[2.75rem] sm:leading-[3.25rem]">
             {n === 1 ? (
               <>
-                One startup shares two or more words with this idea: <em className="text-ochre-text not-italic">{lead.name}.</em>
+                One startup shares two or more words with this idea: <em className="font-bold text-ink not-italic">{lead.name}.</em>
               </>
             ) : (
               <>
                 {n} startups share two or more words with this idea.{' '}
-                <em className="text-ochre-text not-italic">
+                <em className="font-bold text-ink not-italic">
                   {tied.length === 1 ? `${lead.name} shares the most.` : tied.length <= 3 ? `${names(tied)} share the most, equally.` : `${tied.length} of them share the most, equally.`}
                 </em>
               </>
             )}
           </h2>
-          <p className="mt-3 max-w-[70ch] text-[0.9375rem] text-ink-2">
+          <p className="mt-3 max-w-[70ch] text-[0.9375rem] text-ink">
             {n > report.matches.length ? `The ${report.matches.length} closest are below. ` : ''}Matched on shared words in each startup&apos;s registry entry; rare words count for more than common ones. Shared words are a lead, not proof of the same business: read each description.
           </p>
 
@@ -259,7 +259,7 @@ function Report({ report }: { report: IdeaCheck }) {
             <p className="mt-1.5 text-sm text-ink-2">{lead.website ? 'Website not checked yet' : 'No website in the registry'}</p>
             {lead.description && (
               <figure className="mt-5 max-w-[72ch] bg-surface px-5 pt-4 pb-[1.125rem]">
-                <figcaption className="flex items-center gap-2 text-[0.8125rem] leading-[1.125rem] text-ochre-text">
+                <figcaption className="flex items-center gap-2 text-[0.8125rem] leading-[1.125rem] text-ink-2">
                   <span aria-hidden className="size-2 bg-ochre" /> Description as registered
                 </figcaption>
                 <blockquote dir="auto" className="m-0 mt-2 leading-[1.625rem]">
@@ -305,7 +305,7 @@ function Report({ report }: { report: IdeaCheck }) {
             </section>
           )}
 
-          <p className="mt-10 max-w-[68ch] text-sm leading-[1.375rem] text-ink-2">
+          <p className="mt-10 max-w-[68ch] text-sm leading-[1.375rem] text-ink">
             <strong className="font-medium text-ink">How this was checked.</strong> Your idea was split into words, and rare words weigh more than common ones. A startup counts when its name, description or sector shares at least two of them, or 40% of them. Once the archive is indexed, matches come by meaning and each one says what is the same and what differs.
           </p>
         </>

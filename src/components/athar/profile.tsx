@@ -45,14 +45,14 @@ export function Profile({ data, operator }: { data: ProfileData; compact?: boole
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-baseline gap-x-3">
               <h1 className="text-[2.75rem] leading-[3rem]">{startup.name}</h1>
-              <span className="font-mono text-xs text-ink-2 select-all">{catalogueNo(row)}</span>
+              <span className="font-mono text-[0.8125rem] text-ink-3 select-all">{catalogueNo(row)}</span>
             </div>
             <p className="mt-1.5 text-sm text-ink-2">
               Startup Tunisia registry{row !== undefined && `, row ${row}`}
               {chain && `, snapshot of ${longDate(chain.fetchedAt)}`}
             </p>
           </div>
-          <Link to="/" search={{ draft: startup.description ?? startup.name }} className="inline-flex h-9 items-center rounded-[4px] border border-control px-3.5 text-sm text-ink no-underline hover:bg-surface">
+          <Link to="/" search={{ draft: startup.description ?? startup.name }} className="inline-flex h-11 items-center rounded-[4px] border border-edge px-3.5 text-sm text-ink no-underline hover:bg-surface sm:h-9">
             Check a similar idea
           </Link>
         </header>
@@ -62,7 +62,7 @@ export function Profile({ data, operator }: { data: ProfileData; compact?: boole
             {decode(startup.description)}
           </p>
         ) : (
-          <p className="mt-8 text-ink-2">The registry doesn&apos;t say what it does.</p>
+          <p className="mt-8 text-ink">The registry doesn&apos;t say what it does.</p>
         )}
         <CleanedNote change={chain?.changes.find((c) => c.field === 'description')} />
 
@@ -80,23 +80,23 @@ export function Profile({ data, operator }: { data: ProfileData; compact?: boole
       </div>
 
       {neighbours.length > 0 && (
-        <aside aria-labelledby="near-h" className="2xl:pt-3">
+        <section aria-labelledby="near-h" className="2xl:pt-3">
           <h2 id="near-h" className="border-b border-hairline pb-2 font-sans text-sm font-medium text-ink-2">
             Also {startup.sector}
           </h2>
           <ul>
             {neighbours.map((n) => (
               <li key={n.id} className="border-b border-hairline">
-                <Link to="/startups/$id" params={{ id: n.id }} className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto] gap-x-3 gap-y-1 py-3 no-underline hover:bg-surface/60">
+                <Link to="/startups/$id" params={{ id: n.id }} className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto] gap-x-3 gap-y-1 py-3 no-underline -outline-offset-2 hover:bg-surface">
                   <TileMark id={n.id} sector={n.sector} size={20} className="mt-0.5" />
                   <span className="truncate text-sm font-medium text-ink">{n.name}</span>
-                  <span className="font-mono text-xs text-ink-2">{yearOf(n.cohort)}</span>
-                  <span className="col-start-2 col-end-4 line-clamp-2 text-sm text-ink-2">{n.description ? decode(n.description) : 'The registry doesn’t say what it does.'}</span>
+                  <span className="font-mono text-[0.8125rem] text-ink-3">{yearOf(n.cohort)}</span>
+                  <span className="col-start-2 col-end-4 line-clamp-2 text-sm text-ink">{n.description ? decode(n.description) : 'The registry doesn’t say what it does.'}</span>
                 </Link>
               </li>
             ))}
           </ul>
-        </aside>
+        </section>
       )}
     </article>
   )
@@ -108,7 +108,7 @@ function FactRow({ fact, change }: { fact: Fact; change?: Change }) {
     <div className="grid grid-cols-[9rem_minmax(0,1fr)] gap-x-4 border-b border-hairline py-2.5">
       <dt className="text-sm text-ink-2">{fact.label}</dt>
       <dd className="m-0 min-w-0">
-        <span className={cn('text-[0.9375rem]', missing && 'text-ink-2')}>{missing ? 'The registry doesn’t say.' : fact.value}</span>
+        <span className={cn('text-[0.9375rem] text-ink', missing && 'text-ink-2')}>{missing ? 'The registry doesn’t say.' : fact.value}</span>
         <CleanedNote change={change} />
       </dd>
     </div>
@@ -120,12 +120,13 @@ function CleanedNote({ change }: { change?: Change }) {
   const [open, setOpen] = useState(false)
   if (!change) return null
   return (
-    <div className="mt-1 text-xs">
-      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="text-ochre-text underline decoration-dotted underline-offset-4">
+    <div className="mt-1 text-[0.8125rem]">
+      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="inline-flex min-h-8 items-center gap-2 text-ink-2 underline decoration-dotted underline-offset-4 hover:text-ink">
+        <span aria-hidden className="size-2 shrink-0 bg-ochre" />
         cleaned
       </button>
       {open && (
-        <p className="mt-1.5 grid gap-0.5 text-ink-2">
+        <p className="mt-1.5 grid gap-0.5 text-ink">
           <span className="[overflow-wrap:anywhere]">
             Before: <span className="font-mono">{change.from ?? 'empty'}</span>
           </span>

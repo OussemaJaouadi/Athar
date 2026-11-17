@@ -34,8 +34,8 @@ export const Scroller = forwardRef<HTMLDivElement, { className?: string; childre
       >
         {children}
       </Primitive.Viewport>
-      <span aria-hidden className={cn('pointer-events-none absolute inset-x-0 top-0 h-px bg-hairline transition-opacity duration-150', edges.top ? 'opacity-100' : 'opacity-0')} />
-      <span aria-hidden className={cn('pointer-events-none absolute inset-x-0 bottom-0 h-px bg-hairline transition-opacity duration-150', edges.bottom ? 'opacity-100' : 'opacity-0')} />
+      <span aria-hidden className={cn('pointer-events-none absolute inset-x-0 top-0 h-px bg-hairline transition-opacity duration-150 motion-reduce:transition-none', edges.top ? 'opacity-100' : 'opacity-0')} />
+      <span aria-hidden className={cn('pointer-events-none absolute inset-x-0 bottom-0 h-px bg-hairline transition-opacity duration-150 motion-reduce:transition-none', edges.bottom ? 'opacity-100' : 'opacity-0')} />
       <Bar orientation="vertical" />
       {axis === 'both' && <Bar orientation="horizontal" />}
       <Primitive.Corner />
@@ -48,11 +48,11 @@ function Bar({ orientation }: { orientation: 'vertical' | 'horizontal' }) {
     <Primitive.Scrollbar
       orientation={orientation}
       className={cn(
-        'z-10 flex touch-none p-0.5 select-none transition-opacity duration-150 data-[state=hidden]:opacity-0 data-[state=visible]:opacity-100',
+        'z-10 flex touch-none p-0.5 select-none transition-opacity duration-150 motion-reduce:transition-none data-[state=hidden]:opacity-0 data-[state=visible]:opacity-100',
         orientation === 'vertical' ? 'w-3 me-0.5' : 'h-3 flex-col mb-0.5',
       )}
     >
-      <Primitive.Thumb className="relative min-h-8 min-w-8 flex-1 bg-hairline transition-colors hover:bg-control active:bg-control" />
+      <Primitive.Thumb className="relative min-h-8 min-w-8 flex-1 bg-control transition-colors hover:bg-ink-2 active:bg-ink-2 motion-reduce:transition-none" />
     </Primitive.Scrollbar>
   )
 }

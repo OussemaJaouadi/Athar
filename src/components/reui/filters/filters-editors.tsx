@@ -542,7 +542,7 @@ export function FilterRangeEditor<V, O>({
           onChange={(event) => update(0, event.target.value)}
           onKeyDown={onKeyDown}
         />
-        <span className="text-muted-foreground text-xs">
+        <span className="text-muted-foreground text-[0.8125rem]">
           {labels.rangeSeparator}
         </span>
         <Input
@@ -944,7 +944,7 @@ export function FilterMenu({
         <span className="flex min-w-0 flex-1 flex-col items-start gap-0.5">
           <span className="w-full truncate text-start">{node.label}</span>
           {node.description ? (
-            <span className="text-muted-foreground w-full truncate text-start text-xs">
+            <span className="text-muted-foreground w-full truncate text-start text-[0.8125rem]">
               {node.description}
             </span>
           ) : null}

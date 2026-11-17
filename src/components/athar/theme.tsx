@@ -30,9 +30,9 @@ export function ThemeToggle({ className }: { className?: string }) {
         } catch {}
         setTheme(next)
       }}
-      className={cn('grid size-9 place-content-center rounded-[4px] border border-control text-ink-2 hover:bg-surface hover:text-ink', className)}
+      className={cn('grid size-11 place-content-center rounded-[4px] border border-edge text-ink hover:bg-surface sm:size-9', className)}
     >
-      {theme === 'dark' ? <Sun className="size-4" /> : <Moon className="size-4" />}
+      {theme === 'dark' ? <Sun className="size-4" aria-hidden /> : <Moon className="size-4" aria-hidden />}
     </button>
   )
 }

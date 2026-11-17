@@ -166,8 +166,8 @@ function ArchivePage() {
   const pageLink = (n: number) => ({ to: '/search' as const, search: (p: { open?: string }) => ({ ...(p as Search), open: p.open ?? selected, page: n === 1 ? undefined : n }), resetScroll: false, preload: 'intent' as const })
 
   return (
-    <div className="grid w-full flex-1 grid-rows-[auto_minmax(0,1fr)] px-4 sm:px-8 xl:h-[calc(100dvh-57px)] xl:flex-none xl:overflow-hidden">
-      <div className="-mx-4 flex items-center gap-5 border-b border-hairline px-4 py-3.5 sm:-mx-8 sm:px-8">
+    <main className="grid w-full flex-1 grid-rows-[auto_minmax(0,1fr)] px-4 sm:px-8 xl:h-[calc(100dvh-57px)] xl:flex-none xl:overflow-hidden">
+      <div role="search" aria-label="Filter the archive" className="-mx-4 flex items-center gap-5 border-b border-hairline px-4 py-3.5 sm:-mx-8 sm:px-8">
         <div className="min-w-0 flex-1">
           <Filters
             fields={filterFields(sectors, years, foundedYears)}
@@ -180,7 +180,7 @@ function ArchivePage() {
             }}
           />
         </div>
-        <p className="shrink-0 border-s border-hairline ps-5 text-sm text-ink-2" aria-live="polite">
+        <p className="shrink-0 border-s border-hairline ps-5 text-sm text-ink" aria-live="polite">
           {matched === total ? `${total} startups` : `${matched} of ${total}`}
         </p>
       </div>
@@ -190,7 +190,7 @@ function ArchivePage() {
           {rows.length === 0 ? (
             <div className="grid gap-2 py-10 text-sm">
               <p className="font-display text-xl font-bold">No startup matches.</p>
-              <p className="text-ink-2">The archive only holds labelled startups. Loosen a filter, or ask it as an idea.</p>
+              <p className="text-ink">The archive only holds labelled startups. Loosen a filter, or ask it as an idea.</p>
               <Link to="/" className="w-fit">Ask it as an idea</Link>
             </div>
           ) : (
@@ -204,17 +204,17 @@ function ArchivePage() {
                         to="/startups/$id"
                         params={{ id: r.id }}
                         data-id={r.id}
-                        aria-current={on ? 'true' : undefined}
+                        aria-current={on ? 'page' : undefined}
                         onClick={(e) => {
                           if (!window.matchMedia('(min-width: 1280px)').matches) return
                           e.preventDefault()
                           navigate({ search: (p) => ({ ...p, open: r.id }), resetScroll: false })
                         }}
-                        className={cn('grid h-10 grid-cols-[1.25rem_minmax(0,1fr)_auto] items-center gap-3 px-3 no-underline outline-none transition-colors duration-150 focus-visible:bg-surface', on ? 'bg-surface' : 'hover:bg-surface/60')}
+                        className={cn('grid h-11 grid-cols-[1.25rem_minmax(0,1fr)_auto] items-center gap-3 px-3 no-underline transition-colors duration-150 -outline-offset-2 focus-visible:bg-surface motion-reduce:transition-none xl:h-10', on ? 'bg-surface shadow-[inset_2px_0_0_var(--glaze)]' : 'hover:bg-surface')}
                       >
-                        {r.description ? <TileMark id={r.id} sector={r.sector} size={20} title={r.sector ?? undefined} /> : <span aria-label="No description" className="size-5 border border-dashed border-control" />}
+                        {r.description ? <TileMark id={r.id} sector={r.sector} size={20} title={r.sector ?? undefined} /> : <span role="img" aria-label="No description" className="size-5 border border-dashed border-edge" />}
                         <span className="truncate text-sm font-medium text-ink">{r.name}</span>
-                        <span className="font-mono text-xs text-ink-2">{r.cohort?.slice(3)}</span>
+                        <span className="font-mono text-[0.8125rem] text-ink-3">{r.cohort?.slice(3)}</span>
                       </Link>
                     </li>
                   )
@@ -225,18 +225,18 @@ function ArchivePage() {
 
           {matched > PAGE_SIZE && (
             <nav aria-label="Ledger pages" className="flex items-center justify-between gap-3 border-t border-hairline py-2.5 xl:-ms-3 xl:pe-3 xl:ps-3">
-              <span className="font-mono text-xs whitespace-nowrap text-ink-2">
+              <span className="font-mono text-[0.8125rem] whitespace-nowrap text-ink-2">
                 {first}–{last} of {matched}
               </span>
               <ol className="flex items-center gap-0.5">
                 <li>
                   {page > 1 ? (
-                    <Link {...pageLink(page - 1)} aria-label="Previous page" className="grid size-8 place-content-center rounded-[4px] text-ink-2 no-underline hover:bg-surface hover:text-ink">
-                      <ChevronLeft className="size-4" />
+                    <Link {...pageLink(page - 1)} aria-label="Previous page" className="grid size-11 place-content-center rounded-[4px] text-ink no-underline hover:bg-surface xl:size-8">
+                      <ChevronLeft className="size-4" aria-hidden />
                     </Link>
                   ) : (
-                    <span aria-disabled="true" className="grid size-8 place-content-center text-hairline">
-                      <ChevronLeft className="size-4" />
+                    <span aria-disabled="true" className="grid size-11 place-content-center text-ink-3 xl:size-8">
+                      <ChevronLeft className="size-4" aria-hidden />
                     </span>
                   )}
                 </li>
@@ -246,25 +246,25 @@ function ArchivePage() {
                       <Link
                         {...pageLink(item)}
                         aria-current={item === page ? 'page' : undefined}
-                        className={cn('grid h-8 min-w-8 place-content-center rounded-[4px] px-1.5 font-mono text-xs no-underline', item === page ? 'bg-surface-raised text-ink' : 'text-ink-2 hover:bg-surface hover:text-ink')}
+                        className={cn('grid h-11 min-w-11 place-content-center rounded-[4px] px-1.5 font-mono text-[0.8125rem] no-underline xl:h-8 xl:min-w-8', item === page ? 'bg-surface-raised text-ink shadow-[inset_0_-2px_0_var(--glaze)]' : 'text-ink-2 hover:bg-surface hover:text-ink')}
                       >
                         {item}
                       </Link>
                     </li>
                   ) : (
-                    <li key={item} aria-hidden className="grid h-8 w-5 place-content-center font-mono text-xs text-ink-2">
+                    <li key={item} aria-hidden className="grid h-11 w-5 place-content-center font-mono text-[0.8125rem] text-ink-2 xl:h-8">
                       …
                     </li>
                   ),
                 )}
                 <li>
                   {page < pages ? (
-                    <Link {...pageLink(page + 1)} aria-label="Next page" className="grid size-8 place-content-center rounded-[4px] text-ink-2 no-underline hover:bg-surface hover:text-ink">
-                      <ChevronRight className="size-4" />
+                    <Link {...pageLink(page + 1)} aria-label="Next page" className="grid size-11 place-content-center rounded-[4px] text-ink no-underline hover:bg-surface xl:size-8">
+                      <ChevronRight className="size-4" aria-hidden />
                     </Link>
                   ) : (
-                    <span aria-disabled="true" className="grid size-8 place-content-center text-hairline">
-                      <ChevronRight className="size-4" />
+                    <span aria-disabled="true" className="grid size-11 place-content-center text-ink-3 xl:size-8">
+                      <ChevronRight className="size-4" aria-hidden />
                     </span>
                   )}
                 </li>
@@ -274,9 +274,11 @@ function ArchivePage() {
         </section>
 
         <Scroller className="hidden xl:col-span-9 xl:block" label="Open record">
-          <main className="min-w-0 py-8 xl:ps-4 xl:pe-4">{profile && <Profile key={profile.startup.id} data={profile} operator={viewer.role === 'operator'} />}</main>
+          <section aria-label="Open record" className="min-w-0 py-8 xl:ps-4 xl:pe-4">
+            {profile && <Profile key={profile.startup.id} data={profile} operator={viewer.role === 'operator'} />}
+          </section>
         </Scroller>
       </div>
-    </div>
+    </main>
   )
 }

@@ -27,7 +27,7 @@ function NotFound() {
   return (
     <>
     <SiteHeader>
-      <Link to="/sign-in" className="text-sm whitespace-nowrap text-ink-2 no-underline hover:text-ink">
+      <Link to="/sign-in" className="inline-flex min-h-11 items-center text-sm whitespace-nowrap text-ink no-underline hover:underline sm:min-h-8">
         Sign in
       </Link>
     </SiteHeader>
@@ -38,7 +38,7 @@ function NotFound() {
         ))}
       </p>
       <h1 className="text-[1.75rem] leading-9">No record at this address.</h1>
-      <p className="text-ink-2">The link may be old, or the startup may have left the registry in a later snapshot.</p>
+      <p className="text-ink">The link may be old, or the startup may have left the registry in a later snapshot.</p>
       <p>
         <Link to="/search">Search the registry</Link>
       </p>

@@ -1,9 +1,10 @@
 import { Link } from '@tanstack/react-router'
-import { ChevronLeft } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Check, ChevronLeft, ChevronsUpDown, CornerDownLeft, Search } from 'lucide-react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 
 import { CodeBlock, CodeBlockCopyButton, CodeBlockHeader, CodeBlockTitle } from '@/components/reui/code-block/code-block'
 import type { CodeBlockTransformer } from '@/components/reui/code-block/code-block'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 
@@ -428,10 +429,14 @@ export function useDeskKeys({
   }, [ids, current, select, search, keys])
 }
 
+const menuSurface = 'rounded-[8px] border border-edge bg-canvas p-1 text-ink shadow-[0_16px_40px_-16px_rgb(0_0_0/0.5)] ring-0'
+const triggerLook =
+  'flex h-9 w-full items-center gap-2 rounded-[6px] border border-edge bg-canvas ps-2.5 pe-2 text-start text-[0.875rem] text-ink transition-colors duration-150 hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-glaze motion-reduce:transition-none'
+
 /**
- * The portal's dropdown: Radix Select (shadcn) on Athar tokens, never the browser's native list. A 32px trigger like
- * every desk control; the menu is a surface panel with an edge border, 32px rows, a soft raised highlight and a check
- * on the chosen option. `hint` puts a quiet second line on an option (a provider's note, a count).
+ * The portal's dropdown: Radix Select (shadcn) on Athar tokens, never the browser's native list. The trigger shows
+ * only the chosen option's name; the menu is as wide as the trigger, with 40px rows, an optional mark before each
+ * option, a quiet second line (`hint`) and a check on the chosen one.
  */
 export function DeskSelect({
   value,
@@ -443,45 +448,147 @@ export function DeskSelect({
 }: {
   value: string
   onChange: (value: string) => void
-  options: { value: string; label: string; hint?: string }[]
+  options: { value: string; label: string; hint?: string; mark?: React.ReactNode }[]
   id?: string
   label?: string
   className?: string
 }) {
+  const current = options.find((o) => o.value === value)
   return (
     <Select value={value} onValueChange={onChange}>
-      <SelectTrigger
-        id={id}
-        aria-label={label}
-        className={cn(
-          'h-8 w-full rounded-[5px] border-edge bg-canvas ps-2.5 pe-2 text-[0.875rem] text-ink hover:bg-surface focus-visible:border-ink focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-glaze dark:bg-canvas dark:hover:bg-surface [&_svg]:text-ink-2',
-          className,
-        )}
-      >
-        <SelectValue />
+      <SelectTrigger id={id} aria-label={label} className={cn(triggerLook, 'focus-visible:border-ink focus-visible:ring-0 dark:bg-canvas dark:hover:bg-surface [&_svg]:text-ink-2', className)}>
+        <span className="flex min-w-0 flex-1 items-center gap-2">
+          {current?.mark}
+          <SelectValue>{current?.label}</SelectValue>
+        </span>
       </SelectTrigger>
-      <SelectContent
-        position="popper"
-        sideOffset={4}
-        className="rounded-[6px] border border-edge bg-surface p-1 text-ink shadow-[0_12px_32px_-12px_rgb(0_0_0/0.45)] ring-0"
-      >
+      <SelectContent position="popper" sideOffset={4} className={cn(menuSurface, 'w-[var(--radix-select-trigger-width)] min-w-[var(--radix-select-trigger-width)]')}>
         {options.map((o) => (
           <SelectItem
             key={o.value}
             value={o.value}
-            className="min-h-8 rounded-[4px] py-1.5 ps-2.5 pe-8 text-[0.875rem] text-ink focus:bg-surface-raised focus:text-ink data-[state=checked]:font-medium [&_svg]:text-ink"
+            className="min-h-10 rounded-[5px] py-1.5 ps-2 pe-8 text-[0.875rem] text-ink focus:bg-surface-raised focus:text-ink data-[state=checked]:font-medium [&_svg]:text-ink"
           >
-            {o.hint ? (
+            <span className="flex items-center gap-2.5">
+              {o.mark}
               <span className="grid">
                 <span>{o.label}</span>
-                <span className="text-[0.8125rem] font-normal text-ink-2">{o.hint}</span>
+                {o.hint && <span className="text-[0.8125rem] font-normal text-ink-2">{o.hint}</span>}
               </span>
-            ) : (
-              o.label
-            )}
+            </span>
           </SelectItem>
         ))}
       </SelectContent>
     </Select>
+  )
+}
+
+/**
+ * A dropdown you can type into: the suggestions filter as you type, and any text can be used as it is. For values
+ * with a few common answers and an open set behind them (a model id). Arrows move, Enter picks, Escape closes.
+ */
+export function DeskCombobox({
+  value,
+  onChange,
+  options,
+  id,
+  label,
+  searchPlaceholder = 'Search, or type your own',
+  className,
+}: {
+  value: string
+  onChange: (value: string) => void
+  options: string[]
+  id?: string
+  label?: string
+  searchPlaceholder?: string
+  className?: string
+}) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const [active, setActive] = useState(0)
+  const listId = useId()
+  const known = value && !options.includes(value) ? [value, ...options] : options
+  const needle = query.trim().toLowerCase()
+  const shown = needle ? known.filter((o) => o.toLowerCase().includes(needle)) : known
+  const typed = query.trim() && !known.some((o) => o.toLowerCase() === needle) ? query.trim() : null
+  const rows = typed ? [...shown, typed] : shown
+  const pick = (v: string) => {
+    onChange(v)
+    setOpen(false)
+  }
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(o) => {
+        setOpen(o)
+        if (o) {
+          setQuery('')
+          setActive(Math.max(0, known.indexOf(value)))
+        }
+      }}
+    >
+      <PopoverTrigger asChild>
+        <button id={id} type="button" role="combobox" aria-expanded={open} aria-controls={listId} aria-label={label} className={cn(triggerLook, className)}>
+          <span className="min-w-0 flex-1 truncate font-mono text-[0.8125rem]">{value}</span>
+          <ChevronsUpDown className="size-4 shrink-0 text-ink-2" aria-hidden />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" sideOffset={4} className={cn(menuSurface, 'w-[var(--radix-popover-trigger-width)] gap-0 p-0')}>
+        <label className="flex items-center gap-2 border-b border-hairline px-2.5">
+          <Search className="size-4 shrink-0 text-ink-2" aria-hidden />
+          <input
+            autoFocus
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value)
+              setActive(0)
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                e.preventDefault()
+                setActive((i) => Math.min(rows.length - 1, Math.max(0, i + (e.key === 'ArrowDown' ? 1 : -1))))
+              } else if (e.key === 'Enter') {
+                e.preventDefault()
+                if (rows[active]) pick(rows[active])
+              }
+            }}
+            aria-label={searchPlaceholder}
+            aria-controls={listId}
+            aria-activedescendant={rows[active] ? `${listId}-${active}` : undefined}
+            placeholder={searchPlaceholder}
+            autoComplete="off"
+            spellCheck={false}
+            className="h-9 min-w-0 flex-1 bg-transparent text-[0.875rem] text-ink outline-none placeholder:text-ink-3"
+          />
+        </label>
+        <div role="listbox" id={listId} aria-label={label} className="max-h-64 overflow-y-auto p-1 [scrollbar-width:thin] [scrollbar-color:var(--edge)_transparent]">
+          {rows.map((r, i) => (
+            <button
+              key={r}
+              id={`${listId}-${i}`}
+              type="button"
+              role="option"
+              aria-selected={r === value}
+              onMouseEnter={() => setActive(i)}
+              onClick={() => pick(r)}
+              className={cn('flex min-h-9 w-full items-center gap-2 rounded-[5px] px-2 text-start text-[0.875rem] text-ink', i === active && 'bg-surface-raised')}
+            >
+              {r === typed ? (
+                <>
+                  <CornerDownLeft className="size-4 shrink-0 text-ink-2" aria-hidden />
+                  <span className="min-w-0 flex-1 truncate">
+                    Use <span className="font-mono text-[0.8125rem]">{r}</span>
+                  </span>
+                </>
+              ) : (
+                <span className={cn('min-w-0 flex-1 truncate font-mono text-[0.8125rem]', r === value && 'font-medium')}>{r}</span>
+              )}
+              {r === value && <Check className="size-4 shrink-0" aria-hidden />}
+            </button>
+          ))}
+        </div>
+      </PopoverContent>
+    </Popover>
   )
 }

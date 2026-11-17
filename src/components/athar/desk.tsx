@@ -18,7 +18,7 @@ export const deskBtn =
 export const deskPrimary =
   'inline-flex h-8 shrink-0 items-center gap-2 rounded-[5px] border border-glaze bg-glaze px-3 text-[0.875rem] font-medium whitespace-nowrap text-glaze-ink hover:bg-[var(--glaze-hover)] disabled:cursor-not-allowed disabled:opacity-60 [&_svg]:size-4 [&_svg]:shrink-0'
 export const deskInput =
-  'h-8 min-w-0 rounded-[5px] border border-edge bg-canvas px-2.5 text-[0.875rem] text-ink placeholder:text-ink-2'
+  'h-8 min-w-0 rounded-[5px] border border-edge bg-canvas px-2.5 text-[0.875rem] text-ink placeholder:text-ink-3 placeholder:italic'
 export const deskTh = 'h-[34px] border-b border-edge px-3 text-start text-[0.8125rem] font-normal whitespace-nowrap text-ink-2'
 export const deskTd = 'h-9 border-b border-hairline px-3 text-[0.875rem] text-ink'
 

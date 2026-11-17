@@ -148,7 +148,7 @@ export function AddKeyDialog({
                   setName(e.target.value),
                   setNameError(undefined)
                 )}
-                placeholder="OpenRouter main"
+                placeholder="e.g. Main, or Fast"
                 aria-invalid={nameError ? true : undefined}
                 aria-describedby={nameError ? `${id}-name-err` : undefined}
               />

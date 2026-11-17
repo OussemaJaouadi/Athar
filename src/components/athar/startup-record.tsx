@@ -98,7 +98,19 @@ export function StartupRecord({ data, operator }: { data: StartupPage; operator?
     ['Sector', startup.sector && <Link to="/search" search={{ sector: startup.sector }}>{startup.sector}</Link>],
     ['Labelled', startup.labelled && <Link to="/search" search={{ from: year, to: year }}>{month(startup.labelled)}</Link>],
     ['Created', startup.creationYear],
-    ['Founders', people.length ? people.map((p) => p.name).join(', ') : null],
+    [
+      'Founders',
+      people.length
+        ? people.map((p, i) => (
+            <span key={p.personKey}>
+              {i > 0 && ', '}
+              <Link to="/people/$slug" params={{ slug: p.personKey.replace(/ /g, '-') }}>
+                {p.name}
+              </Link>
+            </span>
+          ))
+        : null,
+    ],
     [
       'Website',
       startup.website ? (
@@ -184,9 +196,9 @@ export function StartupRecord({ data, operator }: { data: StartupPage; operator?
             <ul className="border-t border-edge">
               {repeat.map((p) => (
                 <li key={p.personKey} className="grid grid-cols-[minmax(0,1fr)_max-content] gap-x-5 gap-y-0.5 border-b border-hairline py-3">
-                  <span className="font-display text-xl leading-snug font-bold" dir="auto">
+                  <Link to="/people/$slug" params={{ slug: p.personKey.replace(/ /g, '-') }} className="font-display text-xl leading-snug font-bold text-ink" dir="auto">
                     {p.name}
-                  </span>
+                  </Link>
                   <span className="text-end text-sm whitespace-nowrap">{word(p.others.length + 1)} startups</span>
                   <p className="col-span-full max-w-[70ch] text-sm">
                     Also a founder of{' '}

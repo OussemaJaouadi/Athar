@@ -21,6 +21,7 @@ import { Route as PortalIndexRouteImport } from './routes/portal/index'
 import { Route as PortalDatabaseRouteImport } from './routes/portal/database'
 import { Route as PortalKeysRouteImport } from './routes/portal/keys'
 import { Route as PortalReviewRouteImport } from './routes/portal/review'
+import { Route as AppPeopleSlugRouteImport } from './routes/_app/people.$slug'
 import { Route as AppStartupsIdRouteImport } from './routes/_app/startups.$id'
 import { Route as PortalRunsIndexRouteImport } from './routes/portal/runs.index'
 import { Route as PortalRunsRunIdRouteImport } from './routes/portal/runs.$runId'
@@ -86,6 +87,11 @@ const PortalReviewRoute = PortalReviewRouteImport.update({
   path: '/review',
   getParentRoute: () => PortalRouteRoute,
 } as any)
+const AppPeopleSlugRoute = AppPeopleSlugRouteImport.update({
+  id: '/people/$slug',
+  path: '/people/$slug',
+  getParentRoute: () => AppRouteRoute,
+} as any)
 const AppStartupsIdRoute = AppStartupsIdRouteImport.update({
   id: '/startups/$id',
   path: '/startups/$id',
@@ -124,6 +130,7 @@ export interface FileRoutesByFullPath {
   '/portal/keys': typeof PortalKeysRoute
   '/portal/review': typeof PortalReviewRoute
   '/portal/': typeof PortalIndexRoute
+  '/people/$slug': typeof AppPeopleSlugRoute
   '/startups/$id': typeof AppStartupsIdRoute
   '/portal/runs/$runId': typeof PortalRunsRunIdRoute
   '/portal/trace/$rowId': typeof PortalTraceRowIdRoute
@@ -141,6 +148,7 @@ export interface FileRoutesByTo {
   '/portal/review': typeof PortalReviewRoute
   '/': typeof AppIndexRoute
   '/portal': typeof PortalIndexRoute
+  '/people/$slug': typeof AppPeopleSlugRoute
   '/startups/$id': typeof AppStartupsIdRoute
   '/portal/runs/$runId': typeof PortalRunsRunIdRoute
   '/portal/trace/$rowId': typeof PortalTraceRowIdRoute
@@ -161,6 +169,7 @@ export interface FileRoutesById {
   '/portal/review': typeof PortalReviewRoute
   '/_app/': typeof AppIndexRoute
   '/portal/': typeof PortalIndexRoute
+  '/_app/people/$slug': typeof AppPeopleSlugRoute
   '/_app/startups/$id': typeof AppStartupsIdRoute
   '/portal/runs/$runId': typeof PortalRunsRunIdRoute
   '/portal/trace/$rowId': typeof PortalTraceRowIdRoute
@@ -181,6 +190,7 @@ export interface FileRouteTypes {
     | '/portal/keys'
     | '/portal/review'
     | '/portal/'
+    | '/people/$slug'
     | '/startups/$id'
     | '/portal/runs/$runId'
     | '/portal/trace/$rowId'
@@ -198,6 +208,7 @@ export interface FileRouteTypes {
     | '/portal/review'
     | '/'
     | '/portal'
+    | '/people/$slug'
     | '/startups/$id'
     | '/portal/runs/$runId'
     | '/portal/trace/$rowId'
@@ -217,6 +228,7 @@ export interface FileRouteTypes {
     | '/portal/review'
     | '/_app/'
     | '/portal/'
+    | '/_app/people/$slug'
     | '/_app/startups/$id'
     | '/portal/runs/$runId'
     | '/portal/trace/$rowId'
@@ -316,6 +328,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PortalReviewRouteImport
       parentRoute: typeof PortalRouteRoute
     }
+    '/_app/people/$slug': {
+      id: '/_app/people/$slug'
+      path: '/people/$slug'
+      fullPath: '/people/$slug'
+      preLoaderRoute: typeof AppPeopleSlugRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
     '/_app/startups/$id': {
       id: '/_app/startups/$id'
       path: '/startups/$id'
@@ -360,6 +379,7 @@ interface AppRouteRouteChildren {
   AppSearchRoute: typeof AppSearchRoute
   AppThemesRoute: typeof AppThemesRoute
   AppIndexRoute: typeof AppIndexRoute
+  AppPeopleSlugRoute: typeof AppPeopleSlugRoute
   AppStartupsIdRoute: typeof AppStartupsIdRoute
 }
 
@@ -369,6 +389,7 @@ const AppRouteRouteChildren: AppRouteRouteChildren = {
   AppSearchRoute: AppSearchRoute,
   AppThemesRoute: AppThemesRoute,
   AppIndexRoute: AppIndexRoute,
+  AppPeopleSlugRoute: AppPeopleSlugRoute,
   AppStartupsIdRoute: AppStartupsIdRoute,
 }
 

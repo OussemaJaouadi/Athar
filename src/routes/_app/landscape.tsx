@@ -1,4 +1,4 @@
-import { type ChartCurve, barY, defineChart, dot, lineY, rect, ruleY, text } from '@tanstack/charts'
+import { type ChartCurve, barY, defineChart, lineY, rect, ruleY, text } from '@tanstack/charts'
 import { crosshair } from '@tanstack/charts/crosshair'
 import { motion } from '@tanstack/charts/motion'
 import { Chart } from '@tanstack/charts/react/core'
@@ -359,7 +359,6 @@ function Fields({ all, t, renderer, by, onBy }: { all: LandscapeRow[]; t: Tokens
   })
   const N = fields.length
   const points = ranked.flatMap((f) => xs.filter((i) => f.ranks[i] !== null).map((i) => ({ id: f.id, field: f.label, x: i, rank: f.ranks[i]!, cum: f.cum[i], move: f.move })))
-  const [hl, setHl] = useState<string | null>(null)
   // Findings only from fields big enough for a rank change to mean something.
   const solid = ranked.filter((f) => f.total >= 20)
   const climber = [...solid].sort((a, b) => b.delta - a.delta || b.total - a.total)[0]
@@ -370,20 +369,25 @@ function Fields({ all, t, renderer, by, onBy }: { all: LandscapeRow[]; t: Tokens
   const open = (id: string) => navigate({ to: '/search', search: by === 'sector' ? { sector: id } : { q: THEMES.find((th) => th.id === id)?.query } })
   const def = useMemo(() => {
     if (!t) return null
-    const lit = ranked.find((f) => f.id === hl)
-    const litPts = points.filter((p) => p.id === hl)
+    // Highlight comes from the chart's own focus state, so hovering never rebuilds the definition (no focus/rebuild race).
+    const focusedId = (c: { focus: { primary?: { datum: unknown } } | null }) => (c.focus?.primary?.datum as { id?: string } | undefined)?.id
     const startLeft = ranked.filter((f) => f.first === 0)
     const lateStart = ranked.filter((f) => f.first > 0)
     return defineChart({
       marks: [
-        ...ranked.map((f) => lineY(points.filter((p) => p.id === f.id), { id: `l-${f.id}`, x: 'x', y: 'rank', key: (p) => `${p.id}-${p.x}`, color: 'move', strokeWidth: 2.5, curve: bumpCurve })),
-        dot(points, { x: 'x', y: 'rank', key: (p) => `${p.id}-${p.x}`, color: 'move', r: 5, stroke: t.canvas, strokeWidth: 2 }),
-        ...(lit
-          ? [
-              lineY(litPts, { id: 'lit', x: 'x', y: 'rank', key: (p) => `lit-${p.x}`, stroke: t.ink, strokeWidth: 4, curve: bumpCurve }),
-              text(litPts, { x: 'x', y: 'rank', text: (p) => String(p.rank), dy: -14, fontSize: 13, fill: t.ink }),
-            ]
-          : []),
+        ...ranked.map((f) =>
+          lineY(points.filter((p) => p.id === f.id), {
+            id: `l-${f.id}`,
+            x: 'x',
+            y: 'rank',
+            key: (p) => `${p.id}-${p.x}`,
+            color: 'move',
+            strokeWidth: 2.5,
+            curve: bumpCurve,
+            points: true,
+            states: [{ when: (c) => focusedId(c) === f.id, style: { stroke: t.ink, strokeWidth: 4 }, transition: { type: 'tween', duration: 120 } }],
+          }),
+        ),
         text(startLeft, { x: () => 0, y: (f) => f.ranks[0]!, text: (f) => `${f.ranks[0]}  ${f.label}`, anchor: 'end', dx: -16, fontSize: 14, fill: t.ink }),
         text(lateStart, { x: (f) => f.first, y: (f) => f.ranks[f.first]!, text: 'label', anchor: 'end', dx: -12, fontSize: 13, fill: t.ink2 }),
         text(ranked, { x: () => last, y: (f) => f.ranks[last]!, text: (f) => `${f.ranks[last]}  ${f.label} · ${f.total} · ${moveText(f)}`, anchor: 'start', dx: 16, fontSize: 14, fill: t.ink }),
@@ -406,7 +410,7 @@ function Fields({ all, t, renderer, by, onBy }: { all: LandscapeRow[]; t: Tokens
       theme: theme(t, [t.glaze, t.terracotta, t.edge]),
       margin: { left: 300, right: 380, top: 4, bottom: 4 },
     })
-  }, [t, JSON.stringify(points), hl]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [t, JSON.stringify(points)]) // eslint-disable-line react-hooks/exhaustive-deps
   const h = Math.round((N + 0.9) * 30) + 36
   return (
     <Section
@@ -422,7 +426,6 @@ function Fields({ all, t, renderer, by, onBy }: { all: LandscapeRow[]; t: Tokens
                 renderer={renderer}
                 height={h}
                 ariaLabel={climber ? `${climber.label} climbed from ${ord(climber.ranks[climber.first]!)} to ${ord(climber.ranks[last]!)}.` : 'Ranking by startups founded so far.'}
-                onFocusChange={(pt) => setHl(pt ? ((pt.datum as { id?: string }).id ?? null) : null)}
                 onSelect={(pt) => {
                   const id = (pt?.datum as { id?: string } | undefined)?.id
                   if (id) open(id)

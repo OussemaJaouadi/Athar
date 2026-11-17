@@ -1,6 +1,7 @@
 import { Link } from '@tanstack/react-router'
 
 import type { Neighbour, StartupPage } from '#/server/api/startup'
+import { sectorSlug } from '#/shared/sector'
 import { bareAddress, websiteAnswers, websiteReason, type WebsiteCheck } from '#/shared/website'
 
 // The startup page (direction C, picked by the owner on 17 Nov 2026): the record stays on the left,
@@ -95,7 +96,7 @@ export function StartupRecord({ data, operator }: { data: StartupPage; operator?
   const shownOthers = sectorYear.others.slice(0, 14)
 
   const facts: [string, React.ReactNode][] = [
-    ['Sector', startup.sector && <Link to="/search" search={{ sector: startup.sector }}>{startup.sector}</Link>],
+    ['Sector', startup.sector && <Link to="/sectors/$slug" params={{ slug: sectorSlug(startup.sector) }}>{startup.sector}</Link>],
     ['Labelled', startup.labelled && <Link to="/search" search={{ from: year, to: year }}>{month(startup.labelled)}</Link>],
     ['Created', startup.creationYear],
     [

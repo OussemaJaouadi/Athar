@@ -211,6 +211,12 @@ export const build: Step = {
     const gone = db.query<{ n: number }, [number]>('SELECT COUNT(*) AS n FROM startups WHERE last_download < ?').get(latest)?.n ?? 0
     const notes = [...counts.values()]
     if (gone) notes.unshift({ code: 'not_in_registry', count: gone, text: 'startups no longer published by the registry; kept with the date they were last seen' })
+    // What this run did to the startups, always present (zero included) so a page never parses the message.
+    notes.unshift(
+      { code: 'startups_new', count: tally.created, text: 'startups added by this run' },
+      { code: 'startups_changed', count: tally.changed, text: 'startups whose published content changed' },
+      { code: 'startups_unchanged', count: tally.unchanged, text: 'startups left as they were' },
+    )
     return {
       itemsIn: items.length,
       itemsOut: total,

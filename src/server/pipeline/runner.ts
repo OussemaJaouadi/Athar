@@ -5,13 +5,32 @@ import type { StepContext } from './types'
 
 let recovered = false
 
+const alive = (pid: number) => {
+  try {
+    process.kill(pid, 0) // signal 0 only asks whether the process exists
+    return true
+  } catch {
+    return false
+  }
+}
+
 // A run left "running" by a stopped server can never finish; say so instead of pretending.
+// Only runs whose owner is gone: this process after a restart, a process that no longer exists, or an unknown one.
+// A run that another live process is still working on is not ours to close.
 function recoverInterrupted() {
   if (recovered) return
   recovered = true
   const db = getDatabase()
-  db.query("UPDATE run_steps SET status = 'interrupted' WHERE status IN ('running', 'pending') AND run_id IN (SELECT id FROM runs WHERE status = 'running')").run()
-  db.query("UPDATE runs SET status = 'interrupted', finished_at = ?, error = 'The server stopped during this run' WHERE status = 'running'").run(now())
+  const orphans = db
+    .query<{ id: string; pid: number | null }, []>("SELECT id, pid FROM runs WHERE status = 'running'")
+    .all()
+    .filter((r) => r.pid === null || r.pid === process.pid || !alive(r.pid))
+  const steps = db.query("UPDATE run_steps SET status = 'interrupted' WHERE status IN ('running', 'pending') AND run_id = ?")
+  const run = db.query("UPDATE runs SET status = 'interrupted', finished_at = ?, error = 'The server stopped during this run' WHERE id = ?")
+  for (const r of orphans) {
+    steps.run(r.id)
+    run.run(now(), r.id)
+  }
 }
 
 /** Starts an operation in the background and returns its run id at once. */
@@ -25,7 +44,7 @@ export function startRun(operationId: string): string {
 
   const runId = newId()
   db.transaction(() => {
-    db.query("INSERT INTO runs (id, operation, status, started_at) VALUES (?, ?, 'running', ?)").run(runId, operation.id, now())
+    db.query("INSERT INTO runs (id, operation, status, started_at, pid) VALUES (?, ?, 'running', ?, ?)").run(runId, operation.id, now(), process.pid)
     const step = db.query("INSERT INTO run_steps (run_id, position, step, status) VALUES (?, ?, ?, 'pending')")
     operation.steps.forEach((s, i) => step.run(runId, i, s.name))
   })()

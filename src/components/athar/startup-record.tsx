@@ -97,7 +97,7 @@ export function StartupRecord({ data, operator }: { data: StartupPage; operator?
 
   const facts: [string, React.ReactNode][] = [
     ['Sector', startup.sector && <Link to="/sectors/$slug" params={{ slug: sectorSlug(startup.sector) }}>{startup.sector}</Link>],
-    ['Labelled', startup.labelled && <Link to="/search" search={{ from: year, to: year }}>{month(startup.labelled)}</Link>],
+    ['Labelled', startup.labelled && <Link to="/years/$year" params={{ year: startup.labelled.slice(0, 4) }}>{month(startup.labelled)}</Link>],
     ['Created', startup.creationYear],
     [
       'Founders',

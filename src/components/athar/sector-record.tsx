@@ -9,6 +9,7 @@ import { Link, useNavigate } from '@tanstack/react-router'
 import { useMemo } from 'react'
 
 import { ChartSpace, axisText, chartTheme, useChartTokens, type ChartTokens } from '@/components/athar/chart-kit'
+import { StateBars, StateKey } from '@/components/athar/state-bars'
 import type { SectorPage, SectorYear } from '#/server/api/sector'
 
 // The sector page, in the form picked for the startup page: the record on the left, what the data says on the right.
@@ -25,69 +26,6 @@ const Heading = ({ children, count }: { children: React.ReactNode; count?: React
     {count !== undefined && <span className="ms-2 font-mono text-[0.8125rem] tracking-normal normal-case">{count}</span>}
   </h2>
 )
-
-type Part = { year: string; state: 'answers' | 'silent' | 'noSite'; count: number }
-const STATE_LABEL = { answers: 'Website answers', silent: 'Does not answer', noSite: 'No website' } as const
-
-/** Startups labelled each year, stacked by what their website does today. Filled, open, dashed: the same marks as the records. */
-function LeftChart({ years, t, renderer, onYear }: { years: SectorYear[]; t: ChartTokens | null; renderer: ReturnType<typeof motion>; onYear: (year: string) => void }) {
-  const def = useMemo(() => {
-    if (!t) return null
-    const parts: Part[] = years.flatMap((y) => [
-      { year: y.year, state: 'answers' as const, count: y.answers },
-      { year: y.year, state: 'silent' as const, count: y.silent },
-      { year: y.year, state: 'noSite' as const, count: y.noSite },
-    ])
-    return defineChart({
-      marks: [
-        crosshair({ x: { band: { inset: 0, fill: t.ink, fillOpacity: 0.06 }, label: false }, y: false }),
-        barY(parts, {
-          id: 'labelled',
-          x: 'year',
-          y: 'count',
-          z: 'state',
-          key: (p) => `${p.year}-${p.state}`,
-          fill: (p) => (p.state === 'answers' ? t.ink : t.canvas),
-          stroke: (p) => (p.state === 'noSite' ? t.ink2 : t.ink),
-          strokeWidth: 1.5,
-          strokeDasharray: (p) => (p.state === 'noSite' ? '3 3' : ''),
-          inset: 10,
-        }),
-        text(years.filter((y) => y.labelled > 0), { x: 'year', y: 'labelled', text: (y) => String(y.labelled), dy: -10, fontSize: 14, fill: t.ink }),
-      ],
-      scales: {
-        x: { scale: () => scaleBand<string>().domain(years.map((y) => y.year)).padding(0.1), axis: axisText },
-        y: { scale: scaleLinear, nice: true, grid: { stroke: t.hairline }, axis: axisText },
-      },
-      focus: 'group-x',
-      maxFocusDistance: Number.POSITIVE_INFINITY,
-      tooltip: {
-        use: tooltip,
-        formatGroup: (points: readonly { datum: unknown }[]) => {
-          const y = years.find((x) => x.year === (points[0]?.datum as { year?: string } | undefined)?.year)
-          if (!y) return ''
-          return [`Labelled in ${y.year}: ${y.labelled}`, `${STATE_LABEL.answers}: ${y.answers}`, `${STATE_LABEL.silent}: ${y.silent}`, y.noSite ? `${STATE_LABEL.noSite}: ${y.noSite}` : null, 'Click to open them'].filter(Boolean).join('\n')
-        },
-      },
-      theme: chartTheme(t, [t.ink]),
-      margin: { left: 40, top: 24 },
-    })
-  }, [t, JSON.stringify(years)]) // eslint-disable-line react-hooks/exhaustive-deps
-  const peak = [...years].sort((a, b) => b.labelled - a.labelled)[0]
-  if (!def) return <ChartSpace h={300} />
-  return (
-    <Chart
-      definition={def}
-      renderer={renderer}
-      height={300}
-      ariaLabel={`Startups labelled each year, by whether their website answers today. Most in ${peak.year}: ${peak.labelled}, of which ${peak.silent} do not answer.`}
-      onSelect={(pt) => {
-        const year = (pt?.datum as { year?: string } | undefined)?.year
-        if (year) onYear(year)
-      }}
-    />
-  )
-}
 
 /** The sector's share of every label granted each year, against its share of the whole registry. */
 function ShareChart({ years, overall, t, renderer }: { years: SectorYear[]; overall: number; t: ChartTokens | null; renderer: ReturnType<typeof motion> }) {
@@ -121,17 +59,6 @@ function ShareChart({ years, overall, t, renderer }: { years: SectorYear[]; over
   if (!def) return <ChartSpace h={260} />
   return <Chart definition={def} renderer={renderer} height={260} ariaLabel={`Share of each year's labels. Over the whole registry it is ${Math.round(overall)}%.`} />
 }
-
-const Key = ({ items }: { items: [string, string][] }) => (
-  <ul className="flex flex-wrap gap-x-6 gap-y-1.5 text-sm">
-    {items.map(([label, mark]) => (
-      <li key={label} className="flex items-center gap-2">
-        <span aria-hidden className={`inline-block size-3 shrink-0 ${mark}`} />
-        {label}
-      </li>
-    ))}
-  </ul>
-)
 
 export function SectorRecord({ data }: { data: SectorPage }) {
   const { sector, total, registry, rank, sectors, years, noDescription, people, registrySilentShare } = data
@@ -206,14 +133,15 @@ export function SectorRecord({ data }: { data: SectorPage }) {
 
           <div className="grid gap-2.5 border border-edge p-4 pb-2">
             <p className="text-[0.9375rem] font-normal">Startups labelled each year, by whether their website answers today.</p>
-            <LeftChart years={years} t={t} renderer={renderer} onYear={(year) => navigate({ to: '/search', search: { sector, from: Number(year), to: Number(year) } })} />
-            <Key
-              items={[
-                [STATE_LABEL.answers, 'bg-ink'],
-                [STATE_LABEL.silent, 'border-[1.5px] border-ink'],
-                [STATE_LABEL.noSite, 'border-[1.5px] border-dashed border-ink-2'],
-              ]}
+            <StateBars
+              bars={years.map((y) => ({ key: y.year, label: y.year, labelled: y.labelled, answers: y.answers, silent: y.silent, noSite: y.noSite }))}
+              t={t}
+              renderer={renderer}
+              ariaLabel={`Startups labelled each year, by whether their website answers today. Most in ${peak.year}: ${peak.labelled}, of which ${peak.silent} do not answer.`}
+              title={(b) => `Labelled in ${b.key}: ${b.labelled}`}
+              onPick={(b) => navigate({ to: '/search', search: { sector, from: Number(b.key), to: Number(b.key) } })}
             />
+            <StateKey />
           </div>
           {asked > 0 && (
             <p className="max-w-[64ch] text-base font-normal">

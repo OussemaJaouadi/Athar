@@ -24,6 +24,7 @@ import { Route as PortalReviewRouteImport } from './routes/portal/review'
 import { Route as AppPeopleSlugRouteImport } from './routes/_app/people.$slug'
 import { Route as AppSectorsSlugRouteImport } from './routes/_app/sectors.$slug'
 import { Route as AppStartupsIdRouteImport } from './routes/_app/startups.$id'
+import { Route as AppYearsYearRouteImport } from './routes/_app/years.$year'
 import { Route as PortalRunsIndexRouteImport } from './routes/portal/runs.index'
 import { Route as PortalRunsRunIdRouteImport } from './routes/portal/runs.$runId'
 import { Route as PortalTraceIndexRouteImport } from './routes/portal/trace.index'
@@ -103,6 +104,11 @@ const AppStartupsIdRoute = AppStartupsIdRouteImport.update({
   path: '/startups/$id',
   getParentRoute: () => AppRouteRoute,
 } as any)
+const AppYearsYearRoute = AppYearsYearRouteImport.update({
+  id: '/years/$year',
+  path: '/years/$year',
+  getParentRoute: () => AppRouteRoute,
+} as any)
 const PortalRunsIndexRoute = PortalRunsIndexRouteImport.update({
   id: '/runs/',
   path: '/runs/',
@@ -139,6 +145,7 @@ export interface FileRoutesByFullPath {
   '/people/$slug': typeof AppPeopleSlugRoute
   '/sectors/$slug': typeof AppSectorsSlugRoute
   '/startups/$id': typeof AppStartupsIdRoute
+  '/years/$year': typeof AppYearsYearRoute
   '/portal/runs/$runId': typeof PortalRunsRunIdRoute
   '/portal/trace/$rowId': typeof PortalTraceRowIdRoute
   '/portal/runs/': typeof PortalRunsIndexRoute
@@ -158,6 +165,7 @@ export interface FileRoutesByTo {
   '/people/$slug': typeof AppPeopleSlugRoute
   '/sectors/$slug': typeof AppSectorsSlugRoute
   '/startups/$id': typeof AppStartupsIdRoute
+  '/years/$year': typeof AppYearsYearRoute
   '/portal/runs/$runId': typeof PortalRunsRunIdRoute
   '/portal/trace/$rowId': typeof PortalTraceRowIdRoute
   '/portal/runs': typeof PortalRunsIndexRoute
@@ -180,6 +188,7 @@ export interface FileRoutesById {
   '/_app/people/$slug': typeof AppPeopleSlugRoute
   '/_app/sectors/$slug': typeof AppSectorsSlugRoute
   '/_app/startups/$id': typeof AppStartupsIdRoute
+  '/_app/years/$year': typeof AppYearsYearRoute
   '/portal/runs/$runId': typeof PortalRunsRunIdRoute
   '/portal/trace/$rowId': typeof PortalTraceRowIdRoute
   '/portal/runs/': typeof PortalRunsIndexRoute
@@ -202,6 +211,7 @@ export interface FileRouteTypes {
     | '/people/$slug'
     | '/sectors/$slug'
     | '/startups/$id'
+    | '/years/$year'
     | '/portal/runs/$runId'
     | '/portal/trace/$rowId'
     | '/portal/runs/'
@@ -221,6 +231,7 @@ export interface FileRouteTypes {
     | '/people/$slug'
     | '/sectors/$slug'
     | '/startups/$id'
+    | '/years/$year'
     | '/portal/runs/$runId'
     | '/portal/trace/$rowId'
     | '/portal/runs'
@@ -242,6 +253,7 @@ export interface FileRouteTypes {
     | '/_app/people/$slug'
     | '/_app/sectors/$slug'
     | '/_app/startups/$id'
+    | '/_app/years/$year'
     | '/portal/runs/$runId'
     | '/portal/trace/$rowId'
     | '/portal/runs/'
@@ -361,6 +373,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppStartupsIdRouteImport
       parentRoute: typeof AppRouteRoute
     }
+    '/_app/years/$year': {
+      id: '/_app/years/$year'
+      path: '/years/$year'
+      fullPath: '/years/$year'
+      preLoaderRoute: typeof AppYearsYearRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
     '/portal/runs/': {
       id: '/portal/runs/'
       path: '/runs'
@@ -401,6 +420,7 @@ interface AppRouteRouteChildren {
   AppPeopleSlugRoute: typeof AppPeopleSlugRoute
   AppSectorsSlugRoute: typeof AppSectorsSlugRoute
   AppStartupsIdRoute: typeof AppStartupsIdRoute
+  AppYearsYearRoute: typeof AppYearsYearRoute
 }
 
 const AppRouteRouteChildren: AppRouteRouteChildren = {
@@ -412,6 +432,7 @@ const AppRouteRouteChildren: AppRouteRouteChildren = {
   AppPeopleSlugRoute: AppPeopleSlugRoute,
   AppSectorsSlugRoute: AppSectorsSlugRoute,
   AppStartupsIdRoute: AppStartupsIdRoute,
+  AppYearsYearRoute: AppYearsYearRoute,
 }
 
 const AppRouteRouteWithChildren = AppRouteRoute._addFileChildren(

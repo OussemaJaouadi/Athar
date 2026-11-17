@@ -152,7 +152,7 @@ export function StartupRecord({ data, operator }: { data: StartupPage; operator?
           <p className="text-sm">
             From entry{' '}
             {operator ? (
-              <Link to="/portal/entries" search={{ startup: startup.id }} className="font-mono text-[0.8125rem]">
+              <Link to="/portal/startups" search={{ startup: startup.id }} className="font-mono text-[0.8125rem]">
                 {source.entryId}
               </Link>
             ) : (

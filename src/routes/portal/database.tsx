@@ -1,5 +1,5 @@
 import { DeskSelect } from '@/components/athar/desk'
-import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
+import { Link, createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
 import { useTable, type ColumnDef, type RowSelectionState, type SortingState } from '@tanstack/react-table'
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Search } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -27,16 +27,26 @@ export const Route = createFileRoute('/portal/database')({
     row: typeof s.row === 'string' || typeof s.row === 'number' ? String(s.row) : undefined,
     repeat: s.repeat === true || s.repeat === 'true' ? true : undefined,
   }),
+  // Raw tables shows what is stored as published: downloads and entries. Everything else has its own page now, so
+  // older links to those views land there.
+  beforeLoad: ({ search }) => {
+    const t = search.table
+    const row = search.row
+    if (!t || t === 'downloads' || t === 'entries' || LEGACY[t] === 'entries') return
+    if (t === 'startups' || t === 'website_checks' || t === 'prepared_texts' || t === 'founders' || LEGACY[t] === 'startups')
+      throw redirect({ to: '/portal/startups', search: t !== 'founders' && row ? { startup: row } : {} })
+    if (t === 'people') throw row ? redirect({ to: '/people/$slug', params: { slug: row } }) : redirect({ to: '/portal/startups' })
+    if (t === 'idea_checks') throw redirect({ to: '/portal/ideas', search: row ? { idea: row } : {} })
+    if (t === 'runs' || t === 'run_steps' || t === 'embedding_meta') throw redirect({ to: '/portal' })
+    if (t === 'ai_usage' || t === 'ai_keys') throw redirect({ to: '/portal/keys' })
+  },
   // The selected row is not a loader dependency: selecting never refetches the grid.
   loaderDeps: ({ search: { table, q, sort, dir, page, repeat } }) => ({ table, q, sort, dir, page, repeat }),
   loader: async ({ deps }) => {
     // Tables from before pipeline v2 open their successor; no table opens Entries.
     const table = deps.table ? (LEGACY[deps.table] ?? deps.table) : 'entries'
-    const [tables, everyone] = await Promise.all([listDbTables(), listPeople({ data: { limit: 1 } })])
-    // People is founders grouped by person, not a table: it sits under Derived, after Startups.
-    const groups = tables.map((g) =>
-      g.stage === 'Derived' ? { ...g, tables: [g.tables[0], { name: 'people', rows: everyone.total }, ...g.tables.slice(1)].filter(Boolean) } : g,
-    )
+    const tables = await listDbTables()
+    const groups = tables.filter((g) => g.stage === 'As published')
     if (table === 'people') {
       const page = deps.page ?? 1
       const people = await listPeople({ data: { q: deps.q, repeat: deps.repeat, limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE } })
@@ -248,7 +258,7 @@ function foreignKey(name: string, v: DbRow[string]): React.ReactNode | null {
     )
   if (name === 'entry_id' && typeof v === 'string')
     return (
-      <Link to="/portal/entries" search={{ entry: v }} onClick={stop} className="font-mono text-[0.8125rem] text-glaze underline">
+      <Link to="/portal/startups" search={{ entry: v }} onClick={stop} className="font-mono text-[0.8125rem] text-glaze underline">
         {v}
       </Link>
     )

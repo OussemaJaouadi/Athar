@@ -144,7 +144,7 @@ function CopyJson({ value, label }: { value: unknown; label: string }) {
 function StartupLinks({ id }: { id: string }) {
   return (
     <>
-      <Link to="/portal/entries" search={{ startup: id }} className={linkCls}>
+      <Link to="/portal/startups" search={{ startup: id }} className={linkCls}>
         Open its entry
       </Link>
       <Link to="/startups/$id" params={{ id }} className={linkCls}>
@@ -178,7 +178,7 @@ export function RecordPane({ table, rowKey }: { table: string; rowKey: string | 
       <>
         <PaneSection title={<>Entry <span className="font-mono">{rec.id}</span>{rec.row?.name ? `, ${rec.row.name}` : ''}</>}>
           <Links>
-            <Link to="/portal/entries" search={{ entry: rec.id }} className={linkCls}>
+            <Link to="/portal/startups" search={{ entry: rec.id }} className={linkCls}>
               Open in Entries
             </Link>
           </Links>
@@ -344,7 +344,7 @@ function StartupRelated({ id, entryId }: { id: string; entryId: string }) {
             value: (
               <span className="flex flex-wrap gap-x-3 gap-y-1">
                 {entries.map((e) => (
-                  <Link key={e.id} to="/portal/entries" search={{ entry: e.id }} className="font-mono text-[0.8125rem] text-glaze underline">
+                  <Link key={e.id} to="/portal/startups" search={{ entry: e.id }} className="font-mono text-[0.8125rem] text-glaze underline">
                     {e.id}
                     {e.lead && entries.length > 1 ? ' (values)' : ''}
                   </Link>

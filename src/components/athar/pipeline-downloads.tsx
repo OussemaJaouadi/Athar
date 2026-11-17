@@ -73,7 +73,7 @@ function ChangeRows({ rows }: { rows: DownloadChange[] }) {
         {rows.map((r) => (
           <tr key={`${r.kind}-${r.entryId}`}>
             <td className={cn(deskTd, 'w-1/2')}>
-              <Link to="/portal/entries" search={{ entry: r.entryId }} className="text-glaze underline">
+              <Link to="/portal/startups" search={{ entry: r.entryId }} className="text-glaze underline">
                 <span dir="auto">{r.name}</span>
               </Link>
               <span className="ms-2 font-mono text-[0.8125rem] text-ink-2">{r.entryId.slice(0, 8)}</span>

@@ -16,7 +16,7 @@ export const NAV: NavItem[] = [
  * The one bar for both rooms: brand (with an optional mark such as "Operator"), the room's nav, then whatever the
  * page adds (search, account menu).
  */
-export function SiteHeader({ children, nav = NAV, home = '/', mark, compact }: { children?: React.ReactNode; nav?: NavItem[]; home?: string; mark?: string; compact?: boolean }) {
+export function SiteHeader({ children, nav = NAV, home = '/', mark, compact, iconTabs }: { children?: React.ReactNode; nav?: NavItem[]; home?: string; mark?: string; compact?: boolean; iconTabs?: boolean }) {
   const path = useRouterState({ select: (s) => s.location.pathname })
   return (
     <header className="sticky top-0 z-30 shrink-0 border-b border-hairline bg-canvas">
@@ -33,10 +33,11 @@ export function SiteHeader({ children, nav = NAV, home = '/', mark, compact }: {
               data-also={also?.some((p) => path.startsWith(p)) || undefined}
               activeOptions={{ exact: exact ?? to === home }}
               to={to}
-              className="flex h-full flex-1 items-center justify-center gap-2 px-2 text-sm font-medium whitespace-nowrap text-ink-2 no-underline hover:text-ink data-[status=active]:text-ink data-[status=active]:shadow-[inset_0_-2px_0_var(--glaze)] data-also:text-ink data-also:shadow-[inset_0_-2px_0_var(--glaze)] sm:flex-none sm:px-3"
+              className="group flex h-full flex-1 items-center justify-center gap-2 px-2 text-sm font-medium whitespace-nowrap text-ink-2 no-underline hover:text-ink data-[status=active]:text-ink data-[status=active]:shadow-[inset_0_-2px_0_var(--glaze)] data-also:text-ink data-also:shadow-[inset_0_-2px_0_var(--glaze)] sm:flex-none sm:px-3"
             >
               {Icon && <Icon className="size-4" strokeWidth={1.5} aria-hidden />}
-              {label}
+              {/* With many tabs, narrow screens show icons and only the active tab's label. */}
+              <span className={cn(iconTabs && 'max-[1099px]:sr-only max-[1099px]:group-data-[status=active]:not-sr-only max-[1099px]:group-data-also:not-sr-only')}>{label}</span>
             </Link>
           ))}
         </nav>

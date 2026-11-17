@@ -159,7 +159,7 @@ export function Profile({ data, operator }: { data: ProfileData; compact?: boole
             )}
           </dl>
           {operator && (
-            <a href={`/portal/entries?startup=${encodeURIComponent(startup.id)}`} className="mt-4 inline-block text-sm">
+            <a href={`/portal/startups?startup=${encodeURIComponent(startup.id)}`} className="mt-4 inline-block text-sm">
               Open its entry (operator)
             </a>
           )}

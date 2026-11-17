@@ -18,10 +18,14 @@ import { Route as AppLandscapeRouteImport } from './routes/_app/landscape'
 import { Route as AppSearchRouteImport } from './routes/_app/search'
 import { Route as AppThemesRouteImport } from './routes/_app/themes'
 import { Route as PortalIndexRouteImport } from './routes/portal/index'
+import { Route as PortalChangesRouteImport } from './routes/portal/changes'
 import { Route as PortalDatabaseRouteImport } from './routes/portal/database'
 import { Route as PortalEntriesRouteImport } from './routes/portal/entries'
+import { Route as PortalIdeasRouteImport } from './routes/portal/ideas'
 import { Route as PortalKeysRouteImport } from './routes/portal/keys'
+import { Route as PortalQualityRouteImport } from './routes/portal/quality'
 import { Route as PortalReviewRouteImport } from './routes/portal/review'
+import { Route as PortalStartupsRouteImport } from './routes/portal/startups'
 import { Route as AppIdeasIdRouteImport } from './routes/_app/ideas.$id'
 import { Route as AppPeopleSlugRouteImport } from './routes/_app/people.$slug'
 import { Route as AppSectorsSlugRouteImport } from './routes/_app/sectors.$slug'
@@ -76,6 +80,11 @@ const PortalIndexRoute = PortalIndexRouteImport.update({
   path: '/',
   getParentRoute: () => PortalRouteRoute,
 } as any)
+const PortalChangesRoute = PortalChangesRouteImport.update({
+  id: '/changes',
+  path: '/changes',
+  getParentRoute: () => PortalRouteRoute,
+} as any)
 const PortalDatabaseRoute = PortalDatabaseRouteImport.update({
   id: '/database',
   path: '/database',
@@ -86,14 +95,29 @@ const PortalEntriesRoute = PortalEntriesRouteImport.update({
   path: '/entries',
   getParentRoute: () => PortalRouteRoute,
 } as any)
+const PortalIdeasRoute = PortalIdeasRouteImport.update({
+  id: '/ideas',
+  path: '/ideas',
+  getParentRoute: () => PortalRouteRoute,
+} as any)
 const PortalKeysRoute = PortalKeysRouteImport.update({
   id: '/keys',
   path: '/keys',
   getParentRoute: () => PortalRouteRoute,
 } as any)
+const PortalQualityRoute = PortalQualityRouteImport.update({
+  id: '/quality',
+  path: '/quality',
+  getParentRoute: () => PortalRouteRoute,
+} as any)
 const PortalReviewRoute = PortalReviewRouteImport.update({
   id: '/review',
   path: '/review',
+  getParentRoute: () => PortalRouteRoute,
+} as any)
+const PortalStartupsRoute = PortalStartupsRouteImport.update({
+  id: '/startups',
+  path: '/startups',
   getParentRoute: () => PortalRouteRoute,
 } as any)
 const AppIdeasIdRoute = AppIdeasIdRouteImport.update({
@@ -150,10 +174,14 @@ export interface FileRoutesByFullPath {
   '/landscape': typeof AppLandscapeRoute
   '/search': typeof AppSearchRoute
   '/themes': typeof AppThemesRoute
+  '/portal/changes': typeof PortalChangesRoute
   '/portal/database': typeof PortalDatabaseRoute
   '/portal/entries': typeof PortalEntriesRoute
+  '/portal/ideas': typeof PortalIdeasRoute
   '/portal/keys': typeof PortalKeysRoute
+  '/portal/quality': typeof PortalQualityRoute
   '/portal/review': typeof PortalReviewRoute
+  '/portal/startups': typeof PortalStartupsRoute
   '/portal/': typeof PortalIndexRoute
   '/ideas/$id': typeof AppIdeasIdRoute
   '/people/$slug': typeof AppPeopleSlugRoute
@@ -171,10 +199,14 @@ export interface FileRoutesByTo {
   '/landscape': typeof AppLandscapeRoute
   '/search': typeof AppSearchRoute
   '/themes': typeof AppThemesRoute
+  '/portal/changes': typeof PortalChangesRoute
   '/portal/database': typeof PortalDatabaseRoute
   '/portal/entries': typeof PortalEntriesRoute
+  '/portal/ideas': typeof PortalIdeasRoute
   '/portal/keys': typeof PortalKeysRoute
+  '/portal/quality': typeof PortalQualityRoute
   '/portal/review': typeof PortalReviewRoute
+  '/portal/startups': typeof PortalStartupsRoute
   '/': typeof AppIndexRoute
   '/portal': typeof PortalIndexRoute
   '/ideas/$id': typeof AppIdeasIdRoute
@@ -196,10 +228,14 @@ export interface FileRoutesById {
   '/_app/landscape': typeof AppLandscapeRoute
   '/_app/search': typeof AppSearchRoute
   '/_app/themes': typeof AppThemesRoute
+  '/portal/changes': typeof PortalChangesRoute
   '/portal/database': typeof PortalDatabaseRoute
   '/portal/entries': typeof PortalEntriesRoute
+  '/portal/ideas': typeof PortalIdeasRoute
   '/portal/keys': typeof PortalKeysRoute
+  '/portal/quality': typeof PortalQualityRoute
   '/portal/review': typeof PortalReviewRoute
+  '/portal/startups': typeof PortalStartupsRoute
   '/_app/': typeof AppIndexRoute
   '/portal/': typeof PortalIndexRoute
   '/_app/ideas/$id': typeof AppIdeasIdRoute
@@ -222,10 +258,14 @@ export interface FileRouteTypes {
     | '/landscape'
     | '/search'
     | '/themes'
+    | '/portal/changes'
     | '/portal/database'
     | '/portal/entries'
+    | '/portal/ideas'
     | '/portal/keys'
+    | '/portal/quality'
     | '/portal/review'
+    | '/portal/startups'
     | '/portal/'
     | '/ideas/$id'
     | '/people/$slug'
@@ -243,10 +283,14 @@ export interface FileRouteTypes {
     | '/landscape'
     | '/search'
     | '/themes'
+    | '/portal/changes'
     | '/portal/database'
     | '/portal/entries'
+    | '/portal/ideas'
     | '/portal/keys'
+    | '/portal/quality'
     | '/portal/review'
+    | '/portal/startups'
     | '/'
     | '/portal'
     | '/ideas/$id'
@@ -267,10 +311,14 @@ export interface FileRouteTypes {
     | '/_app/landscape'
     | '/_app/search'
     | '/_app/themes'
+    | '/portal/changes'
     | '/portal/database'
     | '/portal/entries'
+    | '/portal/ideas'
     | '/portal/keys'
+    | '/portal/quality'
     | '/portal/review'
+    | '/portal/startups'
     | '/_app/'
     | '/portal/'
     | '/_app/ideas/$id'
@@ -355,6 +403,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PortalIndexRouteImport
       parentRoute: typeof PortalRouteRoute
     }
+    '/portal/changes': {
+      id: '/portal/changes'
+      path: '/changes'
+      fullPath: '/portal/changes'
+      preLoaderRoute: typeof PortalChangesRouteImport
+      parentRoute: typeof PortalRouteRoute
+    }
     '/portal/database': {
       id: '/portal/database'
       path: '/database'
@@ -369,6 +424,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PortalEntriesRouteImport
       parentRoute: typeof PortalRouteRoute
     }
+    '/portal/ideas': {
+      id: '/portal/ideas'
+      path: '/ideas'
+      fullPath: '/portal/ideas'
+      preLoaderRoute: typeof PortalIdeasRouteImport
+      parentRoute: typeof PortalRouteRoute
+    }
     '/portal/keys': {
       id: '/portal/keys'
       path: '/keys'
@@ -376,11 +438,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PortalKeysRouteImport
       parentRoute: typeof PortalRouteRoute
     }
+    '/portal/quality': {
+      id: '/portal/quality'
+      path: '/quality'
+      fullPath: '/portal/quality'
+      preLoaderRoute: typeof PortalQualityRouteImport
+      parentRoute: typeof PortalRouteRoute
+    }
     '/portal/review': {
       id: '/portal/review'
       path: '/review'
       fullPath: '/portal/review'
       preLoaderRoute: typeof PortalReviewRouteImport
+      parentRoute: typeof PortalRouteRoute
+    }
+    '/portal/startups': {
+      id: '/portal/startups'
+      path: '/startups'
+      fullPath: '/portal/startups'
+      preLoaderRoute: typeof PortalStartupsRouteImport
       parentRoute: typeof PortalRouteRoute
     }
     '/_app/ideas/$id': {
@@ -480,10 +556,14 @@ const AppRouteRouteWithChildren = AppRouteRoute._addFileChildren(
 )
 
 interface PortalRouteRouteChildren {
+  PortalChangesRoute: typeof PortalChangesRoute
   PortalDatabaseRoute: typeof PortalDatabaseRoute
   PortalEntriesRoute: typeof PortalEntriesRoute
+  PortalIdeasRoute: typeof PortalIdeasRoute
   PortalKeysRoute: typeof PortalKeysRoute
+  PortalQualityRoute: typeof PortalQualityRoute
   PortalReviewRoute: typeof PortalReviewRoute
+  PortalStartupsRoute: typeof PortalStartupsRoute
   PortalIndexRoute: typeof PortalIndexRoute
   PortalRunsRunIdRoute: typeof PortalRunsRunIdRoute
   PortalTraceRowIdRoute: typeof PortalTraceRowIdRoute
@@ -492,10 +572,14 @@ interface PortalRouteRouteChildren {
 }
 
 const PortalRouteRouteChildren: PortalRouteRouteChildren = {
+  PortalChangesRoute: PortalChangesRoute,
   PortalDatabaseRoute: PortalDatabaseRoute,
   PortalEntriesRoute: PortalEntriesRoute,
+  PortalIdeasRoute: PortalIdeasRoute,
   PortalKeysRoute: PortalKeysRoute,
+  PortalQualityRoute: PortalQualityRoute,
   PortalReviewRoute: PortalReviewRoute,
+  PortalStartupsRoute: PortalStartupsRoute,
   PortalIndexRoute: PortalIndexRoute,
   PortalRunsRunIdRoute: PortalRunsRunIdRoute,
   PortalTraceRowIdRoute: PortalTraceRowIdRoute,

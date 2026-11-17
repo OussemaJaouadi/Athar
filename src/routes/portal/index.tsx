@@ -19,10 +19,7 @@ import {
 } from "@/components/athar/desk";
 import { labTime, operationName } from "@/components/athar/lab";
 import { RunStatus, StepStateBadge } from "@/components/athar/run-status";
-import {
-  DownloadChanges,
-  DownloadList,
-} from "@/components/athar/pipeline-downloads";
+import { DownloadChanges } from "@/components/athar/pipeline-downloads";
 import { FactList, hasRows } from "@/components/athar/pipeline-facts";
 import { cn } from "@/lib/utils";
 import {
@@ -171,7 +168,7 @@ function Pipeline() {
   return (
     <main className="flex min-h-0 flex-1 flex-col">
       <DeskBar
-        title="Pipeline"
+        title="Status"
         facts={
           nextStep
             ? nextStep.next
@@ -539,10 +536,13 @@ function StepPane({
                   : "Downloads"
               }
             >
-              <DownloadList
-                downloads={downloads}
-                onOpen={(id) => open({ download: id })}
-              />
+              <p className="text-[0.875rem] text-ink">
+                What each download added, edited or dropped is on{" "}
+                <Link to="/portal/changes" className="text-glaze underline">
+                  Changes
+                </Link>
+                .
+              </p>
             </PaneSection>
           )}
         </>

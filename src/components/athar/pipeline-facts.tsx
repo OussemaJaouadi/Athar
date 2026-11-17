@@ -123,7 +123,7 @@ export function FactList({
                     <span dir="auto">{r.name}</span>
                   )}
                   {r.entryId && (
-                    <Link to="/portal/entries" search={{ entry: r.entryId }} className="ms-2 font-mono text-[0.8125rem] text-glaze underline">
+                    <Link to="/portal/startups" search={{ entry: r.entryId }} className="ms-2 font-mono text-[0.8125rem] text-glaze underline">
                       {r.entryId.slice(0, 8)}
                     </Link>
                   )}

@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Desk, DeskBar, DeskEmpty, DeskItem, DeskPane, Evidence, Kbd, PaneSection, JsonBlock, deskInput, useDeskKeys } from '@/components/athar/desk'
 import { day, plural } from '@/components/athar/trace-parts'
 import { cn } from '@/lib/utils'
-import { getEntry, searchEntries } from '#/server/api/ops'
+import { getEntry, getLeadEntry, searchEntries } from '#/server/api/ops'
 import type { EntryView } from '#/server/pipeline/state'
 
 type SearchParams = { q?: string; entry?: string; startup?: string }
@@ -17,15 +17,15 @@ export const Route = createFileRoute('/portal/entries')({
     startup: typeof s.startup === 'string' && s.startup ? s.startup : undefined,
   }),
   loaderDeps: ({ search }) => ({ q: search.q ?? '', entry: search.entry, startup: search.startup }),
-  // A startup slug (from older links and the startup pages) opens that startup's lead entry: its name, read from the
-  // slug, is searched and the lead entry of that startup picked.
+  // A startup slug (from older links and the startup pages) opens that startup's lead entry (getLeadEntry); the
+  // startup's name then fills the list so its other entries are one click away.
   loader: async ({ deps }) => {
-    const query = deps.q || (deps.startup && !deps.entry ? deps.startup.replace(/-/g, ' ') : '')
+    const lead = deps.startup && !deps.entry ? await getLeadEntry({ data: deps.startup }) : null
+    const query = deps.q || (lead ? deps.startup! : '')
     const hits = query ? await searchEntries({ data: query }) : []
-    const fromStartup = deps.startup ? (hits.find((h) => h.startupId === deps.startup && h.lead) ?? hits.find((h) => h.startupId === deps.startup)) : undefined
-    const id = deps.entry ?? fromStartup?.id ?? (deps.q ? hits[0]?.id : undefined)
+    const id = deps.entry ?? lead ?? (deps.q ? hits[0]?.id : undefined)
     const view = id ? await getEntry({ data: id }) : null
-    return { hits: deps.q ? hits : fromStartup ? [fromStartup] : [], id, view }
+    return { hits, id, view }
   },
   component: EntriesPage,
 })

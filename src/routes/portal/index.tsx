@@ -1,10 +1,10 @@
+import { RunStatus } from '@/components/athar/run-status'
 import { Link, createFileRoute } from '@tanstack/react-router'
 import {
   StageStrip,
   findingName,
   findingSentence,
   operationName,
-  statusName,
   labTime,
 } from '@/components/athar/lab'
 import { PageHeader } from '@/components/athar/kit'
@@ -75,7 +75,7 @@ function Overview() {
                 >
                   {operationName(run.operation)}
                 </Link>
-                <span>{statusName(run.status)}</span>
+                <RunStatus status={run.status} />
                 <time className="ms-auto text-ink" dateTime={run.started_at}>
                   {labTime(run.started_at)}
                 </time>

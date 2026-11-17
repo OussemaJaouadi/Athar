@@ -8,7 +8,6 @@ import {
   labDuration,
   labTime,
   operationName,
-  statusName,
 } from '@/components/athar/lab'
 import { CircleAlert } from 'lucide-react'
 import { RunStatus } from '@/components/athar/run-status'
@@ -86,7 +85,7 @@ function RunPage() {
                 {step.status !== 'running' && step.finished_at && (
                   <span>, {labDuration(step.started_at, step.finished_at)}</span>
                 )}
-                {step.status !== 'done' && step.status !== 'running' && <span> · {statusName(step.status)}</span>}
+                <RunStatus status={step.status} className="ms-2" />
               </p>
               {step.status === 'failed' && (
                 <p className="flex items-start gap-2 border-s-2 border-destructive px-3 text-ink">

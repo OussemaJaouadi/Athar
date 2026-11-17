@@ -1,3 +1,4 @@
+import { RunStatus } from '@/components/athar/run-status'
 import { PageHeader } from '@/components/athar/kit'
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
@@ -5,7 +6,6 @@ import {
   labPrimary,
   labTime,
   operationName,
-  statusName,
   useLabToaster,
 } from '@/components/athar/lab'
 import { listKeys, listRuns, startOperation } from '#/server/api/portal'
@@ -120,7 +120,7 @@ function RunsPage() {
                     {operationName(run.operation)}
                   </Link>
                 </td>
-                <td className="px-4 py-3">{statusName(run.status)}</td>
+                <td className="px-4 py-3"><RunStatus status={run.status} /></td>
                 <td className="px-4 py-3 text-ink">
                   {labTime(run.started_at)}
                 </td>

@@ -189,6 +189,20 @@ export const getLandscape = createServerFn().handler(async () => {
   return { byYear, bySector, grid, facts }
 })
 
+export type LandscapeRow = { id: string; name: string; sector: string; month: number; year: number; founded: number | null; founders: number; website: boolean }
+
+// Landscape wall: every labelled startup, small enough to send whole (about 70 KB).
+export const getLandscapeRows = createServerFn().handler(async () => {
+  return getDatabase()
+    .query<{ id: string; name: string; sector: string; month: number; year: number; founded: number | null; founders: number; website: number }, []>(
+      `SELECT id, name, sector, CAST(substr(cohort, 1, 2) AS INTEGER) AS month, CAST(substr(cohort, 4, 4) AS INTEGER) AS year,
+              creation_year AS founded, json_array_length(founders_json) AS founders, website IS NOT NULL AS website
+       FROM startups WHERE sector IS NOT NULL AND cohort IS NOT NULL ORDER BY name COLLATE NOCASE`,
+    )
+    .all()
+    .map((r): LandscapeRow => ({ ...r, website: r.website === 1 }))
+})
+
 export const getEmbeddingCount = createServerFn().handler(async () => {
   return getDatabase().query<{ n: number }, []>('SELECT COUNT(*) AS n FROM embedding_meta').get()?.n ?? 0
 })

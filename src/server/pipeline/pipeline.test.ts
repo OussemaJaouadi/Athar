@@ -210,3 +210,74 @@ describe('build', () => {
     expect(db.query<{ n: number }, []>('SELECT COUNT(*) AS n FROM founders').get()?.n).toBe(4)
   })
 })
+
+describe('state of the pipeline', () => {
+  const { pipelineState, entryView, findEntries } = require('./state') as typeof import('./state')
+  const by = (db: Database) => Object.fromEntries(pipelineState(db).steps.map((s) => [s.operation, s]))
+
+  test('says what was never run, and stops asking once it is done', () => {
+    const db = database()
+    expect(by(db).collect.next).toBe('Run Collect to download the registry.')
+    ingest(db, body([row(), row({ name: 'Paymee', website: 'https://paymee.tn', desc: null })]), null)
+    expect(by(db).rebuild).toMatchObject({ state: 'never_run', missing: 2 })
+    run(db)
+    const s = by(db)
+    expect(s.rebuild).toMatchObject({ state: 'up_to_date', current: 2, next: null })
+    expect(s.check).toMatchObject({ state: 'never_run', total: 2, missing: 2 })
+    expect(s.embed).toMatchObject({ state: 'never_run', total: 1, missing: 1 }) // Paymee has no description
+    expect(s.prepare).toMatchObject({ state: 'not_configured', next: null }) // no key: nothing is asked of the operator
+    expect(pipelineState(db).upToDate).toBe(false)
+  })
+
+  test('a website that changed in the registry makes its check out of date', () => {
+    const db = database()
+    ingest(db, body([row()]), null)
+    run(db)
+    db.query("INSERT INTO website_checks (startup_id, url, status, detail, checked_at, since) VALUES ('relead', 'https://relead.tn', 'reachable', 'answered 200', '2026-11-17T00:00:00Z', '2026-11-17T00:00:00Z')").run()
+    expect(by(db).check).toMatchObject({ state: 'up_to_date', next: null })
+    ingest(db, body([row({ website: 'https://relead.io' })]), null)
+    run(db)
+    expect(by(db).check).toMatchObject({ state: 'stale', outOfDate: 1 })
+    expect(by(db).check.reasons[0]).toContain('new address')
+  })
+
+  test('startups built with older rules are due a rebuild', () => {
+    const db = database()
+    ingest(db, body([row()]), null)
+    run(db)
+    db.run("UPDATE pipeline_meta SET value = 'rules-0' WHERE key = 'rules'")
+    expect(by(db).rebuild).toMatchObject({ state: 'stale', outOfDate: 1 })
+    run(db)
+    expect(by(db).rebuild.state).toBe('up_to_date')
+  })
+
+  test('an entry says why it belongs to its startup and what it read differently', () => {
+    const db = database()
+    const used = row({ name: 'Kinko', website: 'https://kinkobooking.com/', sector: 'TravelTech', desc: 'A much longer description of a booking platform.' })
+    const unused = row({ name: 'Kinko', website: 'https://kinkobooking.com/', sector: 'Commerce and shopping', desc: 'Short.' })
+    ingest(db, body([used, unused, row({ name: 'Nova', website: 'https://nova.tn', founders: ['A One'] }), row({ name: 'Nova', website: 'https://nova.io', founders: ['B Two'] })]), null)
+    run(db)
+    const view = entryView(db, entryId(unused))!
+    expect(view).toMatchObject({ lead: false, published: true, startup: { id: 'kinko' } })
+    expect(view.siblings).toHaveLength(1)
+    expect(view.siblings[0].lead).toBe(true)
+    expect(view.siblings[0].bonds.map((b) => b.kind)).toEqual(['website', 'name', 'founder'])
+    expect(view.siblings[0].differences.map((d) => d.field)).toEqual(['description', 'sector'])
+    const nova = entryView(db, entryId(row({ name: 'Nova', website: 'https://nova.tn', founders: ['A One'] })))!
+    expect(nova.namesakes).toHaveLength(1)
+    expect(nova.namesakes[0].why).toContain('nova.io')
+    expect(entryView(db, 'ffffffffffff')).toBeNull()
+  })
+
+  test('an entry is found by its id, by a word, or by the website, and never shows withheld text', () => {
+    const db = database()
+    const secret = row({ name: 'Tanit.ai', website: 'https://tanitai.azurewebsites.net/   Mail: someone@example.com Pswd: Secret@2023', desc: null })
+    ingest(db, body([row(), secret]), null)
+    run(db)
+    const id = entryId(secret)
+    expect(findEntries(db, id.slice(0, 6)).map((e) => e.id)).toEqual([id])
+    expect(findEntries(db, 'tanit').map((e) => e.startupId)).toEqual(['tanit-ai'])
+    expect(findEntries(db, 'relead.tn').map((e) => e.startupId)).toEqual(['relead'])
+    expect(JSON.stringify(entryView(db, id))).not.toContain('Secret')
+  })
+})

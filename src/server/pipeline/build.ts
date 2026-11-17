@@ -1,5 +1,5 @@
 import { now } from '../ids'
-import { cleanEntry, nameKey, type Cleaned, type Founder, type Note } from './clean'
+import { RULES, cleanEntry, nameKey, type Cleaned, type Founder, type Note } from './clean'
 import type { RegistryRow } from './registry'
 import type { RunNote, Step } from './types'
 
@@ -217,6 +217,9 @@ export const build: Step = {
           for (const table of ['prepared_texts', 'embedding_meta', 'startup_vectors']) db.query(`DELETE FROM ${table} WHERE startup_id = ?`).run(id)
           db.query('DELETE FROM startups WHERE id = ?').run(id) // founders and website_checks go with it
         }
+
+      db.query("INSERT INTO pipeline_meta (key, value) VALUES ('rules', ?1) ON CONFLICT(key) DO UPDATE SET value = ?1").run(RULES)
+      db.query("INSERT INTO pipeline_meta (key, value) VALUES ('built_at', ?1) ON CONFLICT(key) DO UPDATE SET value = ?1").run(at)
 
       db.run('DELETE FROM startups_fts')
       db.run('INSERT INTO startups_fts (startup_id, name, description, sector) SELECT id, name, description, sector FROM startups')

@@ -13,6 +13,9 @@ import type { Step, StepContext, StepResult } from './types'
 
 /** Changing the instructions invalidates every prepared text. */
 const VERSION = 'prepare-1'
+/** What a prepared text was made from. A different hash means the text is out of date. */
+export const preparedHash = (s: { name: string; sector: string | null; description: string }) => sha256(`${VERSION}\n${s.name}\n${s.sector ?? ''}\n${s.description}`)
+
 const CONCURRENCY = 4
 const TIMEOUT_MS = 60_000
 const STOP_AFTER_FAILURES = 8
@@ -78,7 +81,7 @@ export async function prepareWith(db: Database, runId: string, key: { id: string
       'SELECT id, name, sector, description FROM startups WHERE description IS NOT NULL ORDER BY id',
     )
     .all()
-    .map((s) => ({ ...s, hash: sha256(`${VERSION}\n${s.name}\n${s.sector ?? ''}\n${s.description}`) }))
+    .map((s) => ({ ...s, hash: preparedHash(s) }))
   const have = new Map(db.query<{ startup_id: string; input_hash: string }, []>('SELECT startup_id, input_hash FROM prepared_texts').all().map((p) => [p.startup_id, p.input_hash]))
   const todo = startups.filter((s) => have.get(s.id) !== s.hash)
 

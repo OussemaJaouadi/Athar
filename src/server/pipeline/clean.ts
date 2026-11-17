@@ -4,6 +4,12 @@ import type { RegistryRow } from './registry'
 // is stored per row: Build keeps the result on the startup, and Trace calls it again to show how a
 // value was read. There is one reader per field, in the order the registry publishes them.
 
+/**
+ * The version of the reading rules in this file and of the grouping rule in build.ts.
+ * Raise it whenever a rule changes what a startup looks like; the portal then says a rebuild is due.
+ */
+export const RULES = 'rules-3'
+
 /** A visible edit to what the registry published. Trimming spaces and typing a year are not listed. */
 export type Change = { field: string; from: unknown; to: unknown; why: string }
 /** A fact about the row. It never waits for a decision. */

@@ -5,6 +5,9 @@ import type { Step } from './types'
 /** What is embedded for one startup: its sector, then the prepared text when Prepare has run, else the description. */
 export const embeddingText = (sector: string | null, text: string) => (sector ? `${sector}. ${text}` : text)
 
+/** What a vector was made from: the model, its revision and the text. A different hash means the vector is out of date. */
+export const embeddingHash = (text: string) => sha256(`${EMBEDDING.model}\n${EMBEDDING.revision}\n${text}`)
+
 // Embed: one vector per startup that has a description, computed on this machine.
 // A startup is embedded again only when its text or the model changed.
 export const embed: Step = {
@@ -20,7 +23,7 @@ export const embed: Step = {
       .all()
       .map((s) => {
         const text = embeddingText(s.sector, s.text)
-        return { ...s, text, hash: sha256(`${EMBEDDING.model}\n${EMBEDDING.revision}\n${text}`) }
+        return { ...s, text, hash: embeddingHash(text) }
       })
     const have = new Map(db.query<{ startup_id: string; text_hash: string }, []>('SELECT startup_id, text_hash FROM embedding_meta').all().map((m) => [m.startup_id, m.text_hash]))
     const todo = startups.filter((s) => have.get(s.id) !== s.hash)

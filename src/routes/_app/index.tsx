@@ -3,8 +3,7 @@ import { ArrowRight } from 'lucide-react'
 import { useState } from 'react'
 
 import { TileMark } from '@/components/athar/tile-mark'
-import { AILoader } from '@/components/smoothui/ai-loader'
-import { AIPromptInput } from '@/components/smoothui/ai-prompt-input'
+import { PromptComposer } from '@/components/cult-ui/prompt-composer'
 import { AISuggestions } from '@/components/smoothui/ai-suggestions'
 import { cn } from '@/lib/utils'
 import { getWallCards, type RegistryCard } from '#/server/api/app'
@@ -33,6 +32,7 @@ function Home() {
 }
 
 function AskForm({ initial, compact }: { initial?: string; compact?: boolean }) {
+  const { corpus } = shell.useLoaderData()
   const navigate = useNavigate()
   const [text, setText] = useState(initial ?? '')
   const [busy, setBusy] = useState(false)
@@ -50,11 +50,33 @@ function AskForm({ initial, compact }: { initial?: string; compact?: boolean }) 
     }
   }
   const short = text.trim().length < 12
+  const send = () => {
+    if (!short && !busy) ask(text.trim())
+  }
   return (
-    <form role="search" onSubmit={(e) => (e.preventDefault(), ask(text.trim()))} className="grid gap-4">
-      <AIPromptInput aria-label="Describe your idea" value={text} onValueChange={setText} onSubmit={ask} busy={busy} minLength={12} placeholder="Describe your idea in a sentence" size={compact ? 'md' : 'lg'}>
-        {busy ? <AILoader label="Reading all the startups…" /> : text && short ? 'A little more: a short sentence is enough.' : 'Enter to ask · Shift+Enter for a new line'}
-      </AIPromptInput>
+    <form role="search" onSubmit={(e) => (e.preventDefault(), send())} className="grid gap-4">
+      <PromptComposer
+        aria-label="Describe your idea"
+        className="max-w-none"
+        size={compact ? 'md' : 'lg'}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onSend={send}
+        // Enter asks; Shift+Enter breaks the line.
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+            e.preventDefault()
+            send()
+          }
+        }}
+        isLoading={busy}
+        loadingText={`Reading all ${corpus.startups.toLocaleString('en-GB')} startups…`}
+        placeholder="Describe your idea in a sentence"
+        dir="auto"
+      />
+      <p className="ps-1 text-[0.9375rem] text-ink-2" aria-live="polite">
+        {text && short ? 'A little more: a short sentence is enough.' : 'Enter to ask · Shift+Enter for a new line'}
+      </p>
       {error && <p className="ps-5 text-[0.9375rem] text-destructive">{error}</p>}
       {!compact && <AISuggestions className="ps-1" label="Or try one" suggestions={EXAMPLES} onSelect={setText} />}
     </form>

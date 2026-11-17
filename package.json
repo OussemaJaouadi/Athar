@@ -19,6 +19,7 @@
     "@dnd-kit/sortable": "10.0.0",
     "@dnd-kit/utilities": "3.2.2",
     "@huggingface/transformers": "4.3.2",
+    "@paper-design/shaders-react": "^0.0.82",
     "@tailwindcss/vite": "4.3.5",
     "@tanstack/ai": "1.4.0",
     "@tanstack/ai-anthropic": "1.1.1",

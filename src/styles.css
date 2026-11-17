@@ -1,6 +1,9 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
 
+/* fine-hover: hover styles only where a real pointer can hover (used by Cult UI components). */
+@custom-variant fine-hover (@media (hover: hover) and (pointer: fine));
+
 /* dark: follows the theme choice, and the system only when no choice was made. */
 @custom-variant dark {
   &:where([data-theme='dark'], [data-theme='dark'] *) {

@@ -1,3 +1,4 @@
+import { shortDate } from '@/components/athar/kit'
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
 import { ArrowDown, ArrowUp, Check, Copy, Search } from 'lucide-react'
 import { useCallback, useMemo, useRef, useState } from 'react'
@@ -138,7 +139,7 @@ function QualityPage() {
   )
 }
 
-type SortKey = 'name' | 'value'
+type SortKey = 'name' | 'value' | 'labelled' | 'observedOn'
 
 function FactPane({
   fact,
@@ -160,7 +161,8 @@ function FactPane({
   const needle = filter.trim().toLowerCase()
   const rows = useMemo(() => {
     const kept = needle ? all.filter((r) => `${r.name} ${r.value ?? ''}`.toLowerCase().includes(needle)) : all
-    return [...kept].sort((a, b) => sort.dir * (sort.key === 'name' ? a.name.localeCompare(b.name) : (a.value ?? '').localeCompare(b.value ?? '')))
+    const key = (r: (typeof all)[number]) => (sort.key === 'name' ? r.name : ((r[sort.key] as string | null | undefined) ?? ''))
+    return [...kept].sort((a, b) => sort.dir * key(a).localeCompare(key(b)))
   }, [all, needle, sort])
   const valueHeading = fact.code.startsWith('unreachable:') ? 'Address asked' : fact.code === 'no_description' || fact.code === 'no_website' ? null : 'What'
 
@@ -184,7 +186,7 @@ function FactPane({
             type="button"
             className={deskBtn}
             onClick={() => {
-              const csv = ['startup,startup_id,value', ...rows.map((r) => [r.name, r.startupId, r.value].map(csvCell).join(','))].join('\n')
+              const csv = ['startup,startup_id,value,labelled,observed_on', ...rows.map((r) => [r.name, r.startupId, r.value, r.labelled, r.observedOn].map(csvCell).join(','))].join('\n')
               navigator.clipboard
                 ?.writeText(csv)
                 .then(() => {
@@ -222,6 +224,8 @@ function FactPane({
               <tr>
                 {head('name', 'Startup')}
                 {valueHeading && head('value', valueHeading)}
+                {head('labelled', 'Labelled')}
+                {head('observedOn', 'Observed on')}
                 <th scope="col" className={deskTh}>
                   <span className="sr-only">Open</span>
                 </th>
@@ -240,6 +244,8 @@ function FactPane({
                     )}
                   </td>
                   {valueHeading && <td className={cn(deskTd, '[overflow-wrap:anywhere]')}>{r.value ?? <span className="text-ink-3">—</span>}</td>}
+                  <td className={cn(deskTd, 'whitespace-nowrap tabular-nums')}>{r.labelled ? monthYear(r.labelled) : <span className="text-ink-3">—</span>}</td>
+                  <td className={cn(deskTd, 'whitespace-nowrap tabular-nums')}>{r.observedOn ? shortDate(r.observedOn) : <span className="text-ink-3">—</span>}</td>
                   <td className={cn(deskTd, 'w-[1%] whitespace-nowrap text-end')}>
                     {r.entryId ? (
                       <Link to="/portal/startups" search={{ entry: r.entryId }} className="font-mono text-[0.8125rem] text-glaze underline">
@@ -261,3 +267,6 @@ function FactPane({
     </DeskPane>
   )
 }
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const monthYear = (labelled: string) => `${MONTHS[Number(labelled.slice(5, 7)) - 1] ?? ''} ${labelled.slice(0, 4)}`.trim()

@@ -140,3 +140,13 @@ export function cleanEntry(row: RegistryRow): { cleaned: Cleaned; changes: Chang
     notes,
   }
 }
+
+/**
+ * The raw row as it may be shown on screen. Two rows carry login details after the address in the
+ * website field; the stored entry keeps them verbatim, the screen shows the address and says text was withheld.
+ */
+export function displayRow(row: RegistryRow): RegistryRow {
+  const site = parseWebsite(row.website)
+  if (!site.extraText) return row
+  return { ...row, website: `${[site.website, ...site.others].join(' ')} [extra text withheld]` }
+}

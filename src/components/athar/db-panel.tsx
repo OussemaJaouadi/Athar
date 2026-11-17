@@ -2,8 +2,11 @@ import { Link } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 
 import { Fields, JsonBlock, PaneSection, isEmpty, type DeskField } from '@/components/athar/desk'
+import { StartupLink } from '@/components/athar/startup-glimpse'
 import { languageName, month, websiteCheckWords, websiteKindName } from '@/components/athar/trace-parts'
 import { getDbRecord, type DbColumnInfo, type DbRecord, type DbRow, type DbValue } from '#/server/api/database'
+import { getEntry } from '#/server/api/ops'
+import type { IdeaCheckRow, PersonRow } from '#/server/pipeline/facts'
 
 export type DbColumn = DbColumnInfo
 
@@ -21,10 +24,12 @@ export const TABLE_NAMES: Record<string, string> = {
   run_steps: 'Run steps',
   ai_keys: 'AI keys',
   ai_usage: 'AI usage',
-  founders: 'Founders',
+  founders: 'Founder rows',
+  people: 'People',
   website_checks: 'Website checks',
-  embedding_meta: 'Embeddings',
+  embedding_meta: 'Vectors',
   prepared_texts: 'Prepared texts',
+  idea_checks: 'Idea checks',
 }
 
 // Column and registry keys that read better under another name.
@@ -173,11 +178,11 @@ export function RecordPane({ table, rowKey }: { table: string; rowKey: string | 
       <>
         <PaneSection title={<>Entry <span className="font-mono">{rec.id}</span>{rec.row?.name ? `, ${rec.row.name}` : ''}</>}>
           <Links>
-            {rec.startup && <StartupLinks id={rec.startup.id} />}
-            {rec.row && <CopyJson value={rec.row} label="Entry" />}
+            <Link to="/portal/entries" search={{ entry: rec.id }} className={linkCls}>
+              Open in Entries
+            </Link>
           </Links>
         </PaneSection>
-        {rec.row ? <JsonBlock title="As the registry published it" value={rec.row} /> : <p className="text-[0.875rem] text-ink">The stored row could not be read.</p>}
         <Fields
           fields={[
             {
@@ -186,14 +191,7 @@ export function RecordPane({ table, rowKey }: { table: string; rowKey: string | 
             },
             { label: 'First seen', value: rec.firstSeen ? `${shortDate(rec.firstSeen.at)} (download ${rec.firstSeen.download})` : null },
             { label: 'Last seen', value: rec.lastSeen ? `${shortDate(rec.lastSeen.at)} (download ${rec.lastSeen.download})` : null },
-            {
-              label: 'Startup',
-              value: rec.startup ? (
-                <Link to="/portal/database" search={{ table: 'startups', row: rec.startup.id }} className="text-glaze underline">
-                  {rec.startup.name}
-                </Link>
-              ) : null,
-            },
+            { label: 'Startup', value: rec.startup ? <StartupLink id={rec.startup.id} className="text-glaze underline">{rec.startup.name}</StartupLink> : null },
           ]}
         />
       </>
@@ -245,6 +243,7 @@ export function RecordPane({ table, rowKey }: { table: string; rowKey: string | 
             </ul>
           </PaneSection>
         )}
+        <StartupRelated id={rec.id} entryId={rec.entryId} />
         <PaneSection title="In the registry">
           <Fields
             fields={[
@@ -310,6 +309,144 @@ export function RecordPane({ table, rowKey }: { table: string; rowKey: string | 
       {jsonCols.map((c) => (
         <JsonBlock key={c.name} title={humanize(c.name)} value={asJson(row[c.name] ?? null)} />
       ))}
+    </>
+  )
+}
+
+type EntryView = NonNullable<Awaited<ReturnType<typeof getEntry>>>
+
+/** A startup's relations, from its lead entry's view: its entries, founders, website check, prepared text and vector. */
+function StartupRelated({ id, entryId }: { id: string; entryId: string }) {
+  const [view, setView] = useState<EntryView | null | undefined>(undefined)
+  useEffect(() => {
+    let live = true
+    getEntry({ data: entryId })
+      .then((v) => live && setView(v))
+      .catch(() => live && setView(null))
+    return () => {
+      live = false
+    }
+  }, [entryId])
+  if (view === undefined) return <p className="text-[0.875rem] text-ink-2">Reading its relations…</p>
+  const entries = view ? [{ id: view.id, lead: true }, ...view.siblings.map((s) => ({ id: s.id, lead: s.lead }))] : [{ id: entryId, lead: true }]
+  const d = view?.downstream
+  const state = (current: boolean | undefined) => (current === undefined ? '' : current ? ' · up to date' : ' · stale')
+  return (
+    <PaneSection title="Related">
+      <Fields
+        fields={[
+          {
+            label: entries.length === 1 ? 'Entry' : `Entries (${entries.length})`,
+            value: (
+              <span className="flex flex-wrap gap-x-3 gap-y-1">
+                {entries.map((e) => (
+                  <Link key={e.id} to="/portal/entries" search={{ entry: e.id }} className="font-mono text-[0.8125rem] text-glaze underline">
+                    {e.id}
+                    {e.lead && entries.length > 1 ? ' (values)' : ''}
+                  </Link>
+                ))}
+              </span>
+            ),
+          },
+          {
+            label: 'Founder rows',
+            value: (
+              <Link to="/portal/database" search={{ table: 'founders', q: id }} className="text-glaze underline">
+                Open its founder rows
+              </Link>
+            ),
+          },
+          {
+            label: 'Website check',
+            value: d?.check ? `${d.check.status === 'reachable' ? 'Answers' : 'Does not answer'} (${d.check.detail}) · ${shortDate(d.check.checkedAt)}` : null,
+          },
+          { label: 'Prepared text', value: d?.prepared ? `${d.prepared.model} · ${shortDate(d.prepared.at)}${state(d.prepared.current)}` : null },
+          {
+            label: 'Vector',
+            value: d?.vector ? `${d.vector.model} (${d.vector.revision}) from the ${d.vector.from} · ${shortDate(d.vector.at)}${state(d.vector.current)}` : null,
+          },
+        ]}
+      />
+    </PaneSection>
+  )
+}
+
+/** A person: founders grouped by person key, with every spelling and every startup. */
+export function PersonRecord({ person }: { person: PersonRow | undefined }) {
+  if (!person) return <p className="text-[0.875rem] text-ink">No one matches.</p>
+  return (
+    <>
+      <PaneSection title={person.name}>
+        <Links>
+          <Link to="/people/$slug" params={{ slug: person.slug }} className={linkCls}>
+            Open the person page
+          </Link>
+        </Links>
+      </PaneSection>
+      <Fields
+        fields={[
+          { label: 'Other spellings', value: person.spellings.length ? person.spellings.join(', ') : null },
+          {
+            label: person.startups.length === 1 ? 'Startup' : `Startups (${person.startups.length})`,
+            value: (
+              <ul className="grid gap-1">
+                {person.startups.map((s) => (
+                  <li key={s.id}>
+                    <StartupLink id={s.id} className="text-glaze underline">
+                      {s.name}
+                    </StartupLink>
+                    {s.labelled && <span className="text-ink-2"> · labelled {month(s.labelled)}</span>}
+                  </li>
+                ))}
+              </ul>
+            ),
+          },
+        ]}
+      />
+    </>
+  )
+}
+
+const LANGUAGE: Record<string, string> = { en: 'English', fr: 'French', ar: 'Arabic' }
+
+/** A stored idea check: the idea as typed, how it was read, and the startups found close. */
+export function IdeaCheckRecord({ check }: { check: IdeaCheckRow | undefined }) {
+  if (!check) return <p className="text-[0.875rem] text-ink">This idea check is not stored any more.</p>
+  return (
+    <>
+      <PaneSection title="Idea check">
+        <Links>
+          <Link to="/ideas/$id" params={{ id: check.id }} className={linkCls}>
+            Open the idea check
+          </Link>
+        </Links>
+      </PaneSection>
+      <Fields
+        fields={[
+          { label: 'Idea', value: <span dir="auto">{check.idea}</span> },
+          { label: 'Read as', value: check.language ? (LANGUAGE[check.language] ?? check.language) : null },
+          { label: 'Checked', value: dateTime(check.checkedAt) },
+          { label: 'Saved', value: check.saved ? 'Yes' : 'No' },
+          {
+            label: check.close.length === 1 ? 'Close startup' : `Close startups (${check.close.length})`,
+            value: check.close.length ? (
+              <span className="flex flex-wrap gap-x-2 gap-y-1">
+                {check.close.map((m, i) => (
+                  <span key={m.id}>
+                    <StartupLink id={m.id} className="text-glaze underline">
+                      {m.name}
+                    </StartupLink>
+                    {i < check.close.length - 1 ? ',' : ''}
+                  </span>
+                ))}
+              </span>
+            ) : (
+              'None close'
+            ),
+          },
+          { label: 'Sentences by', value: check.explainedBy },
+        ]}
+      />
     </>
   )
 }

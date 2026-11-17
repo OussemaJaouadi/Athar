@@ -1,5 +1,5 @@
 import { createFileRoute, useRouter } from '@tanstack/react-router'
-import { CircleAlert, CircleCheck, Ellipsis, FlaskConical, KeyRound, Plus, Trash2 } from 'lucide-react'
+import { CircleAlert, CircleCheck, Ellipsis, FlaskConical, KeyRound, MessageSquareText, Plus, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 
 import { DeskBar, deskBtn, deskPrimary, deskTd, deskTh } from '@/components/athar/desk'
@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils'
 import { PROVIDER_NAME } from '#/shared/key-models'
 import { isProvider } from '#/shared/providers'
 import { deleteKey, listKeyRows, retestKey, type KeyRow } from '#/server/api/keys'
+import { probeKey, type KeyProbe } from '#/server/api/ops'
 
 export const Route = createFileRoute('/portal/keys')({
   loader: () => listKeyRows(),
@@ -31,7 +32,7 @@ function KeysPage() {
     <main className="flex min-h-0 flex-1 flex-col">
       <DeskBar
         title="Keys"
-        facts="No engine uses a key yet"
+        facts="Used by Prepare and the idea sentences"
         actions={
           keys.length > 0 && (
             <button type="button" className={deskPrimary} onClick={() => setAdding(true)}>
@@ -49,7 +50,7 @@ function KeysPage() {
             </span>
             <h2 className="font-display text-[1.375rem] leading-tight font-bold text-ink">No keys yet</h2>
             <p className="text-[0.875rem] text-ink">
-              Keys will power description cleaning and similarity search once they are built. Each key is tested with its provider before it is saved.
+              A key lets Prepare clean descriptions and lets an idea check explain what is the same and what differs. Meaning search runs on a local model and needs no key. Each key is tested with its provider before it is saved.
             </p>
             <button type="button" className={cn(deskPrimary, 'mt-1')} onClick={() => setAdding(true)}>
               <Plus aria-hidden />
@@ -90,6 +91,8 @@ function KeyRowView({ k, used, highlight }: { k: KeyRow; used: boolean; highligh
   const [confirm, setConfirm] = useState(false)
   const [removing, setRemoving] = useState(false)
   const [removeError, setRemoveError] = useState<string>()
+  const [asking, setAsking] = useState(false)
+  const [probe, setProbe] = useState<KeyProbe>()
   const ok = result ? result.ok : k.last_test_ok === 1
   const tested = result || k.last_tested_at
   const Icon = ok ? CircleCheck : CircleAlert
@@ -106,6 +109,22 @@ function KeyRowView({ k, used, highlight }: { k: KeyRow; used: boolean; highligh
       setTesting(false)
     }
   }
+
+  // The save-time test only asks the provider whether it lists the model; this sends one real line and shows the answer.
+  const ask = async () => {
+    setAsking(true)
+    setProbe(undefined)
+    try {
+      setProbe(await probeKey({ data: k.id }))
+      await router.invalidate()
+    } catch (e) {
+      setProbe({ ok: false, error: e instanceof Error ? e.message : String(e), milliseconds: 0 })
+    } finally {
+      setAsking(false)
+    }
+  }
+  const tokens = (p: Extract<KeyProbe, { ok: true }>) =>
+    p.inputTokens === null && p.outputTokens === null ? '' : ` · ${p.inputTokens ?? '?'} tokens in, ${p.outputTokens ?? '?'} out`
 
   return (
     <>
@@ -140,6 +159,10 @@ function KeyRowView({ k, used, highlight }: { k: KeyRow; used: boolean; highligh
                 <FlaskConical aria-hidden />
                 Test again
               </DropdownMenuItem>
+              <DropdownMenuItem onSelect={ask} className="min-h-8 rounded-[4px] px-2.5 text-[0.875rem] text-ink focus:bg-surface-raised focus:text-ink">
+                <MessageSquareText aria-hidden />
+                Ask the model
+              </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => setConfirm(true)} className="min-h-8 rounded-[4px] px-2.5 text-[0.875rem] text-ink focus:bg-surface-raised focus:text-ink">
                 <Trash2 aria-hidden />
                 Remove…
@@ -148,6 +171,26 @@ function KeyRowView({ k, used, highlight }: { k: KeyRow; used: boolean; highligh
           </DropdownMenu>
         </td>
       </tr>
+      {(asking || probe) && (
+        <tr>
+          <td colSpan={used ? 7 : 6} className="border-b border-hairline px-3 pb-2.5">
+            {asking ? (
+              <p className="text-[0.8125rem] text-ink-2">Asking {k.model}…</p>
+            ) : probe?.ok ? (
+              <KeyNote ok>
+                <span>
+                  The model answered in {(probe.milliseconds / 1000).toFixed(1)} s{tokens(probe)}:
+                </span>{' '}
+                <span dir="auto" className="italic">“{probe.reply}”</span>
+              </KeyNote>
+            ) : probe ? (
+              <KeyNote ok={false}>
+                No answer{probe.milliseconds ? ` after ${(probe.milliseconds / 1000).toFixed(1)} s` : ''}: {probe.error}
+              </KeyNote>
+            ) : null}
+          </td>
+        </tr>
+      )}
       {!ok && tested && message && (
         <tr>
           <td colSpan={used ? 7 : 6} className="border-b border-hairline px-3 pb-2.5">

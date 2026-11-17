@@ -4,16 +4,18 @@ import { useTable, type ColumnDef, type RowSelectionState, type SortingState } f
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Search } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { RecordPane, asJson, humanize, idText, isUrl, tableName, type DbColumn } from '@/components/athar/db-panel'
+import { IdeaCheckRecord, PersonRecord, RecordPane, asJson, humanize, idText, isUrl, tableName, type DbColumn } from '@/components/athar/db-panel'
 import { DeskBar, EmptyValue, deskBtn, deskInput, useDeskKeys } from '@/components/athar/desk'
 import { DataGrid, DataGridContainer, dataGridFeatures, type DataGridFeatures } from '@/components/reui/data-grid/data-grid'
 import { DataGridScrollArea } from '@/components/reui/data-grid/data-grid-scroll-area'
 import { DataGridTable } from '@/components/reui/data-grid/data-grid-table'
 import { cn } from '@/lib/utils'
 import { getDbRows, listDbTables, type DbRow } from '#/server/api/database'
+import { listIdeaChecks, listPeople } from '#/server/api/ops'
+import type { IdeaCheckRow, PersonRow } from '#/server/pipeline/facts'
 import { DB_PAGE_SIZE as PAGE_SIZE } from '#/shared/database'
 
-type Search = { table?: string; q?: string; sort?: string; dir?: 'asc' | 'desc'; page?: number; row?: string }
+type Search = { table?: string; q?: string; sort?: string; dir?: 'asc' | 'desc'; page?: number; row?: string; repeat?: boolean }
 
 export const Route = createFileRoute('/portal/database')({
   validateSearch: (s: Record<string, unknown>): Search => ({
@@ -23,14 +25,28 @@ export const Route = createFileRoute('/portal/database')({
     dir: s.dir === 'desc' ? 'desc' : s.dir === 'asc' ? 'asc' : undefined,
     page: typeof s.page === 'number' && s.page > 1 ? Math.floor(s.page) : undefined,
     row: typeof s.row === 'string' || typeof s.row === 'number' ? String(s.row) : undefined,
+    repeat: s.repeat === true || s.repeat === 'true' ? true : undefined,
   }),
   // The selected row is not a loader dependency: selecting never refetches the grid.
-  loaderDeps: ({ search: { table, q, sort, dir, page } }) => ({ table, q, sort, dir, page }),
+  loaderDeps: ({ search: { table, q, sort, dir, page, repeat } }) => ({ table, q, sort, dir, page, repeat }),
   loader: async ({ deps }) => {
     // Tables from before pipeline v2 open their successor; no table opens Entries.
     const table = deps.table ? (LEGACY[deps.table] ?? deps.table) : 'entries'
-    const [groups, data] = await Promise.all([listDbTables(), getDbRows({ data: { ...deps, table } })])
-    return { groups, table, data }
+    const [tables, everyone] = await Promise.all([listDbTables(), listPeople({ data: { limit: 1 } })])
+    // People is founders grouped by person, not a table: it sits under Derived, after Startups.
+    const groups = tables.map((g) =>
+      g.stage === 'Derived' ? { ...g, tables: [g.tables[0], { name: 'people', rows: everyone.total }, ...g.tables.slice(1)].filter(Boolean) } : g,
+    )
+    if (table === 'people') {
+      const page = deps.page ?? 1
+      const people = await listPeople({ data: { q: deps.q, repeat: deps.repeat, limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE } })
+      return { groups, table, data: null, people: { ...people, page, pages: Math.max(1, Math.ceil(people.total / PAGE_SIZE)), q: deps.q ?? '' }, ideas: null }
+    }
+    const [data, ideas] = await Promise.all([
+      getDbRows({ data: { ...deps, table } }),
+      table === 'idea_checks' ? listIdeaChecks({ data: { limit: 500 } }) : Promise.resolve(null),
+    ])
+    return { groups, table, data, people: null, ideas }
   },
   component: DatabasePage,
 })
@@ -39,11 +55,14 @@ const LEGACY: Record<string, string> = { source_rows: 'entries', source_snapshot
 
 const n = (v: number) => v.toLocaleString('en-GB')
 type Data = NonNullable<Awaited<ReturnType<typeof getDbRows>>>
+type People = { rows: PersonRow[]; total: number; page: number; pages: number; q: string }
 type Groups = Awaited<ReturnType<typeof listDbTables>>
 
 // Database: three panes. Tables by stage | the grid | the selected row read as a record.
 function DatabasePage() {
-  const { groups, table, data } = Route.useLoaderData()
+  const { groups, table, data, people, ideas } = Route.useLoaderData()
+  // The pager and search work the same over a table or over People.
+  const list = data ? { page: data.page, pages: data.pages, total: data.total, q: data.q, shown: data.rows.length } : people ? { page: people.page, pages: people.pages, total: people.total, q: people.q, shown: people.rows.length } : null
   const search = Route.useSearch()
   const navigate = useNavigate({ from: Route.fullPath })
   const go = useCallback(
@@ -51,36 +70,36 @@ function DatabasePage() {
     [navigate],
   )
   const searchRef = useRef<HTMLInputElement>(null)
-  const [query, setQuery] = useState(data?.q ?? '')
-  useEffect(() => setQuery(data?.q ?? ''), [table, data?.q])
+  const [query, setQuery] = useState(list?.q ?? '')
+  useEffect(() => setQuery(list?.q ?? ''), [table, list?.q])
   // Search as you type, a beat after the last key.
   useEffect(() => {
-    if (!data || query.trim() === data.q) return
+    if (!list || query.trim() === list.q) return
     const t = setTimeout(() => go({ q: query.trim() || undefined, page: undefined, row: undefined }, true), 300)
     return () => clearTimeout(t)
-  }, [query, data, go])
+  }, [query, list, go])
 
   // Below 1100px the record is its own view, opened by choosing a row.
   const [narrowRecord, setNarrowRecord] = useState(false)
 
-  const first = data && data.total ? (data.page - 1) * PAGE_SIZE + 1 : 0
-  const last = data ? (data.page - 1) * PAGE_SIZE + data.rows.length : 0
+  const first = list && list.total ? (list.page - 1) * PAGE_SIZE + 1 : 0
+  const last = list ? (list.page - 1) * PAGE_SIZE + list.shown : 0
   const name = tableName(table)
 
   return (
     <main className="flex min-h-0 flex-1 flex-col">
       <DeskBar
         title="Database"
-        facts={data ? (data.total ? `${n(first)}–${n(last)} of ${n(data.total)}${data.q ? ` matching “${data.q}”` : ''}` : data.q ? 'No matches' : 'Empty') : undefined}
+        facts={list ? (list.total ? `${n(first)}–${n(last)} of ${n(list.total)}${list.q ? ` matching “${list.q}”` : ''}` : list.q ? 'No matches' : 'Empty') : undefined}
         actions={
-          data && (
+          list && (
             <span className="flex gap-1.5">
               <button
                 type="button"
                 className={cn(deskBtn, 'w-8 justify-center px-0')}
                 aria-label="Previous page"
-                disabled={data.page <= 1}
-                onClick={() => go({ page: data.page - 1 > 1 ? data.page - 1 : undefined, row: undefined })}
+                disabled={list.page <= 1}
+                onClick={() => go({ page: list.page - 1 > 1 ? list.page - 1 : undefined, row: undefined })}
               >
                 <ChevronLeft aria-hidden />
               </button>
@@ -88,8 +107,8 @@ function DatabasePage() {
                 type="button"
                 className={cn(deskBtn, 'w-8 justify-center px-0')}
                 aria-label="Next page"
-                disabled={data.page >= data.pages}
-                onClick={() => go({ page: data.page + 1, row: undefined })}
+                disabled={list.page >= list.pages}
+                onClick={() => go({ page: list.page + 1, row: undefined })}
               >
                 <ChevronRight aria-hidden />
               </button>
@@ -108,7 +127,7 @@ function DatabasePage() {
             options={groups.flatMap((g) => g.tables.map((t) => ({ value: t.name, label: tableName(t.name), hint: `${g.stage} · ${n(t.rows)} rows` })))}
           />
         </div>
-        {data && (
+        {list && (
           <label className="relative flex items-center">
             <span className="sr-only">Search {name}</span>
             <Search className="pointer-events-none absolute start-2.5 size-4 text-ink-2" aria-hidden />
@@ -125,13 +144,29 @@ function DatabasePage() {
             </kbd>
           </label>
         )}
+        {people && (
+          <button
+            type="button"
+            aria-pressed={!!search.repeat}
+            onClick={() => go({ repeat: search.repeat ? undefined : true, page: undefined, row: undefined })}
+            className={cn(
+              'inline-flex h-7 items-center rounded-[5px] border border-edge px-2.5 text-[0.8125rem] text-ink',
+              search.repeat ? 'bg-surface-raised shadow-[inset_0_-2px_0_var(--ink)]' : 'hover:bg-surface',
+            )}
+          >
+            On more than one startup
+          </button>
+        )}
       </DeskBar>
       <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)] min-[1100px]:grid-cols-[210px_minmax(0,1fr)_minmax(380px,500px)]">
         <TableList groups={groups} current={table} />
-        {data ? (
+        {people ? (
+          <PeopleWorkspace key="people" people={people} selected={search.row} go={go} searchRef={searchRef} narrowRecord={narrowRecord} setNarrowRecord={setNarrowRecord} />
+        ) : data ? (
           <Workspace
             key={table}
             data={data}
+            ideas={ideas}
             selected={search.row}
             go={go}
             searchRef={searchRef}
@@ -199,11 +234,46 @@ function Unknown({ table }: { table: string }) {
   )
 }
 
+// A link inside a row must not also select the row.
+const stop = (e: React.MouseEvent) => e.stopPropagation()
+
+/** A cell that points at another thing shows that thing, as a link: the startup, the entry, the download, the run. */
+function foreignKey(name: string, v: DbRow[string]): React.ReactNode | null {
+  if (v === null || v === undefined || v === '') return null
+  if (name === 'startup_id' && typeof v === 'string')
+    return (
+      <Link to="/startups/$id" params={{ id: v }} onClick={stop} className="text-glaze underline">
+        {v}
+      </Link>
+    )
+  if (name === 'entry_id' && typeof v === 'string')
+    return (
+      <Link to="/portal/entries" search={{ entry: v }} onClick={stop} className="font-mono text-[0.8125rem] text-glaze underline">
+        {v}
+      </Link>
+    )
+  if ((name === 'first_download' || name === 'last_download') && typeof v === 'number')
+    return (
+      <Link to="/portal/database" search={{ table: 'downloads', row: String(v) }} onClick={stop} className="text-glaze underline tabular-nums">
+        download {v}
+      </Link>
+    )
+  if (name === 'run_id' && typeof v === 'string')
+    return (
+      <Link to="/portal" search={{ run: v }} onClick={stop} className="font-mono text-[0.8125rem] text-glaze underline">
+        …{v.slice(-4)}
+      </Link>
+    )
+  return null
+}
+
 /** One grid cell: short and single-line; the record pane shows the value in full. */
 function Cell({ col, v }: { col: DbColumn; v: DbRow[string] }) {
   if (v === null || v === undefined || v === '') return <EmptyValue />
   if (col.secret) return <span>••••</span>
   if (col.blob) return <span className="tabular-nums">{`${(Number(v) / 1024).toFixed(0)} KB`}</span>
+  const fk = foreignKey(col.name, v)
+  if (fk) return fk
   if (typeof v === 'number') return <span className="tabular-nums">{v}</span>
   const id = idText(col.name, v)
   if (id)
@@ -219,6 +289,7 @@ function Cell({ col, v }: { col: DbColumn; v: DbRow[string] }) {
 
 function Workspace({
   data,
+  ideas,
   selected,
   go,
   searchRef,
@@ -226,6 +297,7 @@ function Workspace({
   setNarrowRecord,
 }: {
   data: Data
+  ideas: IdeaCheckRow[] | null
   selected: string | undefined
   go: (next: Partial<Search>, replace?: boolean) => void
   searchRef: React.RefObject<HTMLInputElement | null>
@@ -344,7 +416,79 @@ function Workspace({
           <ChevronLeft className="size-4" aria-hidden />
           Back to {name.toLowerCase()}
         </button>
-        <RecordPane table={data.table} rowKey={current} />
+        {ideas ? <IdeaCheckRecord check={ideas.find((c) => c.id === current)} /> : <RecordPane table={data.table} rowKey={current} />}
+      </aside>
+    </>
+  )
+}
+
+/** People: founders grouped by person, searchable by any spelling; the pane shows a person's startups. */
+function PeopleWorkspace({
+  people,
+  selected,
+  go,
+  searchRef,
+  narrowRecord,
+  setNarrowRecord,
+}: {
+  people: People
+  selected: string | undefined
+  go: (next: Partial<Search>, replace?: boolean) => void
+  searchRef: React.RefObject<HTMLInputElement | null>
+  narrowRecord: boolean
+  setNarrowRecord: (v: boolean) => void
+}) {
+  const ids = useMemo(() => people.rows.map((p) => p.slug), [people.rows])
+  const current = selected && ids.includes(selected) ? selected : ids[0]
+  useDeskKeys({ ids, current, select: (id) => go({ row: id }, true), search: searchRef })
+  const th = 'h-[34px] border-b border-edge px-3 text-start text-[0.8125rem] font-normal whitespace-nowrap text-ink-2'
+  const td = 'h-9 border-b border-hairline px-3 text-[0.875rem] text-ink'
+  return (
+    <>
+      <section aria-label="People" className={cn('min-h-0 min-w-0 overflow-y-auto', narrowRecord && 'max-[1099px]:hidden')}>
+        {people.rows.length === 0 ? (
+          <p className="p-6 text-[0.875rem] text-ink">{people.q ? `No one matches “${people.q}”.` : 'No people.'}</p>
+        ) : (
+          <table className="w-full">
+            <thead className="sticky top-0 bg-canvas">
+              <tr>
+                <th className={th}>Name</th>
+                <th className={th}>Startups</th>
+                <th className={th}>Other spellings</th>
+              </tr>
+            </thead>
+            <tbody>
+              {people.rows.map((p) => {
+                const on = p.slug === current
+                return (
+                  <tr
+                    key={p.slug}
+                    aria-selected={on}
+                    onClick={() => (go({ row: p.slug }, true), setNarrowRecord(true))}
+                    className={cn('cursor-pointer hover:bg-surface', on && 'bg-surface [&>td:first-child]:shadow-[inset_3px_0_0_var(--ink)]')}
+                  >
+                    <td className={td}>{p.name}</td>
+                    <td className={cn(td, 'tabular-nums')}>{p.startups.length}</td>
+                    <td className={cn(td, 'max-w-[340px] truncate')}>{p.spellings.length ? p.spellings.join(', ') : <EmptyValue />}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        )}
+      </section>
+      <aside
+        aria-label="Selected person"
+        className={cn(
+          'grid min-h-0 min-w-0 content-start gap-[18px] overflow-y-auto overscroll-contain border-edge px-5 py-4 min-[1100px]:border-s',
+          !narrowRecord && 'max-[1099px]:hidden',
+        )}
+      >
+        <button type="button" onClick={() => setNarrowRecord(false)} className="flex items-center gap-1 text-[0.875rem] text-glaze min-[1100px]:hidden">
+          <ChevronLeft className="size-4" aria-hidden />
+          Back to people
+        </button>
+        <PersonRecord person={people.rows.find((p) => p.slug === current)} />
       </aside>
     </>
   )

@@ -15,17 +15,16 @@ function requireOperator() {
 }
 
 /*
- * The Database view lists the pipeline's tables by the stage that writes them, plus the runner and keys.
- * Internal tables (startup_keys, migrations, the search index and the vector table with its shadow tables) are not listed.
+ * The Database view lists the tables by what kind of thing they hold (docs/DATA.md): what the registry published, what
+ * Athar derived from it, what Athar observed or computed, and the system's own records. People is not a table: it is
+ * founders grouped by person, listed by the page from listPeople. Internal tables (startup_keys, migrations, the search
+ * index, the vector table with its shadow tables, run steps and key values) are not listed.
  */
 const STAGES: [string, string[]][] = [
-  ['Collect', ['downloads', 'entries']],
-  ['Build', ['startups', 'founders']],
-  ['Check', ['website_checks']],
-  ['Prepare', ['prepared_texts', 'ai_usage']],
-  ['Embed', ['embedding_meta']],
-  ['Runner', ['runs', 'run_steps']],
-  ['Keys', ['ai_keys']],
+  ['As published', ['downloads', 'entries']],
+  ['Derived', ['startups', 'founders']],
+  ['Observed', ['website_checks', 'prepared_texts', 'embedding_meta', 'idea_checks']],
+  ['System', ['runs', 'ai_usage']],
 ]
 const NOT_BUILT: string[] = []
 const STAGE_OF = new Map(STAGES.flatMap(([stage, names]) => names.map((n) => [n, stage] as const)))

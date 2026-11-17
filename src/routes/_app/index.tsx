@@ -1,8 +1,11 @@
 import { Link, createFileRoute, getRouteApi, useNavigate, useRouter } from '@tanstack/react-router'
-import { ArrowRight, Bookmark, BookmarkCheck, CornerDownLeft } from 'lucide-react'
+import { ArrowRight, Bookmark, BookmarkCheck } from 'lucide-react'
 import { useState } from 'react'
 
 import { TileMark } from '@/components/athar/tile-mark'
+import { AILoader } from '@/components/smoothui/ai-loader'
+import { AIPromptInput } from '@/components/smoothui/ai-prompt-input'
+import { AISuggestions } from '@/components/smoothui/ai-suggestions'
 import { cn } from '@/lib/utils'
 import { getWallCards, type RegistryCard } from '#/server/api/app'
 import { getIdeaCheck, runIdeaCheck, saveIdeaCheck, type IdeaMatch } from '#/server/api/idea'
@@ -41,53 +44,26 @@ function AskForm({ initial, compact }: { initial?: string; compact?: boolean }) 
   const [text, setText] = useState(initial ?? '')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
+  const ask = async (idea: string) => {
+    setBusy(true)
+    setError(undefined)
+    try {
+      const { id } = await runIdeaCheck({ data: idea })
+      await navigate({ to: '/', search: { check: id } })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+  const short = text.trim().length < 12
   return (
-    <form
-      role="search"
-      onSubmit={async (e) => {
-        e.preventDefault()
-        setBusy(true)
-        setError(undefined)
-        try {
-          const { id } = await runIdeaCheck({ data: text })
-          await navigate({ to: '/', search: { check: id } })
-        } catch (err) {
-          setError(err instanceof Error ? err.message : String(err))
-        } finally {
-          setBusy(false)
-        }
-      }}
-      className="grid gap-3"
-    >
-      <label className={cn('flex items-center gap-3 rounded-full border border-edge bg-surface ps-6 pe-2 transition-colors focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-glaze focus-within:outline', compact ? 'h-14' : 'h-16 sm:h-[4.5rem]')}>
-        <span className="sr-only">Describe your idea</span>
-        <input
-          dir="auto"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="Describe your idea in a sentence"
-          className={cn('min-w-0 flex-1 bg-transparent outline-none placeholder:text-ink-2', compact ? 'text-base' : 'text-lg sm:text-xl')}
-        />
-        <button
-          type="submit"
-          disabled={busy || text.trim().length < 12}
-          className="inline-flex h-11 shrink-0 items-center gap-2 rounded-full bg-glaze px-5 text-sm font-medium text-glaze-ink transition-opacity hover:bg-glaze-hover disabled:cursor-not-allowed disabled:bg-surface-raised disabled:text-ink-2 motion-reduce:transition-none"
-        >
-          {busy ? 'Reading…' : 'Ask'} <CornerDownLeft className="size-4" aria-hidden />
-        </button>
-      </label>
-      {error && <p className="ps-6 text-sm text-destructive">{error}</p>}
-      {!compact && (
-        <ul className="flex flex-wrap gap-x-5 gap-y-1 ps-6 text-[0.9375rem] text-ink-2">
-          {EXAMPLES.map((ex) => (
-            <li key={ex}>
-              <button type="button" dir="auto" onClick={() => setText(ex)} className="min-h-8 underline decoration-edge underline-offset-4 hover:text-ink hover:decoration-ink">
-                {ex}
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+    <form role="search" onSubmit={(e) => (e.preventDefault(), ask(text.trim()))} className="grid gap-4">
+      <AIPromptInput aria-label="Describe your idea" value={text} onValueChange={setText} onSubmit={ask} busy={busy} minLength={12} placeholder="Describe your idea in a sentence" size={compact ? 'md' : 'lg'}>
+        {busy ? <AILoader label="Reading all the startups…" /> : text && short ? 'A little more: at least a short sentence.' : 'Enter to ask · Shift+Enter for a new line'}
+      </AIPromptInput>
+      {error && <p className="ps-5 text-[0.9375rem] text-destructive">{error}</p>}
+      {!compact && <AISuggestions className="ps-1" label="Or try one" suggestions={EXAMPLES} onSelect={setText} />}
     </form>
   )
 }
@@ -244,7 +220,7 @@ function Answer({ report, cards }: { report: Report; cards: RegistryCard[] }) {
                 ? report.weakTotal > 0
                   ? `No startup shares more than one word with your idea. ${report.weakTotal} share a single word, which is not enough to call them precedents.`
                   : 'No startup in the registry uses the words of your idea.'
-                : `${n} ${n === 1 ? 'startup shares' : 'startups share'} two or more words with your idea. The closest are below, each with the registry row it rests on.`}
+                : n === 1 ? 'One startup shares two or more words with your idea. It is below, with the registry row it rests on.' : `${n} startups share two or more words with your idea. The closest are below, each with the registry row it rests on.`}
             </p>
           </div>
           <Crowd report={report} />
@@ -319,9 +295,9 @@ function Crowd({ report }: { report: Report }) {
   return (
     <aside aria-label="How crowded" className="grid content-end gap-3 self-end">
       <p className="text-sm leading-6">
-        {close.length === report.strong ? `${close.length} close matches.` : `The ${close.length} closest.`}{' '}
+        {close.length === report.strong ? (close.length === 1 ? 'One close match.' : `${close.length} close matches.`) : `The ${close.length} closest.`}{' '}
         {report.sector && inSector > 1 && <>{inSector} are {report.sector.name}. </>}
-        {years.length > 0 && (first === last ? `All labelled in ${first}.` : `Labelled between ${first} and ${last}${last < YEARS[YEARS.length - 1] ? ', none since' : ''}.`)}
+        {years.length > 0 && (first === last ? (years.length === 1 ? `Labelled in ${first}.` : `All labelled in ${first}.`) : `Labelled between ${first} and ${last}${last < YEARS[YEARS.length - 1] ? ', none since' : ''}.`)}
       </p>
       <ol className="grid grid-cols-7 gap-1" aria-label="Close matches by year labelled">
         {YEARS.map((y) => {

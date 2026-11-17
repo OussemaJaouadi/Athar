@@ -1,6 +1,8 @@
 import { Link, useRouterState } from '@tanstack/react-router'
 import type { LucideIcon } from 'lucide-react'
 
+import { cn } from '@/lib/utils'
+
 /** `also`: other path prefixes that belong to this tab (a run page under Pipeline). */
 export type NavItem = { to: string; label: string; Icon?: LucideIcon; exact?: boolean; also?: string[] }
 
@@ -14,12 +16,12 @@ export const NAV: NavItem[] = [
  * The one bar for both rooms: brand (with an optional mark such as "Operator"), the room's nav, then whatever the
  * page adds (search, account menu).
  */
-export function SiteHeader({ children, nav = NAV, home = '/', mark }: { children?: React.ReactNode; nav?: NavItem[]; home?: string; mark?: string }) {
+export function SiteHeader({ children, nav = NAV, home = '/', mark, compact }: { children?: React.ReactNode; nav?: NavItem[]; home?: string; mark?: string; compact?: boolean }) {
   const path = useRouterState({ select: (s) => s.location.pathname })
   return (
-    <header className="sticky top-0 z-30 border-b border-hairline bg-canvas">
-      <div className="flex flex-wrap items-center gap-x-4 px-4 sm:h-14 sm:flex-nowrap sm:gap-8 sm:px-8">
-        <Link to={home} className="flex h-14 shrink-0 items-center gap-2 font-display text-lg font-semibold text-ink no-underline">
+    <header className="sticky top-0 z-30 shrink-0 border-b border-hairline bg-canvas">
+      <div className={cn('flex flex-wrap items-center gap-x-4 px-4 sm:flex-nowrap sm:gap-8', compact ? 'sm:h-12 sm:px-5' : 'sm:h-14 sm:px-8')}>
+        <Link to={home} className={cn('flex shrink-0 items-center gap-2 font-display text-lg font-semibold text-ink no-underline', compact ? 'h-12' : 'h-14')}>
           <img src="/athar.svg" alt="" width={28} height={28} />
           Athar
           {mark && <span className="ms-1 border-s border-edge ps-3 font-sans text-sm font-medium text-ink-2">{mark}</span>}

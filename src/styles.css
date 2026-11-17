@@ -13,7 +13,6 @@
   }
 }
 
-
 /*
  * Athar: an archive of Tunisian ventures that shows the chain behind every fact.
  * Tokens from docs/DESIGN.md (Qallaline palette, 60-30-10), light and dark.
@@ -25,6 +24,9 @@
   --ink: #2a211c;
   --ink-2: #6b5f55;
   --ink-3: #6b5f55;
+  /* JSON in the portal (ReUI Code Block, css-variables theme): the only coloured text besides links. */
+  --code-num: #2b5f9e;
+  --code-nil: #a13c22;
   --hairline: #d6d0c4;
   --control: #8a8076;
   --edge: #8a8076;
@@ -75,6 +77,15 @@
   --input: var(--control);
   --ring: var(--glaze);
   --radius: 0.25rem;
+  --destructive-foreground: var(--color-red-800);
+  --success: var(--color-emerald-500);
+  --success-foreground: var(--color-emerald-900);
+  --info: var(--color-violet-500);
+  --info-foreground: var(--color-violet-900);
+  --warning: var(--color-yellow-500);
+  --warning-foreground: var(--color-yellow-900);
+  --invert: var(--color-zinc-900);
+  --invert-foreground: var(--color-zinc-50);
 }
 
 /* Light and dark are each designed; an explicit choice (data-theme) beats the system. */
@@ -85,6 +96,8 @@
   --ink: #f8f6f1;
   --ink-2: #d3c9bd;
   --ink-3: #a89c90;
+  --code-num: #7fb4ea;
+  --code-nil: #ef8a6e;
   --hairline: #4d453d;
   --control: #8f8479;
   --edge: #8f8479;
@@ -118,7 +131,6 @@
   color-scheme: dark;
 }
 
-
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
   --canvas: #171412;
@@ -127,6 +139,8 @@
   --ink: #f8f6f1;
   --ink-2: #d3c9bd;
   --ink-3: #a89c90;
+  --code-num: #7fb4ea;
+  --code-nil: #ef8a6e;
   --hairline: #4d453d;
   --control: #8f8479;
   --edge: #8f8479;
@@ -220,6 +234,15 @@
   --radius-md: var(--radius);
   --radius-lg: calc(var(--radius) * 2);
   --radius-xl: calc(var(--radius) * 2);
+  --color-invert-foreground: var(--invert-foreground);
+  --color-invert: var(--invert);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-warning: var(--warning);
+  --color-info-foreground: var(--info-foreground);
+  --color-info: var(--info);
+  --color-success-foreground: var(--success-foreground);
+  --color-success: var(--success);
+  --color-destructive-foreground: var(--destructive-foreground);
 }
 
 /*
@@ -292,4 +315,30 @@
     outline: 2px solid var(--glaze);
     outline-offset: 2px;
   }
+}
+
+.dark {
+  --destructive-foreground: var(--color-red-600);
+  --success: var(--color-emerald-500);
+  --success-foreground: var(--color-emerald-600);
+  --info: var(--color-violet-500);
+  --info-foreground: var(--color-violet-600);
+  --warning: var(--color-yellow-500);
+  --warning-foreground: var(--color-yellow-600);
+  --invert: var(--color-zinc-700);
+  --invert-foreground: var(--color-zinc-50);
+}
+
+/* ReUI Code Block on Athar tokens: keys ink-2, punctuation ink-3, strings ochre, numbers steel, null terracotta. */
+:root {
+  --code-foreground: var(--ink-3);
+  --code-token-keyword: var(--ink-2);
+  --code-token-punctuation: var(--ink-3);
+  --code-token-string: var(--ochre-text);
+  --code-token-string-expression: var(--ochre-text);
+  --code-token-constant: var(--code-num);
+  --code-token-comment: var(--ink-3);
+  --code-token-parameter: var(--ink);
+  --code-token-function: var(--ink);
+  --code-token-link: var(--glaze);
 }

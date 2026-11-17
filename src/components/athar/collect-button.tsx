@@ -3,7 +3,7 @@ import { LoaderCircle, RefreshCw } from 'lucide-react'
 import { useState } from 'react'
 
 import { useLabToaster } from '@/components/athar/lab'
-import { opsPrimary } from '@/components/athar/ops'
+import { deskPrimary as opsPrimary } from '@/components/athar/desk'
 import { cn } from '@/lib/utils'
 import { startOperation } from '#/server/api/portal'
 

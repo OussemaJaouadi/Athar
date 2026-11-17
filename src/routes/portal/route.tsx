@@ -26,8 +26,8 @@ const NAV: NavItem[] = [
 function Lab() {
   return (
     <LabInstruments>
-      <div className="flex min-h-dvh flex-col bg-canvas text-sm text-ink [&_a]:underline-offset-4 [&_main]:w-full xl:[&_main]:pe-[calc(var(--ops-drawer,0px)+2rem)] [&_main]:transition-[padding] [&_main]:duration-300 motion-reduce:[&_main]:transition-none [&_main]:content-start [&_main]:pb-20">
-        <SiteHeader nav={NAV} home="/portal" mark="Operator">
+      <div className="flex h-dvh flex-col bg-canvas text-[0.875rem] text-ink [&_a]:underline-offset-[3px]">
+        <SiteHeader nav={NAV} home="/portal" mark="Operator" compact>
           <AccountMenu role="operator" room="operator" />
         </SiteHeader>
         <Outlet />

@@ -1,5 +1,5 @@
 import { useRouter } from '@tanstack/react-router'
-import { BookOpen, LogIn, ShieldCheck } from 'lucide-react'
+import { BookOpen, KeyRound, LogIn, ShieldCheck, Table2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { applyThemeChoice, readThemeChoice, type ThemeChoice } from '@/components/athar/theme'
@@ -32,7 +32,11 @@ export function AccountMenu({ role, room = 'reading' }: { role: Role; room?: 're
       }}
       items={
         room === 'operator'
-          ? [{ label: 'Reading room', icon: <BookOpen className="size-4" aria-hidden />, href: '/' }]
+          ? [
+              { label: 'AI keys', icon: <KeyRound className="size-4" aria-hidden />, href: '/portal/keys' },
+              { label: 'Raw tables', icon: <Table2 className="size-4" aria-hidden />, href: '/portal/database' },
+              { label: 'Reading room', icon: <BookOpen className="size-4" aria-hidden />, href: '/' },
+            ]
           : operator
           ? [{ label: 'Operator portal', icon: <ShieldCheck className="size-4" aria-hidden />, href: '/portal' }]
           : [{ label: 'Sign in as operator', icon: <LogIn className="size-4" aria-hidden />, href: '/sign-in' }]

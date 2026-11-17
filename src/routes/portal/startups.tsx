@@ -1,17 +1,21 @@
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
-import { Search } from 'lucide-react'
+import { Check, Copy, Search } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { Desk, DeskBar, DeskEmpty, DeskGroup, DeskItem, DeskPane, Fields, JsonBlock, Kbd, PaneSection, deskInput, useDeskKeys } from '@/components/athar/desk'
+import { Desk, DeskBar, DeskEmpty, DeskGroup, DeskItem, DeskPane, DeskSelect, Fields, JsonBlock, Kbd, PaneSection, deskBtn, deskInput, useDeskKeys } from '@/components/athar/desk'
+import { GROUP_NAME, costOf, groupFacts } from '@/components/athar/quality-facts'
 import { Differences, HowRead, Namesakes, Observed } from '@/components/athar/ops-startup-sections'
 import { Disclosure } from '@/components/athar/startup-title'
 import { day, plural } from '@/components/athar/trace-parts'
 import { cn } from '@/lib/utils'
-import { getEntry, getFactRows, getFoundersOf, getLeadEntry, searchStartupsOps } from '#/server/api/ops'
+import { getCorpus } from '#/server/api/app'
+import { getEntry, getFactRows, getFoundersOf, getLeadEntry, getQualitySummary, searchStartupsOps } from '#/server/api/ops'
+import type { FactRow, QualityFact } from '#/server/pipeline/facts'
 import { getStartupPage } from '#/server/api/startup'
 import type { EntryView } from '#/server/pipeline/state'
 
-type SearchParams = { q?: string; startup?: string; entry?: string }
+// fact: a quality fact chosen in the facts column; the list is then the startups behind it.
+type SearchParams = { q?: string; startup?: string; entry?: string; fact?: string }
 
 // The note codes an operator reads first, with the words the list uses for them.
 const NOTE: Record<string, string> = {
@@ -27,27 +31,49 @@ const NOTE: Record<string, string> = {
 }
 const DEFAULT_CODES = ['listed_more_than_once', 'other_name', 'other_sector', 'website_text_removed', 'second_website']
 
-type Item = { id: string; name: string; sector: string | null; entries: number | null; notes: string[]; withdrawn: boolean }
+// `entry`: a fact row that names an entry and no startup; selecting it opens the startup that entry belongs to.
+type Item = { id: string; name: string; sector: string | null; entries: number | null; notes: string[]; withdrawn: boolean; entry?: string; value?: string | null; labelled?: string | null }
 
 export const Route = createFileRoute('/portal/startups')({
   validateSearch: (s: Record<string, unknown>): SearchParams => ({
     q: typeof s.q === 'string' && s.q.trim() ? s.q : undefined,
     startup: typeof s.startup === 'string' && s.startup ? s.startup : undefined,
     entry: typeof s.entry === 'string' && s.entry ? s.entry : undefined,
+    fact: typeof s.fact === 'string' && s.fact ? s.fact : undefined,
   }),
-  loaderDeps: ({ search }) => ({ q: search.q ?? '', startup: search.startup, entry: search.entry }),
+  loaderDeps: ({ search }) => ({ q: search.q ?? '', startup: search.startup, entry: search.entry, fact: search.fact }),
   loader: async ({ deps }) => {
-    // The list: a search, else the startups an operator should read first (more than one entry, or a note that says
-    // the registry and Athar's reading differ).
-    const items: Item[] = deps.q
-      ? (await searchStartupsOps({ data: deps.q })).map((h) => ({ id: h.id, name: h.name, sector: h.sector, entries: h.entries, notes: h.notes, withdrawn: h.withdrawn }))
-      : await defaultItems()
+    const [facts, corpus] = await Promise.all([getQualitySummary(), getCorpus()])
+    // The list: a search, else the startups behind the chosen fact, else the ones an operator should read first
+    // (more than one entry, or a note that says the registry and Athar's reading differ).
+    const fact = !deps.q && deps.fact ? facts.find((f) => f.code === deps.fact) : undefined
+    let factRows: FactRow[] = []
+    let factTotal = 0
+    let items: Item[]
+    if (deps.q) {
+      items = (await searchStartupsOps({ data: deps.q })).map((h) => ({ id: h.id, name: h.name, sector: h.sector, entries: h.entries, notes: h.notes, withdrawn: h.withdrawn }))
+    } else if (fact) {
+      const result = await getFactRows({ data: fact.code })
+      factTotal = result?.total ?? 0
+      // An unreachable website's value reads "url · detail"; the detail is the fact itself, so only the address stays.
+      factRows = (result?.rows ?? []).map((r) => (fact.code.startsWith('unreachable:') && r.value ? { ...r, value: r.value.replace(/ · [^·]*$/, '') } : r))
+      const seen = new Set<string>()
+      items = []
+      factRows.forEach((r, i) => {
+        const id = r.startupId ?? (r.entryId ? `entry:${r.entryId}` : `row:${i}`)
+        if (seen.has(id)) return
+        seen.add(id)
+        items.push({ id, name: r.name, sector: null, entries: null, notes: [], withdrawn: false, entry: r.startupId ? undefined : r.entryId, value: r.value, labelled: r.labelled })
+      })
+    } else {
+      items = await defaultItems()
+    }
     // The selected startup: from the URL, else from an entry in the URL, else the first item.
     let startupId = deps.startup
     if (!startupId && deps.entry) startupId = (await getEntry({ data: deps.entry }))?.startup?.id
-    startupId ??= items[0]?.id
+    if (!startupId && items[0]) startupId = items[0].entry ? (await getEntry({ data: items[0].entry }))?.startup?.id : items[0].id.startsWith('row:') ? undefined : items[0].id
     const detail = startupId ? await loadStartup(startupId) : null
-    return { items, startupId, detail }
+    return { items, startupId, detail, facts, fact, factRows, factTotal, startups: corpus.startups }
   },
   component: StartupsPage,
 })
@@ -79,7 +105,7 @@ async function loadStartup(id: string) {
 type Detail = NonNullable<Awaited<ReturnType<typeof loadStartup>>>
 
 function StartupsPage() {
-  const { items, startupId, detail } = Route.useLoaderData()
+  const { items, startupId, detail, facts, fact, factRows, factTotal, startups } = Route.useLoaderData()
   const search = Route.useSearch()
   const navigate = useNavigate({ from: '/portal/startups' })
   const searchRef = useRef<HTMLInputElement>(null)
@@ -88,28 +114,45 @@ function StartupsPage() {
   // Search as you type; the URL keeps the query.
   useEffect(() => {
     if (query === (search.q ?? '')) return
-    const t = setTimeout(() => navigate({ search: (s) => ({ ...s, q: query.trim() || undefined, startup: undefined, entry: undefined }), replace: true }), 220)
+    const t = setTimeout(() => navigate({ search: (s) => ({ ...s, q: query.trim() || undefined, fact: query.trim() ? undefined : s.fact, startup: undefined, entry: undefined }), replace: true }), 220)
     return () => clearTimeout(t)
   }, [query, search.q, navigate])
 
-  const select = useCallback((id: string) => navigate({ search: (s) => ({ ...s, startup: id, entry: undefined }) }), [navigate])
+  const select = useCallback(
+    (id: string) => {
+      if (id.startsWith('row:')) return
+      navigate({ search: (s) => (id.startsWith('entry:') ? { ...s, startup: undefined, entry: id.slice(6) } : { ...s, startup: id, entry: undefined }) })
+    },
+    [navigate],
+  )
+  const pickFact = useCallback(
+    (code: string | undefined) => {
+      setQuery('')
+      navigate({ search: { fact: code } })
+    },
+    [navigate],
+  )
+  const grouped = useMemo(() => groupFacts(facts), [facts])
+  const isSelected = (it: Item) => it.id === startupId || (!!it.entry && it.entry === search.entry)
   const ids = useMemo(() => items.map((i) => i.id), [items])
   useDeskKeys({ ids, current: startupId, select, search: searchRef })
 
   const list = (
     <div role="list" aria-label="Startups">
-      {!search.q && items.length > 0 && <DeskGroup label="Read these first: more than one entry, or read differently from the registry" count={items.length} />}
+      {fact && !search.q && <FactHeader fact={fact} rows={factRows} total={factTotal} />}
+      {!fact && !search.q && items.length > 0 && <DeskGroup label="Read these first: more than one entry, or read differently from the registry" count={items.length} />}
       {items.length === 0 ? (
-        <p className="px-4 py-6 text-[0.875rem] text-ink">{search.q ? `No startup matches “${search.q}”.` : 'Type a startup name, its slug, its website or the start of an entry id.'}</p>
+        <p className="px-4 py-6 text-[0.875rem] text-ink">{search.q ? `No startup matches “${search.q}”.` : fact ? 'Nothing in the data matches this today.' : 'Type a startup name, its slug, its website or the start of an entry id.'}</p>
       ) : (
         items.map((it) => (
           <div role="listitem" key={it.id}>
             <DeskItem
-              selected={it.id === startupId}
+              selected={isSelected(it)}
               onSelect={() => select(it.id)}
-              title={it.name}
-              qualifier={it.sector ?? undefined}
-              detail={[it.entries !== null ? plural(it.entries, 'entry', 'entries') : null, ...it.notes.map((n) => NOTE[n] ?? n), it.withdrawn ? 'no longer in the registry' : null].filter(Boolean).join(' · ')}
+              title={<span dir="auto">{it.name}</span>}
+              qualifier={it.sector ?? (fact ? month(it.labelled ?? null) ?? undefined : undefined)}
+              detailMono={!!fact && !!it.value}
+              detail={fact ? (it.value ?? undefined) : [it.entries !== null ? plural(it.entries, 'entry', 'entries') : null, ...it.notes.map((n) => NOTE[n] ?? n), it.withdrawn ? 'no longer in the registry' : null].filter(Boolean).join(' · ')}
             />
           </div>
         ))
@@ -119,7 +162,7 @@ function StartupsPage() {
 
   return (
     <main className="flex min-h-0 flex-1 flex-col">
-      <DeskBar title="Startups" facts={search.q ? plural(items.length, 'match', 'matches') + (items.length === 30 ? ' (first 30)' : '') : undefined}>
+      <DeskBar title="Startups" facts={search.q ? plural(items.length, 'match', 'matches') + (items.length === 30 ? ' (first 30)' : '') : `${startups.toLocaleString('en-GB')} startups`}>
         <label className="relative flex items-center">
           <span className="sr-only">Search startups by name, slug, website or entry id</span>
           <Search className="pointer-events-none absolute start-2.5 size-4 text-ink-2" aria-hidden />
@@ -138,7 +181,29 @@ function StartupsPage() {
             <Kbd>/</Kbd>
           </span>
         </label>
+        {/* Narrow screens have no room for the facts column; the same choice as a dropdown. */}
+        <div className="w-72 min-[1100px]:hidden">
+          <DeskSelect
+            label="Show startups by fact"
+            value={fact?.code ?? '-'}
+            onChange={(v) => pickFact(v === '-' ? undefined : v)}
+            options={[{ value: '-', label: 'Read these first' }, ...grouped.flatMap((g) => g.facts.map((f) => ({ value: f.code, label: f.label, hint: f.count ? `${f.count.toLocaleString('en-GB')} · ${GROUP_NAME[g.group]}` : 'none' })))]}
+          />
+        </div>
       </DeskBar>
+      <div className="flex min-h-0 flex-1">
+        <nav aria-label="Facts about the data" className="hidden w-[264px] shrink-0 overflow-y-auto overscroll-contain border-e border-edge min-[1100px]:block">
+          <FactRowButton selected={!fact} label="Read these first" onSelect={() => pickFact(undefined)} />
+          {grouped.map((g) => (
+            <div key={g.group}>
+              <p className="border-b border-hairline px-4 pt-3 pb-1.5 text-[0.8125rem] text-ink-2">{GROUP_NAME[g.group]}</p>
+              {g.facts.map((f) => (
+                <FactRowButton key={f.code} selected={fact?.code === f.code} label={f.label} count={f.count} of={startups} onSelect={() => pickFact(f.code)} />
+              ))}
+            </div>
+          ))}
+        </nav>
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <Desk
         storageKey="startups"
         showPaneOnNarrow={!!search.startup || !!search.entry}
@@ -147,7 +212,67 @@ function StartupsPage() {
         list={list}
         pane={detail ? <StartupPane key={detail.page.startup.id} d={detail} openEntry={search.entry} /> : <DeskEmpty>{startupId ? 'No startup with this id.' : 'Search for a startup to see why Athar says what it says about it.'}</DeskEmpty>}
       />
+        </div>
+      </div>
     </main>
+  )
+}
+
+/** One fact in the facts column: its words, then its count; the chosen one carries the desk's ink bar. */
+function FactRowButton({ selected, label, count, of, onSelect }: { selected: boolean; label: string; count?: number; of?: number; onSelect: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      aria-current={selected ? 'true' : undefined}
+      className={cn(
+        'flex w-full items-baseline gap-3 border-b border-hairline px-4 py-2 text-start text-[0.875rem] text-ink',
+        selected ? 'bg-surface shadow-[inset_3px_0_0_var(--ink)]' : 'hover:bg-surface',
+      )}
+    >
+      <span className="min-w-0 flex-1">{label}</span>
+      {count !== undefined && (
+        <span className="shrink-0 text-[0.8125rem] text-ink-2 tabular-nums" title={of && count ? `${Math.round((count / of) * 100)}% of startups` : undefined}>
+          {count ? count.toLocaleString('en-GB') : 'none'}
+        </span>
+      )}
+    </button>
+  )
+}
+
+const csvCell = (v: string | null | undefined) => (v === null || v === undefined ? '' : /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v)
+
+/** Above the list when a fact is chosen: what the fact costs a reader, and the rows as CSV. */
+function FactHeader({ fact, rows, total }: { fact: QualityFact; rows: FactRow[]; total: number }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <div className="grid gap-2 border-b border-edge px-4 py-3">
+      <p className="text-[0.875rem] text-ink">{costOf(fact.code, fact.label, fact.count)}</p>
+      {rows.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            className={deskBtn}
+            onClick={() => {
+              const csv = ['startup,startup_id,value,labelled,observed_on', ...rows.map((r) => [r.name, r.startupId, r.value, r.labelled, r.observedOn].map(csvCell).join(','))].join('\n')
+              navigator.clipboard
+                ?.writeText(csv)
+                .then(() => {
+                  setCopied(true)
+                  setTimeout(() => setCopied(false), 1500)
+                })
+                .catch(() => setCopied(false))
+            }}
+          >
+            {copied ? <Check aria-hidden /> : <Copy aria-hidden />}
+            {copied ? 'Copied' : 'Copy as CSV'}
+          </button>
+          <span className="text-[0.8125rem] text-ink-2 tabular-nums">
+            {total > rows.length ? `showing ${rows.length.toLocaleString('en-GB')} of ${total.toLocaleString('en-GB')}` : 'read from the data as it is today'}
+          </span>
+        </div>
+      )}
+    </div>
   )
 }
 

@@ -3,7 +3,7 @@ import { LoaderCircle, RefreshCw } from 'lucide-react'
 import { useState } from 'react'
 
 import { useLabToaster } from '@/components/athar/lab'
-import { deskPrimary as opsPrimary } from '@/components/athar/desk'
+import { deskPrimary } from '@/components/athar/desk'
 import { cn } from '@/lib/utils'
 import { startOperation } from '#/server/api/portal'
 
@@ -16,7 +16,7 @@ export function CollectButton({ running, again, className }: { running: boolean;
   return (
     <button
       type="button"
-      className={cn(opsPrimary, className)}
+      className={cn(deskPrimary, className)}
       disabled={busy}
       onClick={() => {
         setStarting(true)
@@ -24,14 +24,14 @@ export function CollectButton({ running, again, className }: { running: boolean;
           async () => {
             try {
               const { runId } = await startOperation({ data: 'collect' })
-              await navigate({ to: '/portal/runs/$runId', params: { runId } })
+              await navigate({ to: '/portal', search: { run: runId } })
             } finally {
               setStarting(false)
             }
           },
           {
             loading: 'Starting Collect',
-            success: ['Collect started', 'Follow it on the run page.'],
+            success: ['Collect started', 'It is selected in the list; its steps update as they run.'],
             error: (error) => [
               `Collect could not start: ${error instanceof Error ? error.message.replace(/[.\s]+$/, '') : String(error)}.`,
               'The stored registry is unchanged.',

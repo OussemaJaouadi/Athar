@@ -1,64 +1,83 @@
-import { createFileRoute, useRouter } from '@tanstack/react-router'
-import { CircleAlert, CircleCheck, LoaderCircle, RefreshCw } from 'lucide-react'
-import { useState } from 'react'
+import { createFileRoute, useNavigate, useRouter } from '@tanstack/react-router'
+import { CircleAlert, CircleCheck, FlaskConical, LoaderCircle, Plus } from 'lucide-react'
+import { useCallback, useState } from 'react'
 
-import { KeyForm } from '@/components/athar/key-form'
+import { Desk, DeskBar, DeskItem, DeskPane, Fields, deskBtn, useDeskKeys } from '@/components/athar/desk'
+import { AddKeyPane } from '@/components/athar/key-form'
 import { HoldToRemove, KeyNote } from '@/components/athar/key-ui'
 import { labTime } from '@/components/athar/lab'
-import { OpsHeading, OpsPage, opsGhost, opsRow, opsTd, opsTh } from '@/components/athar/ops'
-import { cn } from '@/lib/utils'
 import { PROVIDER_NAME } from '#/shared/key-models'
 import { isProvider } from '#/shared/providers'
 import { deleteKey, listKeyRows, retestKey, type KeyRow } from '#/server/api/keys'
 
+const ADD = 'add'
+type Search = { key?: string }
+
 export const Route = createFileRoute('/portal/keys')({
+  validateSearch: (s: Record<string, unknown>): Search => ({ key: typeof s.key === 'string' && s.key ? s.key : undefined }),
   loader: () => listKeyRows(),
   component: KeysPage,
 })
 
 const providerName = (p: string) => (isProvider(p) ? PROVIDER_NAME[p] : p)
+const lastTest = (k: KeyRow) => (k.last_tested_at ? `${k.last_test_ok === 1 ? 'passed' : 'failed'} ${labTime(k.last_tested_at)}` : 'never tested')
 
 function KeysPage() {
   const keys = Route.useLoaderData()
-  return (
-    <OpsPage
-      title="Keys"
-      lede="No part of Athar uses a key yet. Keys added here are ready for when description cleaning and similarity search are built."
-    >
-      <KeyForm />
-      <section aria-labelledby="saved-h" className="grid min-w-0 gap-2">
-        <OpsHeading id="saved-h">Saved keys</OpsHeading>
-        {keys.length === 0 ? <p className="text-[0.8125rem] text-ink">No keys yet.</p> : <KeyTable keys={keys} />}
-      </section>
-    </OpsPage>
-  )
-}
+  const search = Route.useSearch()
+  const navigate = useNavigate({ from: '/portal/keys' })
+  // "Add a key" is the first item; with no keys it is the only one and it is selected.
+  const ids = [ADD, ...keys.map((k) => k.id)]
+  const current = search.key && ids.includes(search.key) ? search.key : (keys[0]?.id ?? ADD)
+  const selected = keys.find((k) => k.id === current)
+  const select = useCallback((id: string) => navigate({ search: { key: id }, replace: true }), [navigate])
+  useDeskKeys({ ids, current, select })
 
-function KeyTable({ keys }: { keys: KeyRow[] }) {
-  const used = keys.some((k) => k.calls > 0)
   return (
-    <div className="overflow-x-auto rounded-md border border-edge">
-      <table className="w-full">
-        <thead className="bg-surface">
-          <tr>
-            {['Name', 'Provider', 'Model', 'Key', 'Last tested', ...(used ? ['Used'] : []), ''].map((h, i) => (
-              <th key={h || i} scope="col" className={opsTh}>
-                {h || <span className="sr-only">Remove</span>}
-              </th>
+    <main className="flex min-h-0 flex-1 flex-col">
+      <DeskBar title="Keys" facts={keys.length ? `${keys.length} ${keys.length === 1 ? 'key' : 'keys'} · no engine uses a key yet` : 'No keys yet'} />
+      <Desk
+        storageKey="keys"
+        showPaneOnNarrow={!!search.key}
+        onBack={() => navigate({ search: {}, replace: true })}
+        backLabel="All keys"
+        list={
+          <div role="list" aria-label="Keys">
+            <div role="listitem">
+              <DeskItem
+                selected={current === ADD}
+                onSelect={() => select(ADD)}
+                lead={<Plus className="size-4 shrink-0 text-ink" aria-hidden />}
+                title="Add a key"
+                detail="Tested with its provider before it is saved"
+              />
+            </div>
+            {keys.map((k) => (
+              <div role="listitem" key={k.id}>
+                <DeskItem
+                  selected={k.id === current}
+                  onSelect={() => select(k.id)}
+                  title={k.name}
+                  qualifier={providerName(k.provider)}
+                  detail={`${k.model} · ${lastTest(k)}`}
+                />
+              </div>
             ))}
-          </tr>
-        </thead>
-        <tbody>
-          {keys.map((k) => (
-            <KeyRowView key={k.id} k={k} used={used} />
-          ))}
-        </tbody>
-      </table>
-    </div>
+          </div>
+        }
+        pane={
+          selected ? (
+            <KeyPane key={selected.id} k={selected} position={`${keys.indexOf(selected) + 1} of ${keys.length}`} onRemoved={() => select(ADD)} />
+          ) : (
+            <AddKeyPane key="add" onSaved={select} />
+          )
+        }
+      />
+    </main>
   )
 }
 
-function KeyRowView({ k, used }: { k: KeyRow; used: boolean }) {
+function KeyPane({ k, position, onRemoved }: { k: KeyRow; position: string; onRemoved: () => void }) {
   const router = useRouter()
   const [testing, setTesting] = useState(false)
   const [fresh, setFresh] = useState<{ ok: boolean; message: string }>()
@@ -67,26 +86,16 @@ function KeyRowView({ k, used }: { k: KeyRow; used: boolean }) {
   const Icon = result?.ok ? CircleCheck : CircleAlert
 
   return (
-    <tr className={cn(opsRow, 'align-top')}>
-      <td className={cn(opsTd, 'font-medium whitespace-nowrap')}>{k.name}</td>
-      <td className={cn(opsTd, 'whitespace-nowrap')}>{providerName(k.provider)}</td>
-      <td className={cn(opsTd, 'font-mono wrap-anywhere')}>{k.model}</td>
-      <td className={cn(opsTd, 'font-mono whitespace-nowrap')}>{k.hint}</td>
-      <td className={cn(opsTd, 'min-w-64')}>
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          {result ? (
-            <span className="inline-flex items-center gap-1.5" title={result.ok ? undefined : result.message}>
-              <Icon className="size-3.5 shrink-0" aria-hidden />
-              <span className="sr-only">{result.ok ? 'Passed' : 'Failed'}, </span>
-              {k.last_tested_at && !fresh ? labTime(k.last_tested_at) : 'Just now'}
-            </span>
-          ) : (
-            <span>Never tested</span>
-          )}
+    <DeskPane
+      title={k.name}
+      statement="No engine uses a key yet."
+      position={position}
+      foot={
+        <>
           <button
             type="button"
             disabled={testing}
-            className={cn(opsGhost, 'h-7 px-1.5 disabled:cursor-wait')}
+            className={deskBtn}
             onClick={async () => {
               setTesting(true)
               try {
@@ -99,19 +108,9 @@ function KeyRowView({ k, used }: { k: KeyRow; used: boolean }) {
               }
             }}
           >
-            {testing ? <LoaderCircle className="animate-spin motion-reduce:animate-none" aria-hidden /> : <RefreshCw aria-hidden />}
-            {testing ? 'Testing…' : 'Test again'}
+            {testing ? <LoaderCircle className="animate-spin motion-reduce:animate-none" aria-hidden /> : <FlaskConical aria-hidden />}
+            {testing ? 'Testing…' : 'Test key'}
           </button>
-        </div>
-        {result && !result.ok && <p className="mt-1 text-ink">{result.message}</p>}
-      </td>
-      {used && (
-        <td className={cn(opsTd, 'whitespace-nowrap tabular-nums')}>
-          {k.calls ? `${k.calls.toLocaleString('en-GB')} calls · ${k.tokens.toLocaleString('en-GB')} tokens` : 'Not used'}
-        </td>
-      )}
-      <td className={cn(opsTd, 'py-1.5')}>
-        <div className="grid justify-items-end gap-1.5">
           <HoldToRemove
             label={k.name}
             onConfirm={async () => {
@@ -119,14 +118,39 @@ function KeyRowView({ k, used }: { k: KeyRow; used: boolean }) {
               try {
                 await deleteKey({ data: k.id })
                 await router.invalidate()
+                onRemoved()
               } catch (e) {
                 setRemoveError(e instanceof Error ? e.message : String(e))
               }
             }}
           />
           {removeError && <KeyNote ok={false}>Could not remove: {removeError.replace(/[.\s]+$/, '')}.</KeyNote>}
-        </div>
-      </td>
-    </tr>
+        </>
+      }
+    >
+      <Fields
+        fields={[
+          { label: 'Name', value: k.name },
+          { label: 'Provider', value: providerName(k.provider) },
+          { label: 'Model', value: k.model, mono: true },
+          { label: 'Key', value: k.hint, mono: true },
+          { label: 'Added', value: labTime(k.created_at) },
+          {
+            label: 'Last tested',
+            value: result ? (
+              <span className="inline-flex items-center gap-1.5">
+                <Icon className="size-4 shrink-0" aria-hidden />
+                {result.ok ? 'Passed' : 'Failed'}
+                {fresh ? ' · just now' : k.last_tested_at ? ` · ${labTime(k.last_tested_at)}` : ''}
+              </span>
+            ) : (
+              'Never tested'
+            ),
+          },
+          ...(result && !result.ok && result.message ? [{ label: 'Provider said', value: result.message }] : []),
+          ...(k.calls ? [{ label: 'Used', value: `${k.calls.toLocaleString('en-GB')} calls · ${k.tokens.toLocaleString('en-GB')} tokens` }] : []),
+        ]}
+      />
+    </DeskPane>
   )
 }

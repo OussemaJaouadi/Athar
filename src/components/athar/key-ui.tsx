@@ -33,7 +33,7 @@ export function HoldToRemove({ label, onConfirm }: { label: string; onConfirm: (
       aria-disabled={committed}
       aria-label={`Hold to remove ${label}`}
       style={{ touchAction: 'manipulation' }}
-      className="relative isolate inline-flex h-8 select-none items-center gap-1.5 overflow-hidden rounded-md border border-edge bg-canvas px-2.5 text-[0.8125rem] font-medium whitespace-nowrap text-ink hover:bg-surface-raised focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-glaze"
+      className="relative isolate inline-flex h-8 select-none items-center gap-2 overflow-hidden rounded-[5px] border border-edge bg-canvas px-3 text-[0.875rem] whitespace-nowrap text-ink hover:bg-surface-raised"
     >
       <motion.span
         aria-hidden
@@ -42,7 +42,7 @@ export function HoldToRemove({ label, onConfirm }: { label: string; onConfirm: (
         animate={{ width: `${(committed ? 1 : progress) * 100}%` }}
         transition={reduced ? { duration: 0 } : { duration: 0.06, ease: 'linear' }}
       />
-      <Trash2 className="size-3.5" aria-hidden />
+      <Trash2 className="size-4" aria-hidden />
       {committed ? 'Removing…' : 'Hold to remove'}
       <span id={hint} className="sr-only">
         Press and hold to remove the key. Releasing early cancels.

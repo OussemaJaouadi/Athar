@@ -37,15 +37,22 @@ export type ReviewItem = {
   raw_label: string | null
   raw_creation_year: string | null
   raw_desc: string | null
+  /** What cleaning did to the row, as stored: [{ field, from, to, why }]. */
+  changes_json: string | null
+  /** The row exactly as downloaded. */
+  raw_json: string | null
   others: Duplicate[]
 }
+
+/** The queue's two views: open findings, and decided ones (fixed at source or kept as is). */
+export type ReviewView = 'open' | 'decided'
 
 const STATUSES: ReviewStatus[] = ['open', 'resolved', 'dismissed']
 
 /** The queue for one status, with the evidence each finding needs to be decided without leaving the page. */
 export const listReviewQueue = createServerFn()
   .validator((input: { status?: string }) => ({
-    status: (STATUSES as string[]).includes(input.status ?? '') ? (input.status as ReviewStatus) : 'open',
+    view: (input.status === 'decided' || input.status === 'resolved' || input.status === 'dismissed' ? 'decided' : 'open') as ReviewView,
   }))
   .handler(async ({ data }) => {
     requireOperator()
@@ -63,15 +70,16 @@ export const listReviewQueue = createServerFn()
                 json_extract(sr.raw_json, '$.sector') AS raw_sector,
                 json_extract(sr.raw_json, '$.label') AS raw_label,
                 CAST(json_extract(sr.raw_json, '$.creation_year') AS TEXT) AS raw_creation_year,
-                json_extract(sr.raw_json, '$.desc') AS raw_desc
+                json_extract(sr.raw_json, '$.desc') AS raw_desc,
+                r.changes_json, sr.raw_json
          FROM review_items ri
          LEFT JOIN records r ON r.source_row_id = ri.source_row_id
          LEFT JOIN startups s ON s.id = COALESCE(ri.startup_id, r.startup_id)
          LEFT JOIN source_rows sr ON sr.id = COALESCE(ri.source_row_id, s.primary_row_id)
-         WHERE ri.status = $status
-         ORDER BY COALESCE(ri.decided_at, '') DESC, sr.row_number`,
+         WHERE ($status = 'open' AND ri.status = 'open') OR ($status = 'decided' AND ri.status <> 'open')
+         ORDER BY ri.code, COALESCE(ri.decided_at, '') DESC, sr.row_number`,
       )
-      .all({ $status: data.status })
+      .all({ $status: data.view })
 
     // A possible duplicate shows the other startups that carry the same name.
     const sameName = db.query<Duplicate, [string, string]>(
@@ -97,7 +105,10 @@ export const listReviewQueue = createServerFn()
         'SELECT code, status, COUNT(*) AS count FROM review_items GROUP BY code, status',
       )
       .all()
-    return { items, counts, status: data.status }
+    const snapshot = db
+      .query<{ fetched_at: string; row_count: number }, []>('SELECT fetched_at, row_count FROM source_snapshots ORDER BY fetched_at DESC LIMIT 1')
+      .get()
+    return { items, counts, view: data.view, snapshot }
   })
 
 type Previous = { id: string; status: string; note: string | null; decided_at: string | null; decided_by: string | null }

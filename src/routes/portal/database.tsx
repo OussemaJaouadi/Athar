@@ -1,12 +1,13 @@
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
-import { ArrowDown, ArrowUp, ChevronsUpDown, Columns3, Search } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useTable, type ColumnDef, type RowSelectionState, type SortingState } from '@tanstack/react-table'
+import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Search } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { DbPagination } from '@/components/athar/db-pagination'
-import { DbDrawer, cellText, humanize, isMono, tableName } from '@/components/athar/db-panel'
-import { OpsPage, opsButton, opsControl, opsTd, opsTh, useListStepper } from '@/components/athar/ops'
-import { Scroller } from '@/components/athar/scroller'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { RecordPane, asJson, humanize, isId, isUrl, tableName, type DbColumn } from '@/components/athar/db-panel'
+import { DeskBar, EmptyValue, deskBtn, deskInput, useDeskKeys } from '@/components/athar/desk'
+import { DataGrid, DataGridContainer, dataGridFeatures, type DataGridFeatures } from '@/components/reui/data-grid/data-grid'
+import { DataGridScrollArea } from '@/components/reui/data-grid/data-grid-scroll-area'
+import { DataGridTable } from '@/components/reui/data-grid/data-grid-table'
 import { cn } from '@/lib/utils'
 import { getDbRow, getDbRows, listDbTables, type DbRow } from '#/server/api/database'
 import { DB_PAGE_SIZE as PAGE_SIZE } from '#/shared/database'
@@ -22,10 +23,10 @@ export const Route = createFileRoute('/portal/database')({
     page: typeof s.page === 'number' && s.page > 1 ? Math.floor(s.page) : undefined,
     row: typeof s.row === 'string' || typeof s.row === 'number' ? String(s.row) : undefined,
   }),
-  // The open row is not a loader dependency: opening and closing the drawer never refetches the grid.
+  // The selected row is not a loader dependency: selecting never refetches the grid.
   loaderDeps: ({ search: { table, q, sort, dir, page } }) => ({ table, q, sort, dir, page }),
   loader: async ({ deps }) => {
-    const table = deps.table ?? 'startups'
+    const table = deps.table ?? 'source_rows'
     const [groups, data] = await Promise.all([listDbTables(), getDbRows({ data: { ...deps, table } })])
     return { groups, table, data }
   },
@@ -33,8 +34,10 @@ export const Route = createFileRoute('/portal/database')({
 })
 
 const n = (v: number) => v.toLocaleString('en-GB')
+type Data = NonNullable<Awaited<ReturnType<typeof getDbRows>>>
+type Groups = Awaited<ReturnType<typeof listDbTables>>
 
-// Database: every table as stored, read-only, to settle a doubt.
+// Database: three panes. Tables by stage | the grid | the selected row read as a record.
 function DatabasePage() {
   const { groups, table, data } = Route.useLoaderData()
   const search = Route.useSearch()
@@ -43,26 +46,119 @@ function DatabasePage() {
     (next: Partial<Search>, replace = false) => navigate({ search: (prev: Search) => ({ ...prev, ...next }), replace }),
     [navigate],
   )
+  const searchRef = useRef<HTMLInputElement>(null)
+  const [query, setQuery] = useState(data?.q ?? '')
+  useEffect(() => setQuery(data?.q ?? ''), [table, data?.q])
+  // Search as you type, a beat after the last key.
+  useEffect(() => {
+    if (!data || query.trim() === data.q) return
+    const t = setTimeout(() => go({ q: query.trim() || undefined, page: undefined, row: undefined }, true), 300)
+    return () => clearTimeout(t)
+  }, [query, data, go])
+
+  // Below 1100px the record is its own view, opened by choosing a row.
+  const [narrowRecord, setNarrowRecord] = useState(false)
+
+  const first = data && data.total ? (data.page - 1) * PAGE_SIZE + 1 : 0
+  const last = data ? (data.page - 1) * PAGE_SIZE + data.rows.length : 0
+  const name = tableName(table)
 
   return (
-    <OpsPage title="Database" lede="Every table as stored, read-only. Key values never leave the server.">
-      <div className="grid items-start gap-6 lg:grid-cols-[13rem_minmax(0,1fr)]">
+    <main className="flex min-h-0 flex-1 flex-col">
+      <DeskBar
+        title="Database"
+        facts={data ? (data.total ? `${n(first)}–${n(last)} of ${n(data.total)}${data.q ? ` matching “${data.q}”` : ''}` : data.q ? 'No matches' : 'Empty') : undefined}
+        actions={
+          data && (
+            <span className="flex gap-1.5">
+              <button
+                type="button"
+                className={cn(deskBtn, 'w-8 justify-center px-0')}
+                aria-label="Previous page"
+                disabled={data.page <= 1}
+                onClick={() => go({ page: data.page - 1 > 1 ? data.page - 1 : undefined, row: undefined })}
+              >
+                <ChevronLeft aria-hidden />
+              </button>
+              <button
+                type="button"
+                className={cn(deskBtn, 'w-8 justify-center px-0')}
+                aria-label="Next page"
+                disabled={data.page >= data.pages}
+                onClick={() => go({ page: data.page + 1, row: undefined })}
+              >
+                <ChevronRight aria-hidden />
+              </button>
+            </span>
+          )
+        }
+      >
+        <label className="sr-only min-[1100px]:hidden" htmlFor="db-table">
+          Table
+        </label>
+        <select
+          id="db-table"
+          value={table}
+          onChange={(e) => navigate({ search: { table: e.target.value } })}
+          className={cn(deskInput, 'min-[1100px]:hidden')}
+        >
+          {groups.map((g) => (
+            <optgroup key={g.stage} label={g.stage}>
+              {g.tables.map((t) => (
+                <option key={t.name} value={t.name}>
+                  {tableName(t.name)} ({n(t.rows)})
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+        {data && (
+          <label className="relative flex items-center">
+            <span className="sr-only">Search {name}</span>
+            <Search className="pointer-events-none absolute start-2.5 size-4 text-ink-2" aria-hidden />
+            <input
+              ref={searchRef}
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={`Search ${name.toLowerCase()}`}
+              className={cn(deskInput, 'w-64 max-w-full ps-8')}
+            />
+            <kbd className="pointer-events-none absolute end-2 hidden rounded-[4px] border border-edge px-1 font-mono text-[0.8125rem] text-ink-2 min-[1100px]:block" aria-hidden>
+              /
+            </kbd>
+          </label>
+        )}
+      </DeskBar>
+      <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)] min-[1100px]:grid-cols-[210px_minmax(0,1fr)_minmax(380px,500px)]">
         <TableList groups={groups} current={table} />
-        {data ? <Grid key={table} data={data} search={search} go={go} /> : <Unknown table={table} />}
+        {data ? (
+          <Workspace
+            key={table}
+            data={data}
+            selected={search.row}
+            go={go}
+            searchRef={searchRef}
+            narrowRecord={narrowRecord}
+            setNarrowRecord={setNarrowRecord}
+          />
+        ) : (
+          <Unknown table={table} />
+        )}
       </div>
-    </OpsPage>
+    </main>
   )
 }
 
-function TableList({ groups, current }: { groups: Awaited<ReturnType<typeof listDbTables>>; current: string }) {
+function TableList({ groups, current }: { groups: Groups; current: string }) {
   return (
-    <nav aria-label="Tables" className="grid gap-3 lg:sticky lg:top-20">
+    <nav aria-label="Tables" className="hidden min-h-0 overflow-y-auto border-e border-edge py-2.5 min-[1100px]:block">
       {groups.map((g) => (
-        <section key={g.stage} aria-labelledby={`stage-${g.stage}`} className="grid gap-0.5">
-          <h2 id={`stage-${g.stage}`} className="px-2 pb-0.5 font-sans text-[0.8125rem] font-normal text-ink-2">
+        <section key={g.stage} aria-labelledby={`stage-${g.stage}`}>
+          <h2 id={`stage-${g.stage}`} className="mx-4 mt-2.5 mb-1 font-sans text-[0.8125rem] font-normal text-ink-2">
             {g.stage}
           </h2>
-          <ul className="grid">
+          <ul>
             {g.tables.map((t) => {
               const active = t.name === current
               return (
@@ -73,12 +169,12 @@ function TableList({ groups, current }: { groups: Awaited<ReturnType<typeof list
                     title={t.name}
                     aria-current={active ? 'page' : undefined}
                     className={cn(
-                      'flex h-8 items-center justify-between gap-3 rounded-md px-2 text-[0.8125rem] text-ink no-underline hover:bg-surface-raised',
-                      active && 'bg-surface-raised font-medium',
+                      'flex items-center justify-between gap-3 px-4 py-[5px] text-[0.875rem] text-ink no-underline',
+                      active ? 'bg-surface shadow-[inset_3px_0_0_var(--ink)]' : 'hover:bg-surface',
                     )}
                   >
                     <span className="truncate">{tableName(t.name)}</span>
-                    <span className="font-normal text-ink-2 tabular-nums">{n(t.rows)}</span>
+                    <span className="text-[0.8125rem] text-ink-2 tabular-nums">{n(t.rows)}</span>
                   </Link>
                 </li>
               )
@@ -92,14 +188,14 @@ function TableList({ groups, current }: { groups: Awaited<ReturnType<typeof list
 
 function Unknown({ table }: { table: string }) {
   return (
-    <section className="grid gap-1 rounded-md border border-edge p-4 text-[0.875rem] text-ink">
+    <section className="grid content-start gap-1 p-6 text-[0.875rem] text-ink min-[1100px]:col-span-2">
       <p>
         There is no table named <span className="font-mono">{table}</span>.
       </p>
       <p>
         Pick one from the list, or{' '}
-        <Link to="/portal/database" search={{ table: 'startups' }} className="text-glaze underline">
-          open Startups
+        <Link to="/portal/database" search={{ table: 'source_rows' }} className="text-glaze underline">
+          open Source rows
         </Link>
         .
       </p>
@@ -107,226 +203,165 @@ function Unknown({ table }: { table: string }) {
   )
 }
 
-type Data = NonNullable<Awaited<ReturnType<typeof getDbRows>>>
-
-// Hidden columns are a per-viewer convenience: remembered in this browser, per table, harmless when storage is off.
-function useHidden(table: string) {
-  const key = `athar-db-hidden:${table}`
-  const [hidden, setHidden] = useState<string[]>([])
-  useEffect(() => {
-    try {
-      const saved: unknown = JSON.parse(localStorage.getItem(key) ?? '[]')
-      setHidden(Array.isArray(saved) ? saved.filter((x): x is string => typeof x === 'string') : [])
-    } catch {
-      setHidden([])
-    }
-  }, [key])
-  const toggle = (name: string) =>
-    setHidden((h) => {
-      const next = h.includes(name) ? h.filter((x) => x !== name) : [...h, name]
-      try {
-        localStorage.setItem(key, JSON.stringify(next))
-      } catch {}
-      return next
-    })
-  return [hidden, toggle] as const
+/** One grid cell: short and single-line; the record pane shows the value in full. */
+function Cell({ col, v }: { col: DbColumn; v: DbRow[string] }) {
+  if (v === null || v === undefined || v === '') return <EmptyValue />
+  if (col.secret) return <span>••••</span>
+  if (col.blob) return <span className="tabular-nums">{`${(Number(v) / 1024).toFixed(0)} KB`}</span>
+  if (typeof v === 'number') return <span className="tabular-nums">{v}</span>
+  if (isId(col.name, v))
+    return (
+      <span className="font-mono text-[0.8125rem]" title={v}>
+        …{v.slice(-4)}
+      </span>
+    )
+  const json = asJson(v)
+  const text = json !== undefined ? JSON.stringify(json) : v
+  return <span className={cn((json !== undefined || isUrl(v)) && 'font-mono text-[0.8125rem]')}>{text.length > 120 ? `${text.slice(0, 120)}…` : text}</span>
 }
 
-function Grid({ data, search, go }: { data: Data; search: Search; go: (next: Partial<Search>, replace?: boolean) => void }) {
-  const [hidden, toggle] = useHidden(data.table)
-  const columns = useMemo(() => data.columns.filter((c) => !hidden.includes(c.name)), [data.columns, hidden])
-  const shown = columns.length
-  const [query, setQuery] = useState(data.q)
-
-  // Search as you type, a beat after the last key.
-  useEffect(() => {
-    if (query.trim() === data.q) return
-    const t = setTimeout(() => go({ q: query.trim() || undefined, page: undefined, row: undefined }, true), 300)
-    return () => clearTimeout(t)
-  }, [query, data.q, go])
-
+function Workspace({
+  data,
+  selected,
+  go,
+  searchRef,
+  narrowRecord,
+  setNarrowRecord,
+}: {
+  data: Data
+  selected: string | undefined
+  go: (next: Partial<Search>, replace?: boolean) => void
+  searchRef: React.RefObject<HTMLInputElement | null>
+  narrowRecord: boolean
+  setNarrowRecord: (v: boolean) => void
+}) {
   const keyOf = useCallback((r: DbRow) => String(r[data.key] ?? r.__rowid), [data.key])
-  const open = search.row
-  const fromPage = open ? data.rows.find((r) => keyOf(r) === open) : undefined
+  const ids = useMemo(() => data.rows.map(keyOf), [data.rows, keyOf])
+  // The first row is selected on load; a linked row may sit on another page and is fetched on its own.
+  const current = selected ?? ids[0]
+  const fromPage = current ? data.rows.find((r) => keyOf(r) === current) : undefined
   const [fetched, setFetched] = useState<{ key: string; row: DbRow | null } | null>(null)
-  // A row opened by link may sit on another page: fetch it on its own.
   useEffect(() => {
-    if (!open || fromPage || fetched?.key === open) return
+    if (!current || fromPage || fetched?.key === current) return
     let live = true
-    getDbRow({ data: { table: data.table, key: open } }).then((row) => {
-      if (live) setFetched({ key: open, row })
+    getDbRow({ data: { table: data.table, key: current } }).then((row) => {
+      if (live) setFetched({ key: current, row })
     })
     return () => {
       live = false
     }
-  }, [open, fromPage, fetched?.key, data.table])
-  const drawerRow = fromPage ?? (fetched && fetched.key === open ? fetched.row : null)
-  const missing = Boolean(open && !fromPage && fetched && fetched.key === open && !fetched.row)
-  const close = useCallback(() => go({ row: undefined }), [go])
+  }, [current, fromPage, fetched?.key, data.table])
+  const row = fromPage ?? (fetched && fetched.key === current ? fetched.row : null)
+  const missing = Boolean(current && !fromPage && fetched && fetched.key === current && !fetched.row)
 
-  const ids = useMemo(() => data.rows.map(keyOf), [data.rows, keyOf])
-  const step = useCallback((id: string) => go({ row: id }, true), [go])
-  useListStepper(ids, open, step)
+  const select = useCallback(
+    (id: string) => {
+      go({ row: id }, true)
+      setNarrowRecord(true)
+    },
+    [go, setNarrowRecord],
+  )
+  useDeskKeys({ ids, current, select: (id) => go({ row: id }, true), search: searchRef })
 
-  const sortBy = (name: string) => {
-    const next = data.sort !== name ? 'asc' : data.dir === 'asc' ? 'desc' : null
-    go({ sort: next ? name : undefined, dir: next ?? undefined, page: undefined })
-  }
+  const columns = useMemo<ColumnDef<DataGridFeatures, DbRow>[]>(
+    () =>
+      data.columns.map((c) => ({
+        id: c.name,
+        accessorFn: (r: DbRow) => r[c.name] ?? null,
+        enableSorting: !c.blob && !c.secret,
+        header: () => {
+          const sorted = data.sort === c.name ? data.dir : null
+          return (
+            <button
+              type="button"
+              title={c.name}
+              onClick={() => {
+                const next = data.sort !== c.name ? 'asc' : data.dir === 'asc' ? 'desc' : null
+                go({ sort: next ? c.name : undefined, dir: next ?? undefined, page: undefined, row: undefined })
+              }}
+              aria-label={`Sort by ${humanize(c.name)}`}
+              className={cn('inline-flex items-center gap-1 text-[0.8125rem] font-normal whitespace-nowrap hover:text-ink', sorted ? 'text-ink' : 'text-ink-2')}
+            >
+              {humanize(c.name)}
+              {sorted === 'asc' && <ArrowUp className="size-3.5" aria-hidden />}
+              {sorted === 'desc' && <ArrowDown className="size-3.5" aria-hidden />}
+            </button>
+          )
+        },
+        cell: ({ row }) => <Cell col={c} v={row.original[c.name] ?? null} />,
+        meta: { headerTitle: humanize(c.name) },
+      })),
+    [data.columns, data.sort, data.dir, go],
+  )
+  const sorting = useMemo<SortingState>(() => (data.sort ? [{ id: data.sort, desc: data.dir === 'desc' }] : []), [data.sort, data.dir])
+  const rowSelection = useMemo<RowSelectionState>(() => (current ? { [current]: true } : {}), [current])
+  const table = useTable({
+    features: dataGridFeatures,
+    data: data.rows,
+    columns,
+    getRowId: keyOf,
+    state: { sorting, rowSelection },
+    manualSorting: true,
+    manualPagination: true,
+    manualFiltering: true,
+    enableRowSelection: true,
+    rowCount: data.total,
+  })
 
-  const first = data.total ? (data.page - 1) * PAGE_SIZE + 1 : 0
-  const last = (data.page - 1) * PAGE_SIZE + data.rows.length
   const name = tableName(data.table)
   return (
-    <section aria-label={name} className="grid min-w-0 gap-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <label className="relative flex items-center">
-          <span className="sr-only">Search {name}</span>
-          <Search className="pointer-events-none absolute start-2.5 size-3.5 text-ink-2" aria-hidden />
-          <input
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={`Search ${name.toLowerCase()}`}
-            className={cn(opsControl, 'w-64 max-w-full ps-8')}
-          />
-        </label>
-        <Popover>
-          <PopoverTrigger className={opsButton}>
-            <Columns3 aria-hidden />
-            Columns
-            {shown < data.columns.length && (
-              <span className="font-normal tabular-nums">
-                {shown} of {data.columns.length}
-              </span>
+    <>
+      <section aria-label={`${name} rows`} className={cn('min-h-0 min-w-0', narrowRecord && 'max-[1099px]:hidden')}>
+        {data.rows.length === 0 ? (
+          <p className="p-6 text-[0.875rem] text-ink">
+            {data.q ? (
+              <>
+                Nothing in {name} matches “{data.q}”.{' '}
+                <button type="button" className="text-glaze underline" onClick={() => go({ q: undefined, page: undefined })}>
+                  Clear the search
+                </button>
+              </>
+            ) : (
+              'This table is empty.'
             )}
-          </PopoverTrigger>
-          <PopoverContent align="start" className="w-60 border border-edge bg-surface-raised p-1.5 text-ink ring-0">
-            <fieldset className="grid">
-              <legend className="px-2 pb-1 text-[0.8125rem] text-ink-2">Show columns</legend>
-              {data.columns.map((c) => (
-                <label key={c.name} title={c.name} className="flex h-8 cursor-pointer items-center gap-2 rounded px-2 text-[0.8125rem] hover:bg-surface">
-                  <input type="checkbox" checked={!hidden.includes(c.name)} onChange={() => toggle(c.name)} className="size-3.5 accent-[var(--glaze)]" />
-                  {humanize(c.name)}
-                </label>
-              ))}
-            </fieldset>
-          </PopoverContent>
-        </Popover>
-        <p className="ms-auto text-[0.8125rem] text-ink-2 tabular-nums" aria-live="polite">
-          {data.total === 0
-            ? data.q
-              ? 'No matches'
-              : 'Empty'
-            : `${n(first)}–${n(last)} of ${n(data.total)}${data.q ? ` matching “${data.q}”` : ''}`}
-        </p>
-      </div>
-
-      {data.rows.length === 0 ? (
-        <p className="rounded-md border border-edge px-3 py-4 text-[0.8125rem] text-ink">
-          {data.q ? (
-            <>
-              Nothing in {name} matches “{data.q}”.{' '}
-              <button type="button" className="text-glaze underline" onClick={() => setQuery('')}>
-                Clear the search
-              </button>
-            </>
-          ) : (
-            'This table is empty.'
-          )}
-        </p>
-      ) : (
-        <div className="overflow-hidden rounded-md border border-edge">
-          <Scroller axis="both" className="max-h-[calc(100dvh-15rem)]" label={`${name} rows`}>
-            <table className="w-max min-w-full">
-              <thead className="sticky top-0 z-10 bg-surface shadow-[inset_0_-1px_0_var(--hairline)]">
-                <tr>
-                  <th scope="col" className={cn(opsTh, 'w-12 text-end')}>
-                    #
-                  </th>
-                  {columns.map((c) => {
-                    const sorted = data.sort === c.name ? data.dir : null
-                    const Icon = sorted === 'asc' ? ArrowUp : sorted === 'desc' ? ArrowDown : ChevronsUpDown
-                    return (
-                      <th
-                        key={c.name}
-                        scope="col"
-                        title={c.name}
-                        aria-sort={sorted === 'asc' ? 'ascending' : sorted === 'desc' ? 'descending' : 'none'}
-                        className="h-9 px-1 text-start"
-                      >
-                        <button
-                          type="button"
-                          onClick={() => sortBy(c.name)}
-                          className={cn(
-                            'group inline-flex h-7 items-center gap-1 rounded px-2 text-[0.8125rem] font-medium whitespace-nowrap hover:bg-surface-raised',
-                            sorted ? 'text-ink' : 'text-ink-2',
-                          )}
-                        >
-                          {humanize(c.name)}
-                          <Icon className={cn('size-3', !sorted && 'opacity-0 group-hover:opacity-100')} aria-hidden />
-                        </button>
-                      </th>
-                    )
-                  })}
-                </tr>
-              </thead>
-              <tbody>
-                {data.rows.map((r, i) => {
-                  const k = keyOf(r)
-                  const active = k === open
-                  return (
-                    <tr
-                      key={k}
-                      onClick={() => go({ row: k }, Boolean(open))}
-                      aria-selected={active}
-                      className={cn('cursor-pointer border-t border-hairline hover:bg-surface-raised/70', active && 'bg-surface-raised')}
-                    >
-                      <td className={cn(opsTd, 'text-end')}>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            go({ row: k }, Boolean(open))
-                          }}
-                          aria-label={`Open row ${first + i}`}
-                          className="rounded-sm text-ink-2 tabular-nums hover:text-ink"
-                        >
-                          {first + i}
-                        </button>
-                      </td>
-                      {columns.map((c) => {
-                        const v = r[c.name] ?? null
-                        return (
-                          <td
-                            key={c.name}
-                            className={cn(
-                              opsTd,
-                              'max-w-[24rem] truncate',
-                              typeof v === 'number' && 'text-end tabular-nums',
-                              isMono(c.name, v) && 'font-mono',
-                              v === null && 'text-ink-2',
-                            )}
-                          >
-                            {cellText(c, v)}
-                          </td>
-                        )
-                      })}
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </Scroller>
-        </div>
-      )}
-
-      {data.pages > 1 && (
-        <div className="flex justify-end">
-          <DbPagination page={data.page} pages={data.pages} onPage={(page) => go({ page: page > 1 ? page : undefined })} />
-        </div>
-      )}
-
-      <DbDrawer table={data.table} columns={data.columns} row={drawerRow} missing={missing} rowKey={open} onClose={close} />
-    </section>
+          </p>
+        ) : (
+          <DataGrid
+            table={table}
+            recordCount={data.total}
+            onRowClick={(r) => select(keyOf(r))}
+            tableLayout={{ headerSticky: true, width: 'auto', rowBorder: true, headerBorder: true }}
+            tableClassNames={{
+              base: 'text-[0.875rem]',
+              header: 'bg-canvas',
+              headerRow: '[&>th]:h-[34px] [&>th]:border-b [&>th]:border-edge [&>th]:px-3 [&>th]:bg-canvas',
+              bodyRow: cn(
+                'hover:bg-surface data-[state=selected]:bg-surface data-[state=selected]:[&>td:first-child]:shadow-[inset_3px_0_0_var(--ink)]',
+                '[&>td]:h-9 [&>td]:max-w-[340px] [&>td]:truncate [&>td]:border-hairline [&>td]:px-3 [&>td]:py-0 [&>td]:text-ink',
+              ),
+            }}
+          >
+            <DataGridContainer className="h-full">
+              <DataGridScrollArea className="h-full">
+                <DataGridTable />
+              </DataGridScrollArea>
+            </DataGridContainer>
+          </DataGrid>
+        )}
+      </section>
+      <aside
+        aria-label="Selected row"
+        className={cn(
+          'grid min-h-0 min-w-0 content-start gap-[18px] overflow-y-auto overscroll-contain border-edge px-5 py-4 min-[1100px]:border-s',
+          !narrowRecord && 'max-[1099px]:hidden',
+        )}
+      >
+        <button type="button" onClick={() => setNarrowRecord(false)} className="flex items-center gap-1 text-[0.875rem] text-glaze min-[1100px]:hidden">
+          <ChevronLeft className="size-4" aria-hidden />
+          Back to {name.toLowerCase()}
+        </button>
+        <RecordPane table={data.table} columns={data.columns} row={row} rowKey={current} missing={missing} />
+      </aside>
+    </>
   )
 }

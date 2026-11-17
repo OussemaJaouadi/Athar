@@ -132,7 +132,8 @@ export function LabInstruments({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       )}
-      <Toaster toaster={toaster} />
+      {/* Pinned above the pane foot bar, out of the page flow so the desk never scrolls as a whole. */}
+      <Toaster toaster={toaster} className="pointer-events-none fixed end-6 bottom-20 z-50 w-[380px] [&_li]:pointer-events-auto" />
     </ToasterContext.Provider>
   )
 }

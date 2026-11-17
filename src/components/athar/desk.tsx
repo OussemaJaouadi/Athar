@@ -340,7 +340,7 @@ const JSON_TRANSFORMERS: CodeBlockTransformer[] = [
   {
     name: 'athar-null',
     span(node, _line, _col, _el, token) {
-      if (token?.content === 'null') node.properties.style = 'color: var(--code-nil)'
+      if (token?.content.trim() === 'null') node.properties.style = 'color:var(--code-nil);--shiki-dark:var(--code-nil)'
     },
   },
 ]

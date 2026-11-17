@@ -15,9 +15,8 @@ import { DB_PAGE_SIZE as PAGE_SIZE } from '#/shared/database'
 // Which pipeline stage writes each table, so the list reads as the pipeline's shelves.
 const STAGES: [string, string[]][] = [
   ['Collect', ['source_snapshots', 'source_rows']],
-  ['Clean', ['records']],
+  ['Clean', ['records', 'review_items']],
   ['Merge', ['startups']],
-  ['Review', ['review_items']],
   ['Runner', ['runs', 'run_steps']],
   ['Keys', ['ai_keys', 'ai_usage']],
 ]
@@ -122,4 +121,55 @@ export const getDbRow = createServerFn()
       )
       .get(t.key === '__rowid' ? Number(data.key) : data.key)
     return row ?? null
+  })
+
+// Which fields an open finding points at, so the record pane can flag the offending value.
+const FINDING_FIELDS: Record<string, string[]> = {
+  website_unrepairable: ['website'],
+  missing_description: ['desc', 'description'],
+  industry_differs: ['industry', 'sector'],
+  cohort_unreadable: ['label', 'cohort', 'cohort_date'],
+  cohort_before_creation: ['label', 'cohort', 'cohort_date', 'creation_year'],
+}
+
+export type DbRecordContext = { flagged: string[]; sourceRowId: string | null; startupId: string | null }
+
+// For the record pane: where a row leads (its source row, its startup) and which of its fields an open finding flags.
+export const getDbRecordContext = createServerFn()
+  .validator((input: { table: string; key: string }) => ({ table: String(input.table), key: String(input.key) }))
+  .handler(async ({ data }): Promise<DbRecordContext> => {
+    requireOperator()
+    const db = getDatabase()
+    const one = <T,>(sql: string, ...args: string[]) => db.query<T, string[]>(sql).get(...args) ?? null
+    let sourceRowId: string | null = null
+    let startupId: string | null = null
+    let codes: string[] = []
+    if (data.table === 'source_rows') {
+      sourceRowId = data.key
+      startupId = one<{ s: string | null }>('SELECT startup_id AS s FROM records WHERE source_row_id = ?', data.key)?.s ?? null
+    } else if (data.table === 'records') {
+      sourceRowId = data.key
+      startupId = one<{ s: string | null }>('SELECT startup_id AS s FROM records WHERE source_row_id = ?', data.key)?.s ?? null
+    } else if (data.table === 'startups') {
+      startupId = data.key
+      sourceRowId = one<{ s: string | null }>('SELECT primary_row_id AS s FROM startups WHERE id = ?', data.key)?.s ?? null
+    } else if (data.table === 'review_items') {
+      const r = one<{ s: string | null; t: string | null; code: string; status: string }>(
+        'SELECT source_row_id AS s, startup_id AS t, code, status FROM review_items WHERE id = ?',
+        data.key,
+      )
+      sourceRowId = r?.s ?? null
+      startupId = r?.t ?? null
+      if (!startupId && sourceRowId)
+        startupId = one<{ s: string | null }>('SELECT startup_id AS s FROM records WHERE source_row_id = ?', sourceRowId)?.s ?? null
+      if (r && r.status === 'open') codes = [r.code]
+    }
+    if (data.table !== 'review_items' && (sourceRowId || startupId))
+      codes = db
+        .query<{ code: string }, [string, string]>(
+          "SELECT DISTINCT code FROM review_items WHERE status = 'open' AND (source_row_id = ? OR startup_id = ?)",
+        )
+        .all(sourceRowId ?? '', startupId ?? '')
+        .map((r) => r.code)
+    return { flagged: [...new Set(codes.flatMap((c) => FINDING_FIELDS[c] ?? []))], sourceRowId, startupId }
   })

@@ -1,225 +1,219 @@
-import { Link, createFileRoute } from '@tanstack/react-router'
-import { ChevronRight, Download, Eraser, ListChecks, Merge, type LucideIcon } from 'lucide-react'
+import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
+import { CircleAlert } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { CollectButton, diffSentence, duration, plural, shortId } from '@/components/athar/collect-button'
+import { Desk, DeskBar, DeskEmpty, DeskItem, DeskPane, PaneSection, deskTd, deskTh, useDeskKeys } from '@/components/athar/desk'
 import { findingName, labTime, operationName } from '@/components/athar/lab'
-import { OpsHeading, OpsPage, opsRow, opsTd, opsTh } from '@/components/athar/ops'
 import { RunStatus } from '@/components/athar/run-status'
-import { getPipeline, type PipelineRun } from '#/server/api/portal'
+import { getPipeline, getRunDetail } from '#/server/api/portal'
+
+type Search = { run?: string }
 
 export const Route = createFileRoute('/portal/')({
-  loader: () => getPipeline(),
+  validateSearch: (s: Record<string, unknown>): Search => ({ run: typeof s.run === 'string' && s.run ? s.run : undefined }),
+  loaderDeps: ({ search }) => ({ run: search.run }),
+  // The selected run: the one in the URL, else the run in flight, else the latest. The pane is never empty while
+  // there are runs.
+  loader: async ({ deps }) => {
+    const data = await getPipeline()
+    const id = deps.run ?? data.runs.find((r) => r.status === 'running')?.id ?? data.runs[0]?.id
+    const detail = id ? await getRunDetail({ data: id }) : null
+    return { data, detail }
+  },
   component: Pipeline,
 })
 
-// Clean changes that touch every row are housekeeping, not news: said once, in one line.
-const HOUSEKEEPING = new Set(['logo', 'industry'])
-const FIELD: Record<string, [string, string]> = {
-  website: ['website', 'websites'],
-  founders: ['founder list', 'founder lists'],
-  name: ['name', 'names'],
-  desc: ['description', 'descriptions'],
+const dateOnly = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+
+const STEP_UNIT: Record<string, [string, string]> = {
+  collect: ['rows', 'rows'],
+  clean: ['rows', 'records'],
+  merge: ['records', 'startups'],
+}
+
+// A clock for the run in flight; the portal's poller refreshes the data when a step changes state.
+function useNow(on: boolean) {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (!on) return
+    const t = setInterval(() => setNow(Date.now()), 500)
+    return () => clearInterval(t)
+  }, [on])
+  return now
 }
 
 function Pipeline() {
-  const data = Route.useLoaderData()
-  const running = data.runs.some((r) => r.status === 'running')
+  const { data, detail } = Route.useLoaderData()
+  const search = Route.useSearch()
+  const navigate = useNavigate({ from: '/portal/' })
+  const running = data.runs.find((r) => r.status === 'running')
   const open = data.findings.reduce((t, f) => t + f.count, 0)
+  const selected = detail?.run.id
+  const ids = data.runs.map((r) => r.id)
 
-  if (!data.snapshot)
-    return (
-      <OpsPage
-        title="Pipeline"
-        lede="Nothing collected yet. Collect downloads the Startup Tunisia registry, cleans every row and matches rows to startups."
-        actions={<CollectButton running={running} again={false} />}
-      >
-        {null}
-      </OpsPage>
-    )
+  const select = useCallback((id: string) => navigate({ search: { run: id }, replace: true }), [navigate])
+  useDeskKeys({ ids, current: selected, select })
 
-  const step = (id: string) => data.steps.find((s) => s.step === id)
-  const took = (id: string) => duration(step(id)?.started_at ?? null, step(id)?.finished_at ?? null)
-  const folded = data.cleaned - data.merged
+  // A run that starts while the page is open is selected, so its steps can be followed.
+  const seen = useRef(running?.id)
+  useEffect(() => {
+    if (running && running.id !== seen.current) {
+      seen.current = running.id
+      select(running.id)
+    }
+  }, [running, select])
+
   return (
-    <OpsPage
-      title="Pipeline"
-      lede={
-        <>
-          Collected {labTime(data.snapshot.fetched_at)}: {plural(data.collected, 'row')} became {plural(data.merged, 'startup')}.{' '}
-          {open > 0 ? (
-            <>
-              <Link to="/portal/review" className="text-glaze underline">
-                {plural(open, 'finding')}
-              </Link>{' '}
-              {open === 1 ? 'is' : 'are'} waiting in Review.
-            </>
+    <main className="flex min-h-0 flex-1 flex-col">
+      <DeskBar
+        title="Pipeline"
+        facts={
+          data.snapshot
+            ? `Collected ${dateOnly(data.snapshot.fetched_at)} · ${plural(data.collected, 'row')} · ${plural(data.merged, 'startup')} · ${open} in review`
+            : 'Nothing collected yet'
+        }
+        actions={<CollectButton running={!!running} again={!!data.snapshot} />}
+      />
+      <Desk
+        storageKey="pipeline"
+        showPaneOnNarrow={!!search.run}
+        onBack={() => navigate({ search: {}, replace: true })}
+        backLabel="All runs"
+        list={
+          data.runs.length ? (
+            <div role="list" aria-label="Runs">
+              {data.runs.map((r) => (
+                <div role="listitem" key={r.id}>
+                  <DeskItem
+                    selected={r.id === selected}
+                    onSelect={() => select(r.id)}
+                    title={
+                      <>
+                        {operationName(r.operation)} <span className="font-mono">{shortId(r.id)}</span>
+                      </>
+                    }
+                    detail={`${labTime(r.started_at)} · ${duration(r.started_at, r.finished_at) ?? 'running'}`}
+                    end={<RunStatus status={r.status} />}
+                  />
+                </div>
+              ))}
+            </div>
           ) : (
-            'Nothing is waiting in Review.'
-          )}
+            <p className="px-4 py-3 text-[0.875rem] text-ink">No runs yet. Collect downloads the Startup Tunisia registry, cleans every row and matches rows to startups.</p>
+          )
+        }
+        pane={detail ? <RunPane detail={detail} position={`${ids.indexOf(detail.run.id) + 1} of ${ids.length}`} /> : <DeskEmpty>No run to show yet.</DeskEmpty>}
+      />
+    </main>
+  )
+}
+
+type Detail = NonNullable<Awaited<ReturnType<typeof getRunDetail>>>
+
+function RunPane({ detail, position }: { detail: Detail; position: string }) {
+  const { run, steps, reviews } = detail
+  const live = run.status === 'running'
+  const now = useNow(live)
+  const failed = run.status === 'failed' || run.status === 'interrupted'
+  const failedStep = steps.find((s) => s.status === 'failed')
+  const failure = (failedStep?.message ?? run.error)?.replace(/^.*?failed:\s*/i, '').replace(/[.\s]+$/, '')
+  const nowIso = new Date(now).toISOString()
+  const statement = live
+    ? `Running · ${duration(run.started_at, nowIso) ?? '0.1 s'} so far`
+    : failed
+      ? `${failedStep ? `${operationName(failedStep.step)} failed` : run.status === 'interrupted' ? 'Interrupted' : 'Failed'} · ${labTime(run.started_at)}`
+      : run.rows !== null && run.startups !== null
+        ? `${plural(run.rows, 'row')} → ${plural(run.startups, 'startup')}`
+        : labTime(run.started_at)
+
+  return (
+    <DeskPane
+      title={
+        <>
+          {operationName(run.operation)} run <span className="font-mono text-[1.125rem] font-normal">{shortId(run.id)}</span>
         </>
       }
-      actions={<CollectButton running={running} again />}
+      statement={statement}
+      position={position}
     >
-      <section aria-label="Stages of the latest collect">
-        <ol className="grid overflow-hidden rounded-lg border border-edge bg-surface lg:grid-cols-4">
-          <Station Icon={Download} label="Collect" time={took('collect')} value={data.collected} unit="source rows">
-            {(data.snapshot.byte_size / 1024).toFixed(0)} KB from {new URL(data.snapshot.url).hostname}
-          </Station>
-          <Station Icon={Eraser} label="Clean" time={took('clean')} value={data.cleaned} unit="records">
-            <ul className="grid gap-0.5">
-              {data.cleanChanges
-                .filter((c) => !HOUSEKEEPING.has(c.field))
-                .map((c) => (
-                  <li key={c.field + c.why}>
-                    {c.count} {(FIELD[c.field] ?? [c.field, c.field])[c.count === 1 ? 0 : 1]}: {c.why.charAt(0).toLowerCase() + c.why.slice(1)}
-                  </li>
-                ))}
-            </ul>
-          </Station>
-          <Station Icon={Merge} label="Merge" time={took('merge')} value={data.merged} unit="startups">
-            {plural(folded, 'duplicate registration')} folded in
-          </Station>
-          <Station Icon={ListChecks} label="Review" value={open} unit={open === 1 ? 'open finding' : 'open findings'} to="/portal/review" last>
-            On {plural(data.inReview, 'record')}
-          </Station>
-        </ol>
-      </section>
+      {failed && (
+        <p role="alert" className="flex items-start gap-2 border-s-[3px] border-destructive ps-2.5 text-[0.875rem] text-ink">
+          <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
+          <span>
+            {failure ? `${failure}.` : run.status === 'interrupted' ? 'The server stopped while the run was going.' : 'No message was recorded.'} The registry from the
+            run before is unchanged.
+          </span>
+        </p>
+      )}
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
-        <section aria-labelledby="runs-h" className="grid content-start gap-2">
-          <OpsHeading id="runs-h">Runs</OpsHeading>
-          <RunsTable runs={data.runs} />
-        </section>
-        <section aria-labelledby="wait-h" className="grid content-start gap-2">
-          <OpsHeading
-            id="wait-h"
-            aside={
-              <Link to="/portal/review" className="text-[0.8125rem] text-glaze underline">
-                Open Review
-              </Link>
-            }
-          >
-            Waiting in Review
-          </OpsHeading>
-          {data.findings.length ? (
-            <ul className="overflow-hidden rounded-lg border border-edge">
-              {data.findings.map((f, i) => (
-                <li key={f.code} className={i ? 'border-t border-hairline' : ''}>
-                  <Link
-                    to="/portal/review"
-                    search={{ code: f.code }}
-                    className="flex h-9 items-center justify-between gap-3 px-3 text-[0.8125rem] text-ink no-underline hover:bg-surface"
-                  >
-                    <span className="truncate">{findingName(f.code)}</span>
-                    <span className="tabular-nums">{f.count}</span>
-                  </Link>
-                </li>
+      <PaneSection title="Steps" aside={`Started ${labTime(run.started_at)}${run.finished_at ? ` · took ${duration(run.started_at, run.finished_at)}` : ''}`}>
+        <table className="w-full border-collapse tabular-nums">
+          <thead>
+            <tr>
+              {['Step', 'Status', 'In → out', 'Took', 'What happened'].map((h) => (
+                <th key={h} scope="col" className={deskTh}>
+                  {h}
+                </th>
               ))}
-            </ul>
-          ) : (
-            <p className="text-[0.8125rem] text-ink">Nothing open.</p>
-          )}
-        </section>
-      </div>
-    </OpsPage>
-  )
-}
-
-function Station({
-  Icon,
-  label,
-  time,
-  value,
-  unit,
-  to,
-  last,
-  children,
-}: {
-  Icon: LucideIcon
-  label: string
-  time?: string | null
-  value: number
-  unit: string
-  to?: '/portal/review'
-  last?: boolean
-  children: React.ReactNode
-}) {
-  const body = (
-    <>
-      <div className="flex items-center justify-between gap-3 text-[0.8125rem] text-ink-2">
-        <span className="inline-flex items-center gap-1.5 font-medium">
-          <Icon className="size-3.5" strokeWidth={1.75} aria-hidden />
-          {label}
-        </span>
-        {time && <span className="tabular-nums">{time}</span>}
-      </div>
-      <p className="mt-1.5 flex items-baseline gap-1.5">
-        <span className="font-display text-[1.75rem] leading-9 text-ink tabular-nums">{value.toLocaleString('en-GB')}</span>
-        <span className="text-[0.8125rem] text-ink">{unit}</span>
-      </p>
-      <div className="mt-1 text-[0.8125rem] leading-5 text-ink">{children}</div>
-    </>
-  )
-  const box = 'relative block h-full p-4'
-  return (
-    <li className={last ? 'relative' : 'relative border-b border-hairline lg:border-e lg:border-b-0'}>
-      {to ? (
-        <Link to={to} className={`${box} no-underline hover:bg-surface-raised`}>
-          {body}
-        </Link>
-      ) : (
-        <div className={box}>{body}</div>
-      )}
-      {!last && (
-        <ChevronRight
-          aria-hidden
-          className="absolute top-1/2 -right-2 z-10 hidden size-4 -translate-y-1/2 rounded-full bg-surface text-ink-2 lg:block"
-        />
-      )}
-    </li>
-  )
-}
-
-function RunsTable({ runs }: { runs: PipelineRun[] }) {
-  if (!runs.length) return <p className="text-[0.8125rem] text-ink">No runs yet.</p>
-  return (
-    <div className="overflow-x-auto rounded-lg border border-edge">
-      <table className="w-full tabular-nums">
-        <thead className="bg-surface">
-          <tr>
-            {['Run', 'Status', 'Started', 'Took', 'Result', 'Since the run before', 'New findings'].map((h) => (
-              <th key={h} scope="col" className={opsTh}>
-                {h}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {runs.map((run) => (
-            <tr key={run.id} className={opsRow}>
-              <td className={`${opsTd} whitespace-nowrap`}>
-                <Link to="/portal/runs/$runId" params={{ runId: run.id }} className="text-glaze underline">
-                  {operationName(run.operation)} <span className="font-mono">{shortId(run.id)}</span>
-                </Link>
-              </td>
-              <td className={opsTd}>
-                <RunStatus status={run.status} />
-              </td>
-              <td className={`${opsTd} whitespace-nowrap`}>{labTime(run.started_at)}</td>
-              <td className={`${opsTd} whitespace-nowrap`}>{duration(run.started_at, run.finished_at) ?? 'Running'}</td>
-              <td className={`${opsTd} whitespace-nowrap`}>
-                {run.error
-                  ? run.error.replace(/[.\s]+$/, '')
-                  : run.rows !== null && run.startups !== null
-                    ? `${plural(run.rows, 'row')} → ${plural(run.startups, 'startup')}`
-                    : '—'}
-              </td>
-              <td className={opsTd}>{diffSentence(run.diff)}</td>
-              <td className={opsTd}>{run.findings}</td>
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody>
+            {steps.map((s, i) => {
+              const [inUnit, outUnit] = STEP_UNIT[s.step] ?? ['items', 'items']
+              return (
+                <tr key={s.position}>
+                  <td className={`${deskTd} whitespace-nowrap`}>
+                    <span className="me-2 text-ink-2">{i + 1}</span>
+                    {operationName(s.step)}
+                  </td>
+                  <td className={deskTd}>
+                    <RunStatus status={s.status} />
+                  </td>
+                  <td className={`${deskTd} whitespace-nowrap`}>
+                    {s.items_in !== null ? `${s.items_in.toLocaleString('en-GB')} ${inUnit}` : '—'}
+                    {s.items_out !== null && ` → ${s.items_out.toLocaleString('en-GB')} ${outUnit}`}
+                  </td>
+                  <td className={`${deskTd} whitespace-nowrap`}>
+                    {s.status === 'running' ? `${duration(s.started_at, nowIso) ?? '0.1 s'} so far` : (duration(s.started_at, s.finished_at) ?? '—')}
+                  </td>
+                  <td className={deskTd}>{s.message ?? (s.status === 'pending' ? 'Waiting for the step before' : '—')}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </PaneSection>
+
+      {!live && !failed && (
+        <PaneSection title="What changed">
+          <p className="text-[0.875rem] text-ink">
+            {run.diff?.first
+              ? 'First collect: there is no earlier registry to compare with.'
+              : run.diff
+                ? `${diffSentence(run.diff)} against the collect before.`
+                : 'Nothing to compare.'}
+          </p>
+        </PaneSection>
+      )}
+
+      {reviews.length > 0 && (
+        <PaneSection title={`Findings raised · ${reviews.reduce((t, r) => t + r.count, 0)}`}>
+          <ul className="grid">
+            {reviews.map((r) => (
+              <li key={r.code} className="flex items-center justify-between gap-4 border-b border-hairline py-[7px] text-[0.875rem]">
+                <Link to="/portal/review" className="text-glaze underline">
+                  {findingName(r.code)}
+                </Link>
+                <span className="text-ink tabular-nums">
+                  {r.count}
+                  <span className="ms-2 text-[0.8125rem] text-ink-2">{r.open === r.count ? 'all open' : `${r.open} open`}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </PaneSection>
+      )}
+    </DeskPane>
   )
 }

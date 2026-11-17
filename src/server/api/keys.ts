@@ -134,7 +134,7 @@ export const testNewKey = createServerFn({ method: 'POST' })
 /** Save a key only if it passes a test made here, on the server, at save time. */
 export const saveKey = createServerFn({ method: 'POST' })
   .validator(validate)
-  .handler(async ({ data }): Promise<KeyTest & { saved: boolean; field?: 'name' }> => {
+  .handler(async ({ data }): Promise<KeyTest & { saved: boolean; field?: 'name'; id?: string }> => {
     requireOperator()
     if (!data.name) return { ok: false, saved: false, field: 'name', message: 'Give the key a name.' }
     const db = getDatabase()
@@ -142,11 +142,12 @@ export const saveKey = createServerFn({ method: 'POST' })
       return { ok: false, saved: false, field: 'name', message: `A key named ${data.name} already exists.` }
     const test = await runTest(data.provider, data.model, data.apiKey)
     if (!test.ok) return { ...test, saved: false }
+    const id = newId()
     db.query(
       `INSERT INTO ai_keys (id, name, provider, model, api_key, created_at, updated_at, last_tested_at, last_test_ok, last_test_message)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
-    ).run(newId(), data.name, data.provider, data.model, data.apiKey, now(), now(), now(), test.message)
-    return { ...test, saved: true }
+    ).run(id, data.name, data.provider, data.model, data.apiKey, now(), now(), now(), test.message)
+    return { ...test, saved: true, id }
   })
 
 /** Test a saved key again; the key is read on the server and never sent to the client. */

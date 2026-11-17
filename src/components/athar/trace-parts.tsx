@@ -1,7 +1,6 @@
-import { CornerDownLeft } from 'lucide-react'
 import { useState } from 'react'
 
-import { opsControl, opsGhost } from '@/components/athar/ops'
+import { deskInput } from '@/components/athar/desk'
 import { cn } from '@/lib/utils'
 import { rowByNumber } from '#/server/api/trace'
 
@@ -12,13 +11,15 @@ export function RowJump({ last, onOpen, className }: { last: number; onOpen: (ro
   const [busy, setBusy] = useState(false)
   return (
     <form
-      className={cn('flex items-center gap-1.5', className)}
+      className={cn('flex items-center gap-2', className)}
       onSubmit={async (e) => {
         e.preventDefault()
         if (!/^\d+$/.test(value.trim())) return setMiss('Type a row number.')
         const n = Number(value)
         setBusy(true)
-        const id = await rowByNumber({ data: n }).finally(() => setBusy(false))
+        const id = await rowByNumber({ data: n })
+          .catch(() => null)
+          .finally(() => setBusy(false))
         if (!id) return setMiss(`No row ${n}. Rows go from 1 to ${last}.`)
         setMiss(null)
         setValue('')
@@ -32,14 +33,12 @@ export function RowJump({ last, onOpen, className }: { last: number; onOpen: (ro
         id="row-jump"
         inputMode="numeric"
         value={value}
+        disabled={busy}
         onChange={(e) => (setMiss(null), setValue(e.target.value))}
         placeholder={`1–${last}`}
         aria-describedby={miss ? 'row-jump-miss' : undefined}
-        className={cn(opsControl, 'w-20 tabular-nums')}
+        className={cn(deskInput, 'w-20 tabular-nums')}
       />
-      <button type="submit" disabled={busy} aria-label="Open row" className={cn(opsGhost, 'w-8 px-0')}>
-        <CornerDownLeft aria-hidden />
-      </button>
       {miss && (
         <span id="row-jump-miss" role="alert" className="text-[0.8125rem] text-ink">
           {miss}
@@ -61,7 +60,7 @@ const LABELS: Record<string, string> = {
   label: 'Label date',
   cohort: 'Label date',
   cohort_date: 'Label date',
-  creation_year: 'Creation year',
+  creation_year: 'Founded',
   logo: 'Logo',
   logo_id: 'Logo id',
   email: 'Email',
@@ -69,7 +68,7 @@ const LABELS: Record<string, string> = {
 }
 export const fieldLabel = (key: string) => LABELS[key] ?? key.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase())
 
-/** A stored value as words: lists joined. */
+/** A stored value as words: lists joined, nothing for empty. */
 export function valueText(v: unknown): string {
   if (v === null || v === undefined || v === '') return ''
   if (Array.isArray(v)) return v.map(valueText).filter(Boolean).join(', ')
@@ -77,8 +76,4 @@ export function valueText(v: unknown): string {
   return String(v)
 }
 
-/** A value in ink, or a quiet dash when there is none. */
-export function Value({ v, className }: { v: unknown; className?: string }) {
-  const t = valueText(v)
-  return t ? <span className={cn('break-words text-ink', className)}>{t}</span> : <span className="text-ink-2">—</span>
-}
+export const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString('en-GB')} ${n === 1 ? one : many}`

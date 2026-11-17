@@ -39,9 +39,12 @@ const OPEN_FOR_ROW = `(SELECT COUNT(*) FROM review_items ri WHERE ri.status = 'o
 // Changes that every row gets (placeholder logo, industry copied from sector) are not news for one row.
 const ROUTINE = `(SELECT COUNT(*) FROM json_each(r.changes_json) c WHERE json_extract(c.value, '$.field') NOT IN ('logo', 'industry'))`
 
+export type TraceGroup = { key: 'open' | 'changed' | 'results'; label: string; total: number; rows: TraceHit[] }
+
 /**
- * The trace picker. A number matches that registry row exactly; text matches names. With no query, rows with open
- * findings come first. Returns the first 60 and the full count.
+ * The trace list. With a query: plain results, a number matching that registry row exactly and first, text matching
+ * names (first 60 plus the full count). With no query: rows with open findings, then rows whose cleaning changed a
+ * meaningful field (housekeeping on logo and industry does not count), 60 at most.
  */
 export const findTraceRows = createServerFn()
   .validator((q: string) => q.trim())
@@ -49,27 +52,35 @@ export const findTraceRows = createServerFn()
     requireOperator()
     const db = getDatabase()
     const snap = latestSnapshot(db)
-    if (!snap) return { hits: [] as TraceHit[], total: 0, snapshotRows: 0 }
-    const n = /^\d+$/.test(q) ? Number(q) : -1
-    const where = `sr.snapshot_id = $snap AND ($q = '' OR sr.row_number = $n OR COALESCE(r.name, json_extract(sr.raw_json, '$.name')) LIKE '%' || $q || '%')`
-    const params = { $snap: snap.id, $q: q, $n: n }
-    const total =
-      db
-        .query<{ n: number }, typeof params>(`SELECT COUNT(*) AS n FROM source_rows sr LEFT JOIN records r ON r.source_row_id = sr.id WHERE ${where}`)
-        .get(params)?.n ?? 0
-    const hits = db
-      .query<TraceHit, typeof params>(
-        `SELECT sr.id, sr.row_number, COALESCE(r.name, json_extract(sr.raw_json, '$.name'), 'Unnamed source row') AS name, r.sector,
-                COALESCE(${ROUTINE}, 0) AS changes, ${OPEN_FOR_ROW} AS open
-         FROM source_rows sr LEFT JOIN records r ON r.source_row_id = sr.id
-         WHERE ${where}
-         ORDER BY (sr.row_number = $n) DESC, ${q ? '' : 'open > 0 DESC, '}sr.row_number
-         LIMIT 60`,
-      )
-      .all(params)
+    if (!snap) return { groups: [] as TraceGroup[], total: 0, snapshotRows: 0, query: q }
     const snapshotRows =
       db.query<{ n: number }, [string]>('SELECT COUNT(*) AS n FROM source_rows WHERE snapshot_id = ?').get(snap.id)?.n ?? 0
-    return { hits, total, snapshotRows }
+    const select = `SELECT sr.id, sr.row_number, COALESCE(r.name, json_extract(sr.raw_json, '$.name'), 'Unnamed source row') AS name, r.sector,
+                COALESCE(${ROUTINE}, 0) AS changes, ${OPEN_FOR_ROW} AS open
+         FROM source_rows sr LEFT JOIN records r ON r.source_row_id = sr.id`
+
+    if (q) {
+      const n = /^\d+$/.test(q) ? Number(q) : -1
+      const where = `sr.snapshot_id = $snap AND (sr.row_number = $n OR COALESCE(r.name, json_extract(sr.raw_json, '$.name')) LIKE '%' || $q || '%')`
+      const params = { $snap: snap.id, $q: q, $n: n }
+      const total =
+        db
+          .query<{ n: number }, typeof params>(`SELECT COUNT(*) AS n FROM source_rows sr LEFT JOIN records r ON r.source_row_id = sr.id WHERE ${where}`)
+          .get(params)?.n ?? 0
+      const rows = db
+        .query<TraceHit, typeof params>(`${select} WHERE ${where} ORDER BY (sr.row_number = $n) DESC, sr.row_number LIMIT 60`)
+        .all(params)
+      return { groups: [{ key: 'results', label: 'Matches', total, rows }] as TraceGroup[], total, snapshotRows, query: q }
+    }
+
+    const all = db.query<TraceHit, [string]>(`${select} WHERE sr.snapshot_id = ? ORDER BY sr.row_number`).all(snap.id)
+    const open = all.filter((h) => h.open > 0)
+    const changed = all.filter((h) => h.open === 0 && h.changes > 0)
+    const groups: TraceGroup[] = [
+      { key: 'open', label: 'Open findings', total: open.length, rows: open },
+      { key: 'changed', label: 'Changed by the last run', total: changed.length, rows: changed.slice(0, 60) },
+    ]
+    return { groups: groups.filter((g) => g.total > 0), total: snapshotRows, snapshotRows, query: q }
   })
 
 /** Exact registry row number in the latest snapshot → its source row id. */

@@ -1,101 +1,111 @@
 import { Link } from '@tanstack/react-router'
 
-import type { Field } from '@/components/athar/ops'
-import type { ReviewItem } from '#/server/api/review'
+import { parseJson, type EvidenceRow } from '@/components/athar/desk'
+import type { Duplicate, ReviewItem } from '#/server/api/review'
 
-const has = (v: string | number | null | undefined) => v !== null && v !== undefined && String(v).trim() !== ''
-const shown = (v: string | number | null | undefined, empty = 'Empty') =>
-  has(v) ? <span className="font-mono">{String(v)}</span> : <span className="text-ink-2">{empty}</span>
+/*
+ * What each finding needs to be decided without leaving Review: the one value that matters for the list line, and
+ * "What cleaning did" (Field / Registry wrote / Cleaning / Why) for the pane, with the offending field flagged.
+ */
 
-const context = (item: ReviewItem) =>
-  [
-    item.sector,
-    item.creation_year && `founded ${item.creation_year}`,
-    item.founders ? `${item.founders} ${item.founders === 1 ? 'founder' : 'founders'}` : null,
-    item.website ? 'has a website' : 'no website',
-  ]
-    .filter(Boolean)
-    .join(' · ')
+type Change = { field: string; from: unknown; to: unknown; why: string }
 
-/** One short line for the list: what the finding rests on, without opening anything. */
-export function evidenceLine(item: ReviewItem): string {
+const FIELD_LABEL: Record<string, string> = {
+  website: 'Website',
+  industry: 'Industry',
+  sector: 'Sector',
+  logo: 'Logo',
+  desc: 'Description',
+  name: 'Name',
+  founders: 'Founders',
+  label: 'Label date',
+  creation_year: 'Founded',
+  email: 'Email',
+  phone: 'Phone',
+}
+const label = (field: string) => FIELD_LABEL[field] ?? field.charAt(0).toUpperCase() + field.slice(1).replace(/_/g, ' ')
+const text = (v: unknown) =>
+  v === null || v === undefined || v === '' ? '' : Array.isArray(v) ? v.join(', ') : typeof v === 'string' ? v : JSON.stringify(v)
+
+// Which stored field each finding is about, so its row in the table carries the ochre bar.
+const OFFENDING: Record<string, string> = {
+  website_unrepairable: 'website',
+  missing_description: 'desc',
+  industry_differs: 'industry',
+  cohort_unreadable: 'label',
+  cohort_before_creation: 'label',
+}
+
+/** The list's second line: the value that matters for this finding. `mono` when it is a raw registry value. */
+export function listDetail(item: ReviewItem): { text: string; mono: boolean } {
+  const labelled = item.raw_label ? `labelled ${item.raw_label}` : 'no label date'
   switch (item.code) {
     case 'website_unrepairable':
-      return has(item.raw_website) ? `Registry wrote “${item.raw_website}”` : 'Registry website is empty'
-    case 'missing_description':
-      return context(item)
+      return { text: item.raw_website || 'empty', mono: !!item.raw_website }
     case 'industry_differs':
-      return `Industry “${item.raw_industry ?? ''}” · sector “${item.raw_sector ?? ''}”`
+      return { text: `${item.raw_industry ?? 'empty'} ≠ ${item.raw_sector ?? 'empty'}`, mono: false }
     case 'cohort_unreadable':
-      return `Label date “${item.raw_label ?? ''}”`
+      return { text: item.raw_label || 'empty', mono: !!item.raw_label }
     case 'cohort_before_creation':
-      return `Labelled ${item.raw_label ?? '?'} · created ${item.raw_creation_year ?? '?'}`
+      return { text: `${labelled} · founded ${item.raw_creation_year ?? item.creation_year ?? '?'}`, mono: false }
     case 'possible_duplicate':
-      return `Same name as ${item.others.length} other ${item.others.length === 1 ? 'startup' : 'startups'}`
+      return { text: `${item.others.length + 1} startups share this name`, mono: false }
     default:
-      return item.message
+      return { text: [item.sector, labelled].filter(Boolean).join(' · '), mono: false }
   }
 }
 
-/** The full evidence for the drawer, as label and value pairs, values exactly as stored. */
-export function evidenceFields(item: ReviewItem): Field[] {
-  const out: Field[] = []
-  switch (item.code) {
-    case 'website_unrepairable':
-      out.push({ label: 'Registry wrote', value: shown(item.raw_website), copy: item.raw_website ?? undefined })
-      out.push({ label: 'Profile shows', value: 'No website' })
-      break
-    case 'missing_description':
-      out.push({ label: 'Description', value: shown(item.raw_desc, 'None in the registry') })
-      break
-    case 'industry_differs':
-      out.push({ label: 'Industry', value: shown(item.raw_industry), copy: item.raw_industry ?? undefined })
-      out.push({ label: 'Registry sector', value: shown(item.raw_sector), copy: item.raw_sector ?? undefined })
-      break
-    case 'cohort_unreadable':
-      out.push({ label: 'Label date', value: shown(item.raw_label), copy: item.raw_label ?? undefined })
-      break
-    case 'cohort_before_creation':
-      out.push({ label: 'Labelled', value: shown(item.raw_label) })
-      out.push({ label: 'Created', value: shown(item.raw_creation_year) })
-      break
-    case 'possible_duplicate':
-      break
-    default:
-      out.push({ label: 'Finding', value: item.message })
+/** "What cleaning did" for the finding's row, offending field first. */
+export function evidenceRows(item: ReviewItem): EvidenceRow[] {
+  const bad = OFFENDING[item.code]
+  const changes = parseJson<Change[]>(item.changes_json, [])
+  const rows: EvidenceRow[] = (Array.isArray(changes) ? changes : []).map((c) => {
+    const unusable = c.field === 'website' && (c.to === null || c.to === undefined)
+    return {
+      field: label(c.field),
+      wrote: text(c.from),
+      cleaning: c.to === null || c.to === undefined ? (unusable ? 'Left empty' : 'Dropped') : text(c.to),
+      why: unusable && item.code === 'website_unrepairable' ? 'Not a usable address, so it stays out of the website checks' : c.why,
+      bad: c.field === bad,
+    }
+  })
+  // Findings about a value cleaning left alone still get their row, so the evidence is never missing.
+  if (bad && !rows.some((r) => r.bad)) {
+    const raw: Record<string, string | null> = {
+      desc: item.raw_desc,
+      website: item.raw_website,
+      industry: item.raw_industry,
+      label: item.raw_label,
+    }
+    rows.unshift({
+      field: label(bad),
+      wrote: raw[bad] ?? '',
+      cleaning: item.code === 'missing_description' ? 'Kept empty' : 'Kept as written',
+      why: item.code === 'missing_description' ? 'No description in the registry' : item.message,
+      bad: true,
+    })
   }
-  out.push(
-    { label: 'Sector', value: item.sector ?? <span className="text-ink-2">Empty</span> },
-    { label: 'Founded', value: item.creation_year ?? <span className="text-ink-2">Empty</span> },
-    { label: 'Founders', value: item.founders },
-    { label: 'Website', value: shown(item.website, 'None'), copy: item.website ?? undefined },
-  )
-  return out
+  return rows.sort((a, b) => Number(!!b.bad) - Number(!!a.bad))
 }
 
-/** For a possible duplicate: this startup and the others with its name, each linking to its trace. */
+/** For a possible duplicate: every startup carrying the same name, each with a way into its trace. */
 export function DuplicateList({ item }: { item: ReviewItem }) {
-  if (item.code !== 'possible_duplicate') return null
-  const all = [
-    { startup_id: item.startup_id ?? '', name: item.name ?? 'This startup', website: item.website, row_id: item.source_row_id, row_number: item.row_number },
+  const all: Duplicate[] = [
+    { startup_id: item.startup_id ?? '', name: item.name ?? '', website: item.website, row_id: item.source_row_id, row_number: item.row_number },
     ...item.others,
   ]
   return (
-    <ul className="grid text-[0.8125rem]">
-      {all.map((d, i) => (
-        <li key={d.startup_id || i} className="grid grid-cols-[4.5rem_minmax(0,1fr)_minmax(0,1fr)] gap-3 border-t border-hairline py-2 first:border-0">
-          <span className="text-ink-2 tabular-nums">{d.row_number !== null ? `Row ${d.row_number}` : 'No row'}</span>
-          <span className="min-w-0 truncate">
-            {d.row_id ? (
-              <Link to="/portal/trace" search={{ row: d.row_id ?? undefined }} className="text-glaze underline">
-                {d.name}
-              </Link>
-            ) : (
-              d.name
-            )}
-            {i === 0 && <span className="text-ink-2"> · this one</span>}
-          </span>
-          <span className="min-w-0 truncate font-mono text-ink">{d.website ?? 'no website'}</span>
+    <ul className="border-t border-hairline">
+      {all.map((d) => (
+        <li key={d.startup_id} className="flex flex-wrap items-baseline gap-x-3 border-b border-hairline py-[7px] text-[0.875rem] text-ink">
+          <span>{d.name}</span>
+          <span className="text-[0.8125rem] text-ink-2 tabular-nums">{d.row_number ? `row ${d.row_number}` : 'no source row'}</span>
+          <span className="font-mono text-[0.8125rem]">{d.website ?? <span className="text-ink-3">empty</span>}</span>
+          {d.row_id && (
+            <Link to="/portal/trace" search={{ row: d.row_id }} className="ms-auto text-[0.8125rem] text-glaze underline">
+              Trace
+            </Link>
+          )}
         </li>
       ))}
     </ul>

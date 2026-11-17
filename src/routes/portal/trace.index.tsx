@@ -1,11 +1,24 @@
-import { Link, createFileRoute, useNavigate, useRouter } from '@tanstack/react-router'
-import { ArrowDown, ArrowUp, ExternalLink, LoaderCircle, Search } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { createFileRoute, useNavigate, useRouter } from '@tanstack/react-router'
+import { Search } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { OpsDrawer, OpsPage, opsGhost, opsRow, opsTd, opsTh, useListStepper } from '@/components/athar/ops'
-import { TraceBody, type TraceData } from '@/components/athar/trace-drawer'
-import { RowJump } from '@/components/athar/trace-parts'
+import {
+  Desk,
+  DeskBar,
+  DeskEmpty,
+  DeskGroup,
+  DeskItem,
+  Kbd,
+  deskBtn,
+  deskInput,
+  deskPrimary,
+  useDeskKeys,
+} from '@/components/athar/desk'
+import { useLabToaster } from '@/components/athar/lab'
+import { RowJump, plural } from '@/components/athar/trace-parts'
+import { TracePane } from '@/components/athar/trace-pane'
 import { cn } from '@/lib/utils'
+import { decideReviews, restoreReviews, type ReviewStatus } from '#/server/api/review'
 import { findTraceRows, getTraceRow } from '#/server/api/trace'
 
 type SearchParams = { q?: string; row?: string }
@@ -15,215 +28,177 @@ export const Route = createFileRoute('/portal/trace/')({
     q: typeof s.q === 'string' && s.q.trim() ? s.q : undefined,
     row: typeof s.row === 'string' && s.row ? s.row : undefined,
   }),
-  // The open row is not a loader dependency: opening the drawer never refetches the list.
-  loaderDeps: ({ search }) => ({ q: search.q ?? '' }),
-  loader: ({ deps }) => findTraceRows({ data: deps.q }),
-  component: TracePicker,
+  loaderDeps: ({ search }) => ({ q: search.q ?? '', row: search.row }),
+  // The selected row, or the first in the list: the pane is never empty unless the list is.
+  loader: async ({ deps }) => {
+    const list = await findTraceRows({ data: deps.q })
+    const first = list.groups[0]?.rows[0]?.id
+    const rowId = deps.row ?? first
+    const trace = rowId ? await getTraceRow({ data: rowId }) : null
+    return { list, rowId, trace }
+  },
+  component: TracePage,
 })
 
-const n = (v: number) => v.toLocaleString('en-GB')
-
-/** The row in the drawer: fetched on demand, the previous one kept on screen until the next arrives. */
-function useTraceRow(rowId: string | undefined) {
-  const [data, setData] = useState<TraceData | null>(null)
-  const [missing, setMissing] = useState(false)
-  const [tick, setTick] = useState(0)
-  useEffect(() => {
-    if (!rowId) return
-    let live = true
-    getTraceRow({ data: rowId })
-      .then((d) => {
-        if (!live) return
-        setMissing(!d)
-        if (d) setData(d)
-      })
-      .catch(() => live && setMissing(true))
-    return () => {
-      live = false
-    }
-  }, [rowId, tick])
-  const reload = useCallback(() => setTick((t) => t + 1), [])
-  return { data, loading: !!rowId && data?.row.id !== rowId && !missing, missing, reload }
-}
-
-function TracePicker() {
-  const { hits, total, snapshotRows } = Route.useLoaderData()
-  const { q = '', row } = Route.useSearch()
-  const navigate = useNavigate({ from: Route.fullPath })
+function TracePage() {
+  const { list, rowId, trace } = Route.useLoaderData()
+  const search = Route.useSearch()
+  const navigate = useNavigate({ from: '/portal/trace/' })
   const router = useRouter()
-  const [draft, setDraft] = useState(q)
-  const typed = useRef(false)
+  const toaster = useLabToaster()
+  const searchRef = useRef<HTMLInputElement>(null)
+  const [query, setQuery] = useState(search.q ?? '')
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+  const lastUndo = useRef<(() => Promise<void>) | null>(null)
 
-  // Search as you type: the URL follows the field after a short pause, so results are shareable and Back works.
+  // Search as you type; the URL keeps the query.
   useEffect(() => {
-    if (!typed.current) return
-    const t = setTimeout(() => navigate({ search: (s) => ({ ...s, q: draft.trim() || undefined }), replace: true }), 220)
+    if (query === (search.q ?? '')) return
+    const t = setTimeout(() => navigate({ search: (s) => ({ ...s, q: query.trim() || undefined, row: undefined }), replace: true }), 220)
     return () => clearTimeout(t)
-  }, [draft, navigate])
-  const pending = draft.trim() !== q.trim()
-  const exact = /^\d+$/.test(q.trim()) ? hits.find((h) => h.row_number === Number(q.trim())) : undefined
+  }, [query, search.q, navigate])
 
-  const open = useCallback((id: string | undefined) => navigate({ search: (s) => ({ ...s, row: id }), replace: true }), [navigate])
-  const trace = useTraceRow(row)
-  const ids = hits.map((h) => h.id)
-  useListStepper(ids, row, open)
+  useEffect(() => setNote(''), [rowId])
 
-  // Keep the open row in view while stepping with J/K.
-  useEffect(() => {
-    if (!row) return
-    document.querySelector(`[data-row-id="${row}"]`)?.scrollIntoView({ block: 'nearest' })
-  }, [row])
+  const select = useCallback((id: string) => navigate({ search: (s) => ({ ...s, row: id }) }), [navigate])
+  const ids = useMemo(() => list.groups.flatMap((g) => g.rows.map((r) => r.id)), [list])
+  const open = trace?.findings.filter((f) => f.status === 'open') ?? []
 
-  const d = trace.data
-  const name = d ? d.record?.name || d.rawFields.find(([k]) => k === 'name')?.[1] || 'Unnamed row' : 'Loading…'
+  const decide = useCallback(
+    (status: ReviewStatus) => {
+      if (!open.length || busy) return
+      const idsToDecide = open.map((f) => f.id)
+      let previous: Awaited<ReturnType<typeof decideReviews>>['previous'] = []
+      setBusy(true)
+      const undo = async () => {
+        await restoreReviews({ data: { previous } })
+        await router.invalidate()
+      }
+      toaster.show(
+        async () => {
+          try {
+            const r = await decideReviews({ data: { ids: idsToDecide, status, note: note || undefined } })
+            previous = r.previous
+            lastUndo.current = undo
+            setNote('')
+            await router.invalidate()
+            return r.count
+          } finally {
+            setBusy(false)
+          }
+        },
+        {
+          loading: 'Saving the decision',
+          success: (count: number) =>
+            status === 'resolved' ? `${plural(count, 'finding')} fixed at source` : `${plural(count, 'finding')} kept as is`,
+          error: (e) => ['Nothing was saved', e instanceof Error ? e.message : String(e)],
+          undo: { run: undo, success: 'Decision undone' },
+        },
+      )
+    },
+    [open, busy, note, router, toaster],
+  )
+
+  const keys = useMemo(
+    () =>
+      open.length
+        ? {
+            e: () => decide('dismissed'),
+            f: () => decide('resolved'),
+            z: () => {
+              const u = lastUndo.current
+              lastUndo.current = null
+              u?.()
+            },
+          }
+        : undefined,
+    [open.length, decide],
+  )
+  useDeskKeys({ ids, current: rowId, select, search: searchRef, keys })
+
+  const shown = list.groups.reduce((t, g) => t + g.rows.length, 0)
+  const facts = list.query ? `${shown < list.total ? `${shown} of ` : ''}${plural(list.total, 'match', 'matches')}` : plural(list.snapshotRows, 'row')
+
+  const listView = (
+    <div>
+      {list.groups.length === 0 && <p className="px-4 py-6 text-[0.875rem] text-ink">{list.query ? `No row matches “${list.query}”.` : 'Nothing collected yet.'}</p>}
+      {list.groups.map((g) => (
+        <div key={g.key}>
+          {(!list.query || list.groups.length > 1) && <DeskGroup label={g.label} count={g.total} />}
+          {g.rows.map((h) => (
+            <DeskItem
+              key={h.id}
+              selected={h.id === rowId}
+              onSelect={() => select(h.id)}
+              title={h.name}
+              qualifier={`row ${h.row_number}`}
+              detail={[h.sector ?? 'No sector', h.changes ? plural(h.changes, 'field') + ' changed' : 'nothing changed', h.open ? `${h.open} open` : null]
+                .filter(Boolean)
+                .join(' · ')}
+            />
+          ))}
+          {g.rows.length < g.total && (
+            <p className="border-b border-hairline px-4 py-2 text-[0.8125rem] text-ink-2">
+              {g.total - g.rows.length} more. Search to narrow the list.
+            </p>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+
+  const foot = open.length ? (
+    <>
+      <input
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        placeholder="Note (optional)"
+        aria-label="Note"
+        className={cn(deskInput, 'min-w-40 flex-1')}
+      />
+      <button type="button" disabled={busy} onClick={() => decide('dismissed')} className={deskBtn}>
+        Keep as is <Kbd>E</Kbd>
+      </button>
+      <button type="button" disabled={busy} onClick={() => decide('resolved')} className={deskPrimary}>
+        Fixed at source <Kbd>F</Kbd>
+      </button>
+    </>
+  ) : undefined
 
   return (
-    <OpsPage title="Trace" lede={`Follow any of the ${n(snapshotRows)} registry rows from download to startup.`}>
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-        <label className="flex h-8 w-full max-w-[26rem] items-center gap-2 rounded-md border border-edge bg-canvas px-2.5 focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-glaze">
-          <span className="sr-only">Row number or startup name</span>
-          {pending ? (
-            <LoaderCircle className="size-3.5 shrink-0 animate-spin text-ink-2 motion-reduce:animate-none" aria-hidden />
-          ) : (
-            <Search className="size-3.5 shrink-0 text-ink-2" aria-hidden />
-          )}
+    <main className="flex min-h-0 flex-1 flex-col">
+      <DeskBar title="Trace" facts={facts}>
+        <label className="relative flex items-center">
+          <span className="sr-only">Search rows by number or startup name</span>
+          <Search className="pointer-events-none absolute start-2.5 size-4 text-ink-2" aria-hidden />
           <input
+            ref={searchRef}
             type="search"
-            autoComplete="off"
-            value={draft}
-            placeholder="Row number or startup name"
-            onChange={(e) => {
-              typed.current = true
-              setDraft(e.target.value)
-            }}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => {
-              const target = exact ?? (hits.length === 1 ? hits[0] : undefined)
-              if (e.key === 'Enter' && target && !pending) open(target.id)
+              if (e.key === 'Enter') {
+                const first = list.groups[0]?.rows[0]
+                if (first) select(first.id)
+              }
             }}
-            className="h-full min-w-0 flex-1 bg-transparent text-[0.8125rem] text-ink outline-none placeholder:text-ink-2"
+            placeholder="Row number or startup name"
+            className={cn(deskInput, 'w-72 ps-8')}
           />
+          <span className="pointer-events-none absolute end-2 hidden sm:inline">
+            <Kbd>/</Kbd>
+          </span>
         </label>
-        <RowJump last={snapshotRows} onOpen={open} />
-        <p className="ms-auto text-[0.8125rem] text-ink-2" aria-live="polite">
-          {q
-            ? total === 0
-              ? `No row matches “${q}”`
-              : `${hits.length < total ? `${n(hits.length)} of ${n(total)}` : n(total)} ${total === 1 ? 'match' : 'matches'}`
-            : `Open findings first · ${n(hits.length)} of ${n(total)} rows`}
-        </p>
-      </div>
-
-      {hits.length > 0 ? (
-        <div className="overflow-x-auto rounded-md border border-edge">
-          <table className="w-full min-w-[40rem]">
-            <thead className="bg-surface">
-              <tr>
-                <th scope="col" className={cn(opsTh, 'w-24')}>
-                  Row
-                </th>
-                <th scope="col" className={opsTh}>
-                  Startup
-                </th>
-                <th scope="col" className={opsTh}>
-                  Sector
-                </th>
-                <th scope="col" className={cn(opsTh, 'w-36')}>
-                  Cleaning
-                </th>
-                <th scope="col" className={cn(opsTh, 'w-32')}>
-                  Findings
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {hits.map((h) => {
-                const active = h.id === row
-                return (
-                  <tr
-                    key={h.id}
-                    data-row-id={h.id}
-                    aria-selected={active}
-                    onClick={() => open(h.id)}
-                    className={cn(opsRow, 'cursor-pointer hover:bg-surface', active && 'bg-surface-raised hover:bg-surface-raised')}
-                  >
-                    <td className={cn(opsTd, 'tabular-nums')}>
-                      {h.row_number}
-                      {exact?.id === h.id && <span className="ms-2 text-ink-2">exact</span>}
-                    </td>
-                    <td className={cn(opsTd, 'max-w-0 truncate')}>
-                      <button type="button" onClick={(e) => (e.stopPropagation(), open(h.id))} className="max-w-full truncate text-start font-medium text-ink hover:underline">
-                        {h.name}
-                      </button>
-                    </td>
-                    <td className={cn(opsTd, 'max-w-0 truncate')}>{h.sector ?? '—'}</td>
-                    <td className={cn(opsTd, 'tabular-nums')}>{h.changes ? `${h.changes} ${h.changes === 1 ? 'field' : 'fields'}` : '—'}</td>
-                    <td className={cn(opsTd, 'tabular-nums')}>{h.open ? <span className="border-s-2 border-ochre ps-2">{h.open} open</span> : '—'}</td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <p className="text-[0.875rem] text-ink">Nothing matches. Try part of the name, or the row number from the registry file.</p>
-      )}
-
-      <OpsDrawer
-        open={!!row}
-        onOpenChange={(v) => !v && open(undefined)}
+        <RowJump last={list.snapshotRows} onOpen={select} />
+      </DeskBar>
+      <Desk
         storageKey="trace"
-        defaultWidth={640}
-        itemKey={d?.row.id}
-        eyebrow={trace.loading ? 'Loading…' : d ? `Row ${d.row.row_number} of ${n(d.lastRow)}` : trace.missing ? 'Not found' : 'Row'}
-        title={trace.missing ? 'This row does not exist' : name}
-        actions={
-          d && (
-            <>
-              <button
-                type="button"
-                disabled={!d.prev}
-                onClick={() => d.prev && open(d.prev.id)}
-                aria-label={d.prev ? `Previous: row ${d.prev.row_number}` : 'First row'}
-                className={cn(opsGhost, 'w-8 px-0')}
-              >
-                <ArrowUp aria-hidden />
-              </button>
-              <button
-                type="button"
-                disabled={!d.next}
-                onClick={() => d.next && open(d.next.id)}
-                aria-label={d.next ? `Next: row ${d.next.row_number}` : 'Last row'}
-                className={cn(opsGhost, 'w-8 px-0')}
-              >
-                <ArrowDown aria-hidden />
-              </button>
-              {d.startup && (
-                <Link to="/startups/$id" params={{ id: d.startup.id }} className={cn(opsGhost, 'no-underline')}>
-                  <ExternalLink aria-hidden />
-                  Open profile
-                </Link>
-              )}
-            </>
-          )
-        }
-      >
-        {trace.missing ? (
-          <p className="text-[0.875rem] text-ink">No source row has this id. It may belong to a snapshot that was replaced.</p>
-        ) : d ? (
-          <div aria-busy={trace.loading}>
-            <TraceBody
-              data={d}
-              onOpen={open}
-              onChanged={() => {
-                trace.reload()
-                router.invalidate()
-              }}
-            />
-          </div>
-        ) : (
-          <p className="text-[0.875rem] text-ink-2">Loading the row…</p>
-        )}
-      </OpsDrawer>
-    </OpsPage>
+        showPaneOnNarrow={!!search.row}
+        onBack={() => navigate({ search: (s) => ({ ...s, row: undefined }) })}
+        list={listView}
+        pane={trace ? <TracePane key={trace.row.id} data={trace} foot={foot} /> : <DeskEmpty>{rowId ? 'This row is not in the registry.' : 'Pick a row.'}</DeskEmpty>}
+      />
+    </main>
   )
 }

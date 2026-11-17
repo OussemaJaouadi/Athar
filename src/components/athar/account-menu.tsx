@@ -24,6 +24,7 @@ export function AccountMenu({ role }: { role: Role }) {
           : { id: 'guest', name: 'Guest', email: 'Reading the archive', initials: 'G' },
       ]}
       showStatus={false}
+      compact
       theme={theme}
       onThemeChange={(next) => {
         applyThemeChoice(next)

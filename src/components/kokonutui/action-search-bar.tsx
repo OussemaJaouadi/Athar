@@ -925,7 +925,7 @@ function ActionSearchBar({
     // biome-ignore lint/a11y/noStaticElementInteractions: focusout from the whole palette closes it
     // biome-ignore lint/a11y/noNoninteractiveElementInteractions: same focusout handler
     <div
-      className={cn("relative h-[46px] w-full max-w-md", className)}
+      className={cn("relative h-9 w-full max-w-md", className)}
       onBlur={handleBlur}
       onPointerEnter={(e) => {
         hoverRef.current = e.pointerType === "mouse";
@@ -937,13 +937,13 @@ function ActionSearchBar({
     >
       <div
         className={cn(
-          "@container/palette absolute inset-x-0 top-0 z-30 overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950",
+          "@container/palette absolute inset-x-0 top-0 z-30 overflow-hidden rounded-lg border border-edge bg-surface",
           open
             ? "shadow-[0_16px_40px_-16px_rgb(0_0_0/0.2)] dark:shadow-[0_16px_40px_-16px_rgb(0_0_0/0.7)]"
             : "shadow-xs"
         )}
       >
-        <div className="flex h-11 items-center gap-2 px-3">
+        <div className="flex h-[34px] items-center gap-2 px-3">
           <Search
             aria-hidden="true"
             className="size-4 shrink-0 text-zinc-400 dark:text-zinc-500"

@@ -92,6 +92,8 @@ interface ProfileDropdownProps
   onSignOut?: () => void;
   /** Show the presence row and dot. Off for apps without presence. */
   showStatus?: boolean;
+  /** A header-sized trigger: the avatar alone; name and email appear in the open menu. */
+  compact?: boolean;
   holdDuration?: number;
 }
 
@@ -624,6 +626,7 @@ export default function ProfileDropdown({
   onStatusChange,
   onSignOut,
   showStatus = true,
+  compact = false,
   holdDuration = 1200,
   className,
   ...props
@@ -894,7 +897,13 @@ export default function ProfileDropdown({
         aria-controls={sharedInPanel ? menuId : undefined}
         aria-expanded={sharedInPanel}
         aria-haspopup="menu"
-        className="flex w-60 items-center gap-2.5 rounded-2xl border border-edge bg-surface-raised p-2 pr-3 text-left outline-none transition-colors duration-150 hover:border-edge hover:bg-surface focus-visible:ring-2 focus-visible:ring-glaze focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
+        aria-label={compact ? `Account: ${account.name}` : undefined}
+        className={cn(
+          "outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-glaze focus-visible:ring-offset-2 focus-visible:ring-offset-canvas",
+          compact
+            ? "grid size-9 place-items-center rounded-full"
+            : "flex w-60 items-center gap-2.5 rounded-2xl border border-edge bg-surface-raised p-2 pr-3 text-left hover:bg-surface"
+        )}
         onClick={(event) => {
           const via = viaOf(event);
           openMenu(via, via === "keyboard" ? "first" : "menu");
@@ -908,6 +917,16 @@ export default function ProfileDropdown({
         ref={triggerRef}
         type="button"
       >
+        {compact ? (
+          <motion.span
+            className={cn("relative z-20 block", sharedInPanel && "invisible")}
+            key={sharedInPanel ? "avatar-static" : "avatar-shared"}
+            layoutId={sharedInPanel ? undefined : `${uid}-avatar`}
+            transition={sharedTransition}
+          >
+            <Avatar account={account} className="size-9" tone={tone} />
+          </motion.span>
+        ) : (
         <span className="min-w-0 flex-1">
           <Identity
             account={account}
@@ -919,6 +938,8 @@ export default function ProfileDropdown({
             uid={uid}
           />
         </span>
+        )}
+        {compact ? null : (
         <ChevronsUpDown
           aria-hidden="true"
           className={cn(
@@ -926,6 +947,7 @@ export default function ProfileDropdown({
             phase !== "closed" && "opacity-0"
           )}
         />
+        )}
       </button>
 
       {phase === "closed" ? null : (

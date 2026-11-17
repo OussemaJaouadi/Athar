@@ -60,7 +60,7 @@ function AskForm({ initial, compact }: { initial?: string; compact?: boolean }) 
   return (
     <form role="search" onSubmit={(e) => (e.preventDefault(), ask(text.trim()))} className="grid gap-4">
       <AIPromptInput aria-label="Describe your idea" value={text} onValueChange={setText} onSubmit={ask} busy={busy} minLength={12} placeholder="Describe your idea in a sentence" size={compact ? 'md' : 'lg'}>
-        {busy ? <AILoader label="Reading all the startups…" /> : text && short ? 'A little more: at least a short sentence.' : 'Enter to ask · Shift+Enter for a new line'}
+        {busy ? <AILoader label="Reading all the startups…" /> : text && short ? 'A little more: a short sentence is enough.' : 'Enter to ask · Shift+Enter for a new line'}
       </AIPromptInput>
       {error && <p className="ps-5 text-[0.9375rem] text-destructive">{error}</p>}
       {!compact && <AISuggestions className="ps-1" label="Or try one" suggestions={EXAMPLES} onSelect={setText} />}

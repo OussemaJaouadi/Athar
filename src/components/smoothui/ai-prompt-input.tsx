@@ -34,6 +34,7 @@ export function AIPromptInput({ 'aria-label': ariaLabel, className, children, bu
   const reduced = useReducedMotion()
   const ref = useRef<HTMLTextAreaElement | null>(null)
   const [focused, setFocused] = useState(false)
+  const [nudge, setNudge] = useState(false)
   const canSubmit = value.trim().length >= minLength && !busy
 
   const resize = useCallback(() => {
@@ -49,7 +50,16 @@ export function AIPromptInput({ 'aria-label': ariaLabel, className, children, bu
     resize()
   }, [value, resize])
 
-  const submit = () => canSubmit && onSubmit(value.trim())
+  // Too short: keep the button live, point back at the field and say what is missing.
+  const submit = () => {
+    if (busy) return
+    if (!canSubmit) {
+      setNudge(true)
+      ref.current?.focus()
+      return
+    }
+    onSubmit(value.trim())
+  }
 
   return (
     <motion.div
@@ -70,7 +80,7 @@ export function AIPromptInput({ 'aria-label': ariaLabel, className, children, bu
         placeholder={placeholder}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
-        onChange={(e: ChangeEvent<HTMLTextAreaElement>) => onValueChange(e.target.value)}
+        onChange={(e: ChangeEvent<HTMLTextAreaElement>) => (setNudge(false), onValueChange(e.target.value))}
         onKeyDown={(e: KeyboardEvent<HTMLTextAreaElement>) => {
           if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault()
@@ -83,18 +93,20 @@ export function AIPromptInput({ 'aria-label': ariaLabel, className, children, bu
         )}
       />
       <div className="flex items-center justify-between gap-3 px-3 pb-3 ps-5">
-        <div className="min-w-0 text-[0.8125rem] text-ink-2">{children}</div>
+        <div className="min-w-0 text-[0.8125rem] text-ink-2" aria-live="polite">
+          {nudge && !canSubmit ? <span className="text-ink">Write your idea as a short sentence first.</span> : children}
+        </div>
         <motion.button
           type="button"
           onClick={submit}
-          disabled={!canSubmit}
+          disabled={busy}
           aria-label={busy ? 'Reading the registry' : submitLabel}
-          whileHover={!canSubmit || reduced ? undefined : { scale: 1.03 }}
-          whileTap={!canSubmit || reduced ? undefined : { scale: 0.96 }}
+          whileHover={busy || reduced ? undefined : { scale: 1.03 }}
+          whileTap={busy || reduced ? undefined : { scale: 0.96 }}
           transition={reduced ? { duration: 0 } : SPRING}
           className={cn(
             'inline-flex h-11 shrink-0 items-center gap-2 rounded-xl px-4 text-[0.9375rem] font-medium',
-            canSubmit ? 'bg-ink text-canvas' : 'cursor-not-allowed border border-edge bg-transparent text-ink-2',
+            'bg-gradient-to-r from-ai-from to-ai-to text-ai-ink shadow-[0_0_0_1px_color-mix(in_oklab,var(--ai-from)_40%,transparent)] disabled:cursor-wait',
           )}
         >
           <span>{submitLabel}</span>

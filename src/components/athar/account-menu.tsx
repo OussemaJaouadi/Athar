@@ -1,5 +1,5 @@
 import { useRouter } from '@tanstack/react-router'
-import { LogIn, ShieldCheck } from 'lucide-react'
+import { BookOpen, LogIn, ShieldCheck } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { applyThemeChoice, readThemeChoice, type ThemeChoice } from '@/components/athar/theme'
@@ -10,7 +10,7 @@ import { signIn, type Role } from '#/server/auth'
  * The header's one account control (kokonut ui Account Menu): who you are, the theme, and the way to the
  * operator portal. A guest sees Sign in; an operator sees the portal and can hold to sign out.
  */
-export function AccountMenu({ role }: { role: Role }) {
+export function AccountMenu({ role, room = 'reading' }: { role: Role; room?: 'reading' | 'operator' }) {
   const router = useRouter()
   const [theme, setTheme] = useState<ThemeChoice>('system')
   useEffect(() => setTheme(readThemeChoice()), [])
@@ -31,7 +31,9 @@ export function AccountMenu({ role }: { role: Role }) {
         setTheme(next)
       }}
       items={
-        operator
+        room === 'operator'
+          ? [{ label: 'Reading room', icon: <BookOpen className="size-4" aria-hidden />, href: '/' }]
+          : operator
           ? [{ label: 'Operator portal', icon: <ShieldCheck className="size-4" aria-hidden />, href: '/portal' }]
           : [{ label: 'Sign in as operator', icon: <LogIn className="size-4" aria-hidden />, href: '/sign-in' }]
       }
@@ -39,7 +41,8 @@ export function AccountMenu({ role }: { role: Role }) {
         operator
           ? async () => {
               await signIn({ data: 'user' })
-              await router.invalidate()
+              if (room === 'operator') await router.navigate({ to: '/' })
+              else await router.invalidate()
             }
           : undefined
       }

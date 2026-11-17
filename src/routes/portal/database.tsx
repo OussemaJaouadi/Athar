@@ -1,6 +1,9 @@
 import { Link, createFileRoute } from '@tanstack/react-router'
 
 import { PageHeader } from '@/components/athar/kit'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
+
+import { labControl } from '@/components/athar/lab'
 import { cn } from '@/lib/utils'
 import { getTableRows, listTables } from '#/server/api/portal'
 
@@ -42,6 +45,7 @@ const SHELF: Record<string, string> = {
 // Database view: every table, raw and derived, read-only.
 function DatabasePage() {
   const { tables, table, data } = Route.useLoaderData()
+  const total = tables.find((t) => t.name === table)?.rows ?? 0
   return (
     <main className="grid grid-cols-[minmax(0,1fr)] gap-4 p-4 lg:p-6">
       <PageHeader title="Database">
@@ -51,7 +55,7 @@ function DatabasePage() {
       <div className="grid items-start gap-4 lg:grid-cols-[14rem_minmax(0,1fr)]">
         <nav
           aria-label="Tables"
-          className="grid border border-hairline bg-surface lg:sticky lg:top-4"
+          className="grid border border-edge bg-surface lg:sticky lg:top-4"
         >
           {tables.map((t) => (
             <Link
@@ -61,31 +65,31 @@ function DatabasePage() {
               className={cn(
                 'grid grid-cols-[1fr_auto] gap-x-2 border-s-2 border-b border-b-hairline min-h-10 px-3 py-2 no-underline last:border-b-0',
                 t.name === table
-                  ? 'border-s-glaze bg-surface-raised'
+                  ? 'border-s-ink bg-surface-raised font-medium'
                   : 'border-s-transparent hover:bg-surface',
               )}
             >
               <span className="truncate font-mono text-sm text-ink">
                 {t.name}
               </span>
-              <span className="text-sm text-ink-2 tabular-nums">{t.rows}</span>
+              <span className="text-sm text-ink tabular-nums">{t.rows.toLocaleString('en-GB')}</span>
               <span className="text-sm text-ink-2">{SHELF[t.name] ?? ''}</span>
             </Link>
           ))}
         </nav>
         {data && (
           <div className="grid min-w-0 gap-2">
-            <div className="max-h-[78dvh] overflow-auto border border-hairline bg-surface">
+            <div className="max-h-[78dvh] overflow-auto border border-edge bg-surface">
               <table className="w-full tabular-nums">
                 <thead className="sticky top-0 bg-surface">
                   <tr>
-                    <th className="border-b border-hairline px-2.5 py-2 text-start font-mono text-sm font-medium text-ink-2">
+                    <th className="border-b border-edge px-2.5 py-2 text-start font-mono text-[0.8125rem] font-medium text-ink-2">
                       #
                     </th>
                     {data.columns.map((c) => (
                       <th
                         key={c}
-                        className="border-b border-hairline px-2.5 py-2 text-start font-mono text-sm font-medium whitespace-nowrap text-ink-2"
+                        className="border-b border-edge px-2.5 py-2 text-start font-mono text-[0.8125rem] font-medium whitespace-nowrap text-ink-2"
                       >
                         {c}
                       </th>
@@ -98,7 +102,7 @@ function DatabasePage() {
                       key={i}
                       className="border-b border-hairline last:border-0 hover:bg-surface"
                     >
-                      <td className="px-2.5 py-1.5 text-sm text-ink-2">
+                      <td className="px-2.5 py-1.5 text-[0.8125rem] text-ink-3">
                         {data.page * 50 + i + 1}
                       </td>
                       {data.columns.map((c) => {
@@ -128,24 +132,28 @@ function DatabasePage() {
                 </tbody>
               </table>
             </div>
-            <div className="flex items-center gap-4 text-sm">
-              <span className="text-ink-2">Page {data.page + 1}</span>
-              {data.page > 0 && (
-                <Link
-                  to="/portal/database"
-                  search={{ table, page: data.page - 1 }}
-                >
-                  Previous
-                </Link>
-              )}
-              {data.rows.length === 50 && (
-                <Link
-                  to="/portal/database"
-                  search={{ table, page: data.page + 1 }}
-                >
-                  Next
-                </Link>
-              )}
+            <div className="flex items-center gap-2 text-sm">
+              <span className="me-2 text-ink tabular-nums">
+                {data.rows.length ? `${(data.page * 50 + 1).toLocaleString('en-GB')}–${(data.page * 50 + data.rows.length).toLocaleString('en-GB')}` : '0'} of {total.toLocaleString('en-GB')}
+              </span>
+              <Link
+                to="/portal/database"
+                search={{ table, page: data.page - 1 || undefined }}
+                disabled={data.page === 0}
+                aria-disabled={data.page === 0}
+                className={cn(labControl, 'inline-flex items-center gap-1.5 no-underline aria-disabled:pointer-events-none aria-disabled:text-ink-3')}
+              >
+                <ChevronLeft aria-hidden className="size-4" /> Previous
+              </Link>
+              <Link
+                to="/portal/database"
+                search={{ table, page: data.page + 1 }}
+                disabled={data.rows.length < 50}
+                aria-disabled={data.rows.length < 50}
+                className={cn(labControl, 'inline-flex items-center gap-1.5 no-underline aria-disabled:pointer-events-none aria-disabled:text-ink-3')}
+              >
+                Next <ChevronRight aria-hidden className="size-4" />
+              </Link>
             </div>
           </div>
         )}

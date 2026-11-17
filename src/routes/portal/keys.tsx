@@ -2,6 +2,8 @@ import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { useState } from 'react'
 import { labControl, labPrimary } from '@/components/athar/lab'
 import { HoldToConfirm } from '@/components/interior/hold-to-confirm'
+import { CircleAlert } from 'lucide-react'
+import { PageHeader } from '@/components/athar/kit'
 import { addKey, listKeys, removeKey } from '#/server/api/portal'
 import { PROVIDERS } from '#/shared/providers'
 
@@ -24,19 +26,12 @@ function KeysPage() {
   const [saving, setSaving] = useState(false)
   return (
     <main className="grid gap-6 p-4 lg:p-6">
-      <header>
-        <h1 className="font-display text-[1.75rem] leading-9 font-medium">
-          Keys
-        </h1>
-        <p className="mt-1 text-ink-2">
-          Manage the keys used by Prepare. Key values stay on the server.
-        </p>
-      </header>
+      <PageHeader title="Keys">Manage the keys used by Prepare. Key values stay on the server.</PageHeader>
       <div className="grid items-start gap-8 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <section aria-label="Saved keys" className="min-w-0">
-          <div className="overflow-x-auto border border-hairline">
+          <div className="overflow-x-auto border border-edge">
             <table className="w-full">
-              <thead className="bg-surface text-ink-2">
+              <thead className="bg-surface text-[0.8125rem] text-ink-2">
                 <tr>
                   {[
                     'Name',
@@ -57,7 +52,7 @@ function KeysPage() {
               </thead>
               <tbody>
                 {keys.map((key) => (
-                  <tr key={key.id} className="border-t border-hairline">
+                  <tr key={key.id} className="border-t border-edge">
                     <td className="px-3 py-3">{key.name}</td>
                     <td className="px-3 py-3">{providerName(key.provider)}</td>
                     <td className="max-w-56 px-3 py-3 font-mono text-sm wrap-anywhere">
@@ -76,7 +71,7 @@ function KeysPage() {
                     <td className="px-3 py-3">
                       <HoldToConfirm
                         confirmLabel="Key removed"
-                        className="rounded-[4px]! border-control! border-input! bg-canvas! text-ink! focus-visible:ring-glaze! [&>span[aria-hidden]]:bg-glaze! [&>span[aria-hidden]]:text-glaze-ink! [&>span[aria-hidden]]:text-primary-foreground!"
+                        className="rounded-[4px]! border-edge! bg-canvas! text-ink! focus-visible:ring-glaze! [&>span[aria-hidden]]:bg-glaze! [&>span[aria-hidden]]:text-glaze-ink! [&>span[aria-hidden]]:text-primary-foreground!"
                         onConfirm={async () => {
                           setError(undefined)
                           try {
@@ -98,14 +93,14 @@ function KeysPage() {
             </table>
           </div>
           {!keys.length && (
-            <p className="border-x border-b border-hairline p-4 text-ink-2">
+            <p className="border-x border-b border-edge p-4 text-ink">
               No key yet. Search, profiles and idea checks work without one;
               Prepare needs a key.
             </p>
           )}
         </section>
-        <section className="bg-surface p-4">
-          <h2 className="mb-4 text-xl font-medium">Add a key</h2>
+        <section className="border border-edge bg-surface p-4">
+          <h2 className="mb-4 font-sans text-[0.9375rem] font-medium text-ink">Add a key</h2>
           <form
             className="grid gap-4"
             onSubmit={async (event) => {
@@ -132,7 +127,7 @@ function KeysPage() {
               }
             }}
           >
-            <label className="grid gap-1.5">
+            <label className="grid gap-1.5 text-[0.8125rem] text-ink-2">
               Name
               <input
                 className={labControl}
@@ -141,7 +136,7 @@ function KeysPage() {
                 required
               />
             </label>
-            <label className="grid gap-1.5">
+            <label className="grid gap-1.5 text-[0.8125rem] text-ink-2">
               Provider
               <select
                 className={labControl}
@@ -159,7 +154,7 @@ function KeysPage() {
                 ))}
               </select>
             </label>
-            <label className="grid gap-1.5">
+            <label className="grid gap-1.5 text-[0.8125rem] text-ink-2">
               Model
               <input
                 className={labControl}
@@ -168,7 +163,7 @@ function KeysPage() {
                 required
               />
             </label>
-            <label className="grid gap-1.5">
+            <label className="grid gap-1.5 text-[0.8125rem] text-ink-2">
               Key
               <input
                 className={labControl}
@@ -186,7 +181,8 @@ function KeysPage() {
         </section>
       </div>
       {error && (
-        <p role="alert" className="text-destructive">
+        <p role="alert" className="flex items-start gap-2 border-s-2 border-destructive bg-surface px-3 py-2 text-ink">
+          <CircleAlert aria-hidden className="mt-0.5 size-4 shrink-0" />
           Key change failed: {error.replace(/[.\s]+$/, '')}. Try again.
         </p>
       )}

@@ -1,5 +1,6 @@
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
 import { labControl, labPrimary } from '@/components/athar/lab'
+import { PageHeader } from '@/components/athar/kit'
 import { findRows } from '#/server/api/portal'
 
 type Search = { q?: string }
@@ -17,14 +18,7 @@ function TracePicker() {
   const navigate = useNavigate({ from: Route.fullPath })
   return (
     <main className="grid gap-6 p-4 lg:p-6">
-      <header>
-        <h1 className="font-display text-[1.75rem] leading-9 font-medium">
-          Trace a source row
-        </h1>
-        <p className="mt-1 text-ink-2">
-          Follow a source row from the registry to its startup.
-        </p>
-      </header>
+      <PageHeader title="Trace a source row">Follow a source row from the registry to its startup.</PageHeader>
       <form
         className="flex max-w-xl flex-wrap gap-2"
         onSubmit={(event) => {
@@ -47,7 +41,7 @@ function TracePicker() {
         />
         <button className={labPrimary}>Find source rows</button>
       </form>
-      <ul className="divide-y divide-hairline border-y border-hairline">
+      <ul className="divide-y divide-hairline border-y border-edge">
         {rows.map((row) => (
           <li
             key={row.id}
@@ -60,16 +54,16 @@ function TracePicker() {
             >
               Row {row.row_number} · {row.name}
             </Link>
-            <span className="text-ink-2">{row.sector}</span>
-            <span className="text-ink-2">{row.changes} fields changed</span>
-            <span className="ms-auto text-ink-2">
+            <span className="text-ink">{row.sector}</span>
+            <span className="text-ink tabular-nums">{row.changes} {row.changes === 1 ? 'field' : 'fields'} changed</span>
+            <span className="ms-auto text-ink">
               {row.startup_id ? 'Matched to a startup' : 'Not matched yet'}
             </span>
           </li>
         ))}
       </ul>
       {!rows.length && (
-        <p className="text-ink-2">
+        <p className="text-ink">
           {q
             ? 'No source rows match. Try another row number or name.'
             : 'No source rows yet. Collect the registry to trace a row.'}

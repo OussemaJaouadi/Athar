@@ -1,3 +1,4 @@
+import { PageHeader } from '@/components/athar/kit'
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import {
@@ -25,16 +26,14 @@ function RunsPage() {
   const busy = starting || runs.some((run) => run.status === 'running')
   return (
     <main className="grid gap-6 p-4 lg:p-6">
-      <h1 className="font-display text-[1.75rem] leading-9 font-medium">
-        Runs
-      </h1>
+      <PageHeader title="Runs" />
       <section
-        className="grid divide-y divide-hairline border border-hairline bg-surface sm:grid-cols-3 sm:divide-x sm:divide-y-0"
+        className="grid divide-y divide-edge border border-edge bg-surface sm:grid-cols-3 sm:divide-x sm:divide-y-0"
         aria-label="Operations"
       >
         <div className="grid content-start gap-3 p-4">
-          <h2 className="text-xl font-medium">Collect</h2>
-          <p className="text-ink-2">
+          <h2 className="font-sans text-[0.9375rem] font-medium text-ink">Collect</h2>
+          <p className="text-ink">
             Download the registry, clean source rows and match startups.
           </p>
           <div>
@@ -75,15 +74,15 @@ function RunsPage() {
             </button>
           </div>
           {busy && (
-            <p className="text-ink-2" role="status">
+            <p className="text-ink" role="status">
               A run is starting or running. Wait for it to finish.
             </p>
           )}
         </div>
         <div className="grid content-start gap-3 p-4">
-          <h2 className="text-xl font-medium">Prepare</h2>
-          <p className="text-ink-2">Clean descriptions with a key.</p>
-          <p className="flex min-h-10 items-center rounded-[4px] border border-dashed border-control px-3 text-ink-2">
+          <h2 className="font-sans text-[0.9375rem] font-medium text-ink">Prepare</h2>
+          <p className="text-ink">Clean descriptions with a key.</p>
+          <p className="flex min-h-10 items-center rounded-[4px] border border-dashed border-edge px-3 text-ink">
             Can&apos;t run yet: Prepare is not built.{!hasKey && ' It will also need a key.'}
           </p>
           {!hasKey && (
@@ -93,14 +92,14 @@ function RunsPage() {
           )}
         </div>
         <div className="grid content-start gap-3 p-4">
-          <h2 className="text-xl font-medium">Embed</h2>
-          <p className="text-ink-2">Prepare startups for similarity search.</p>
-          <p className="flex min-h-10 items-center rounded-[4px] border border-dashed border-control px-3 text-ink-2">Can&apos;t run yet: Embed is not built.</p>
+          <h2 className="font-sans text-[0.9375rem] font-medium text-ink">Embed</h2>
+          <p className="text-ink">Prepare startups for similarity search.</p>
+          <p className="flex min-h-10 items-center rounded-[4px] border border-dashed border-edge px-3 text-ink">Can&apos;t run yet: Embed is not built.</p>
         </div>
       </section>
-      <section className="overflow-x-auto border border-hairline">
+      <section className="overflow-x-auto border border-edge">
         <table className="w-full tabular-nums">
-          <thead className="bg-surface text-ink-2">
+          <thead className="bg-surface text-[0.8125rem] text-ink-2">
             <tr>
               {['Operation', 'Status', 'Started', 'Finished'].map((label) => (
                 <th key={label} className="px-4 py-3 text-start font-medium">
@@ -111,7 +110,7 @@ function RunsPage() {
           </thead>
           <tbody>
             {runs.map((run) => (
-              <tr key={run.id} className="border-t border-hairline">
+              <tr key={run.id} className="border-t border-edge">
                 <td className="px-4 py-3">
                   <Link
                     to="/portal/runs/$runId"
@@ -122,10 +121,10 @@ function RunsPage() {
                   </Link>
                 </td>
                 <td className="px-4 py-3">{statusName(run.status)}</td>
-                <td className="px-4 py-3 text-ink-2">
+                <td className="px-4 py-3 text-ink">
                   {labTime(run.started_at)}
                 </td>
-                <td className="px-4 py-3 text-ink-2">
+                <td className="px-4 py-3 text-ink">
                   {run.finished_at ? labTime(run.finished_at) : 'In progress'}
                 </td>
               </tr>
@@ -133,7 +132,7 @@ function RunsPage() {
           </tbody>
         </table>
         {!runs.length && (
-          <p className="p-4 text-ink-2">No runs yet. Start with Collect.</p>
+          <p className="p-4 text-ink">No runs yet. Start with Collect.</p>
         )}
       </section>
     </main>

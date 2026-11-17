@@ -30,26 +30,53 @@ export function LabInstruments({ children }: { children: React.ReactNode }) {
   const [active, setActive] = useState<Active>(null)
   const [dismissed, setDismissed] = useState<string>()
 
-  // Poll while a run is going; a finished run stays on the island until dismissed.
+  const [offline, setOffline] = useState(false)
+
+  // The portal's one poller: fast while a run is going, slow otherwise, paused while the tab is hidden.
+  // A finished run stays on the island until dismissed; a lost server says so instead of failing silently.
   useEffect(() => {
     let stop = false
     let wasRunning = false
+    let timer: ReturnType<typeof setTimeout> | undefined
     const tick = async () => {
-      const next = await getActiveRun().catch(() => null)
       if (stop) return
-      setActive(next)
-      const running = next?.run.status === 'running'
-      if (wasRunning && !running) router.invalidate()
-      wasRunning = running
-      setTimeout(tick, running ? 1000 : 4000)
+      if (document.hidden) {
+        timer = setTimeout(tick, 4000)
+        return
+      }
+      try {
+        const next = await getActiveRun()
+        if (stop) return
+        setOffline(false)
+        setActive(next)
+        const running = next?.run.status === 'running'
+        // While a run is going every portal page follows it; one last refresh when it ends.
+        if (running || wasRunning) router.invalidate()
+        wasRunning = running
+        timer = setTimeout(tick, running ? 1000 : 4000)
+      } catch {
+        if (stop) return
+        setOffline(true)
+        timer = setTimeout(tick, 8000)
+      }
     }
+    const wake = () => {
+      if (!document.hidden) {
+        clearTimeout(timer)
+        tick()
+      }
+    }
+    document.addEventListener('visibilitychange', wake)
     tick()
     return () => {
       stop = true
+      clearTimeout(timer)
+      document.removeEventListener('visibilitychange', wake)
     }
   }, [router])
 
   const tasks: IslandTask[] = []
+  if (offline) tasks.push({ id: 'offline', label: "Can't reach the server", detail: 'Trying again every few seconds.', status: 'error' })
   if (
     active &&
     active.run.id !== dismissed &&
@@ -70,7 +97,7 @@ export function LabInstruments({ children }: { children: React.ReactNode }) {
           ? `${operationName(active.run.operation)}: ${current ? operationName(current.step) : 'starting'}`
           : `${operationName(active.run.operation)} finished`,
       detail: failed
-        ? 'Stored rows are kept.'
+        ? 'Open the run to see what failed.'
         : `${done} of ${active.steps.length} steps`,
       status: failed
         ? 'error'
@@ -202,18 +229,18 @@ export function StageStrip({
       label: 'In review',
       value: inReview,
       unit: 'records',
-      note: openFindings !== undefined ? `${openFindings} open findings` : 'With open findings',
+      note: openFindings !== undefined ? `${openFindings} open ${openFindings === 1 ? 'finding' : 'findings'}` : 'With open findings',
     },
   ]
   const n = (v: number) => v.toLocaleString('en-GB')
   return (
     <>
-    <p className="border border-hairline bg-surface px-3.5 py-2.5 text-sm sm:hidden">
+    <p className="border border-edge bg-surface px-3.5 py-2.5 text-sm sm:hidden">
       {n(collected)} rows → {n(cleaned)} records → {n(merged)} startups · Prepare not run · {n(inReview)} in review
     </p>
     <section
       aria-label="Registry stages"
-      className="hidden border border-hairline bg-surface sm:grid sm:grid-cols-5"
+      className="hidden border border-edge bg-surface sm:grid sm:grid-cols-5"
     >
       {cells.map((cell, i) => (
         <div
@@ -225,9 +252,9 @@ export function StageStrip({
             {cell.value === null
               ? 'Not run yet'
               : cell.value.toLocaleString('en-GB')}{' '}
-            <span className="font-normal text-ink-2">{cell.unit}</span>
+            <span className="font-normal">{cell.unit}</span>
           </span>
-          <span className="flex items-start gap-1.5 text-sm text-ochre-text">
+          <span className="flex items-start gap-1.5 text-sm text-ink">
             <span
               aria-hidden
               className="mt-1.5 size-1.5 shrink-0 rounded-full bg-ochre"

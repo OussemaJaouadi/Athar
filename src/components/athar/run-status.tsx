@@ -1,21 +1,24 @@
+import { CircleCheck, CircleDashed, CircleX, Clock, LoaderCircle, OctagonX } from 'lucide-react'
+
 import { cn } from '@/lib/utils'
 
-const TONE: Record<string, string> = {
-  running: 'border-ink text-ink',
-  done: 'border-hairline text-ink',
-  skipped: 'border-dashed border-zinc-400 text-ink-2',
-  failed: 'border-destructive text-destructive',
-  interrupted: 'border-destructive text-destructive',
-  pending: 'border-hairline text-ink-2',
-  'not run': 'border-dashed border-zinc-400 text-ink-2',
+const STATES: Record<string, { label: string; Icon: typeof Clock; bar: string; spin?: boolean }> = {
+  running: { label: 'Running', Icon: LoaderCircle, bar: 'border-s-glaze', spin: true },
+  done: { label: 'Finished', Icon: CircleCheck, bar: 'border-s-glaze' },
+  failed: { label: 'Failed', Icon: CircleX, bar: 'border-s-destructive' },
+  interrupted: { label: 'Interrupted', Icon: OctagonX, bar: 'border-s-destructive' },
+  pending: { label: 'Waiting', Icon: Clock, bar: 'border-s-edge' },
+  skipped: { label: 'Not run yet', Icon: CircleDashed, bar: 'border-s-edge' },
+  'not run': { label: 'Not run yet', Icon: CircleDashed, bar: 'border-s-edge' },
 }
 
-/** A run or step state as a small tag; colour only carries hue for failures. */
-export function RunStatus({ status }: { status: string }) {
+/** A run or step state: ink words, an icon per state, and a 2px edge bar. Never colour alone. */
+export function RunStatus({ status, className }: { status: string; className?: string }) {
+  const s = STATES[status] ?? STATES.pending
   return (
-    <span className={cn('inline-flex items-center gap-1.5 rounded-sm border px-1.5 font-mono text-[0.6875rem] leading-5', TONE[status] ?? TONE.pending)}>
-      {status === 'running' && <span className="size-1.5 animate-pulse rounded-full bg-ink" aria-hidden />}
-      {status}
+    <span className={cn('inline-flex h-7 items-center gap-1.5 rounded-sm border border-edge border-s-2 ps-2 pe-2.5 text-[0.8125rem] text-ink', s.bar, className)}>
+      <s.Icon className={cn('size-3.5 shrink-0', s.spin && 'animate-spin motion-reduce:animate-none')} aria-hidden />
+      {s.label}
     </span>
   )
 }

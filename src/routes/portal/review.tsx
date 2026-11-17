@@ -7,6 +7,7 @@ import {
   labPrimary,
   useLabToaster,
 } from '@/components/athar/lab'
+import { PageHeader } from '@/components/athar/kit'
 import { listReviews, setReviewStatus } from '#/server/api/portal'
 
 type Search = { status?: string; code?: string }
@@ -58,14 +59,9 @@ function ReviewPage() {
   }
   return (
     <main className="grid gap-6 p-4 lg:p-6">
-      <header>
-        <h1 className="font-display text-[1.75rem] leading-9 font-medium">
-          In review
-        </h1>
-        <p className="mt-1 text-ink-2">
-          Each record is listed under its finding. A name opens the trace of its source row.
-        </p>
-      </header>
+      <PageHeader title="In review">
+        Each record is listed under its finding. A name opens the trace of its source row.
+      </PageHeader>
       <div className="flex flex-wrap items-center gap-3">
         <nav aria-label="Finding status" className="flex flex-wrap gap-2">
           {(Object.keys(labels) as Array<keyof typeof labels>).map((value) => (
@@ -75,7 +71,7 @@ function ReviewPage() {
               search={{ status: value, code }}
               aria-current={status === value ? 'page' : undefined}
               onClick={() => setPicked(new Set())}
-              className={`${labControl} inline-flex items-center gap-2 no-underline ${status === value ? 'border-glaze text-glaze' : 'text-ink-2'}`}
+              className={`${labControl} inline-flex items-center gap-2 no-underline ${status === value ? 'border-2 border-ink font-medium text-ink' : 'border-edge text-ink'}`}
             >
               {labels[value]}
               <span className="tabular-nums">
@@ -98,7 +94,7 @@ function ReviewPage() {
           </Link>
         )}
       </div>
-      <div className="flex flex-wrap items-center gap-3 border-y border-hairline py-3">
+      <div className="flex flex-wrap items-center gap-3 border-y border-edge py-3">
         <label className="flex min-h-10 items-center gap-2">
           <input
             type="checkbox"
@@ -114,7 +110,7 @@ function ReviewPage() {
           />
           Select all
         </label>
-        <span className="text-ink-2">{selected.length} selected</span>
+        <span className="text-ink tabular-nums">{selected.length} selected</span>
         <div className="ms-auto flex flex-wrap gap-2">
           {status === 'open' ? (
             <>
@@ -149,15 +145,15 @@ function ReviewPage() {
         return (
           <section key={finding}>
             <div className="mb-3">
-              <h2 className="text-xl font-medium">
+              <h2 className="font-sans text-[0.9375rem] font-medium text-ink">
                 {findingName(finding)}{' '}
-                <span className="ms-2 text-base font-normal text-ink-2 tabular-nums">
-                  {rows.length} findings
+                <span className="ms-2 font-normal text-ink-2 tabular-nums">
+                  {rows.length} {rows.length === 1 ? 'finding' : 'findings'}
                 </span>
               </h2>
-              <p className="mt-1 text-ink-2">{findingSentence(finding)}</p>
+              <p className="mt-1 text-ink">{findingSentence(finding)}</p>
             </div>
-            <ul className="divide-y divide-hairline border-y border-hairline">
+            <ul className="divide-y divide-hairline border-y border-edge">
               {rows.map((item) => (
                 <li
                   key={item.id}
@@ -178,8 +174,8 @@ function ReviewPage() {
                         })
                       }
                     />
-                                      </label>
-                  <span className="tabular-nums text-ink-2">
+                  </label>
+                  <span className="font-mono text-[0.8125rem] tabular-nums text-ink-2">
                     {item.row_number !== null
                       ? `Row ${item.row_number}`
                       : 'No source row'}
@@ -191,7 +187,7 @@ function ReviewPage() {
                   ) : (
                     <span className="truncate">{item.name || 'Startup not matched yet'}</span>
                   )}
-                  <span className="truncate pb-2 text-sm text-ink-2 sm:pb-0">
+                  <span className="truncate pb-2 text-sm text-ink sm:pb-0">
                     {item.code === 'website_unrepairable'
                       ? <>Registry wrote <span className="font-mono text-ink">{item.raw_website ?? 'nothing'}</span></>
                       : [item.sector, item.cohort && `labelled ${item.cohort.slice(3)}`].filter(Boolean).join(' · ') || 'No sector in the registry'}
@@ -203,7 +199,7 @@ function ReviewPage() {
         )
       })}
       {!items.length && (
-        <p className="py-6 text-ink-2">
+        <p className="py-6 text-ink">
           No{' '}
           {status === 'open'
             ? 'open'

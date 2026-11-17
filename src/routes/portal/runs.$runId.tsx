@@ -2,9 +2,7 @@ import {
   Link,
   createFileRoute,
   notFound,
-  useRouter,
 } from '@tanstack/react-router'
-import { useEffect } from 'react'
 import {
   findingName,
   labDuration,
@@ -12,6 +10,8 @@ import {
   operationName,
   statusName,
 } from '@/components/athar/lab'
+import { CircleAlert } from 'lucide-react'
+import { RunStatus } from '@/components/athar/run-status'
 import { getRun } from '#/server/api/portal'
 
 export const Route = createFileRoute('/portal/runs/$runId')({
@@ -25,12 +25,6 @@ export const Route = createFileRoute('/portal/runs/$runId')({
 
 function RunPage() {
   const { run, steps, reviews, sampleRowId } = Route.useLoaderData()
-  const router = useRouter()
-  useEffect(() => {
-    if (run.status !== 'running') return
-    const timer = setInterval(() => router.invalidate(), 1000)
-    return () => clearInterval(timer)
-  }, [run.status, router])
   const failure = run.error
     ?.replace(/^.*?failed:\s*/i, '')
     .replace(/[.\s]+$/, '')
@@ -47,15 +41,9 @@ function RunPage() {
               {run.id.slice(-4)}
             </span>
           </h1>
-          <span
-            className={
-              run.status === 'failed' ? 'text-destructive' : 'text-ink-2'
-            }
-          >
-            {statusName(run.status)}
-          </span>
+          <RunStatus status={run.status} />
         </div>
-        <p className="mt-2 text-ink-2">
+        <p className="mt-2 text-ink">
           Started {labTime(run.started_at)}
           {run.finished_at
             ? ` · ${labDuration(run.started_at, run.finished_at)}`
@@ -65,15 +53,17 @@ function RunPage() {
         </p>
       </header>
       {failure && (
-        <p role="alert" className="text-destructive">
+        <p role="alert" className="flex items-start gap-2 border-s-2 border-destructive bg-surface px-3 py-2 text-ink">
+          <CircleAlert aria-hidden className="mt-0.5 size-4 shrink-0" />
+          <span>
           {operationName(run.operation)} failed: {failure}.{' '}
           <Link to="/portal/runs" className="underline">
             Try {operationName(run.operation)} again
           </Link>
-          .
+          .</span>
         </p>
       )}
-      <ol className="grid divide-y divide-hairline border-y border-hairline">
+      <ol className="grid divide-y divide-hairline border-y border-edge">
         {steps.map((step) => {
           const result =
             step.message === 'Not built yet'
@@ -91,15 +81,16 @@ function RunPage() {
             <li key={step.position} className="grid gap-1 py-3">
               <p className="tabular-nums">
                 <span className="font-medium">{operationName(step.step)}</span>
-                <span className="text-ink-2">: </span>
+                <span>: </span>
                 {step.status === 'running' ? 'running…' : result}
                 {step.status !== 'running' && step.finished_at && (
-                  <span className="text-ink-2">, {labDuration(step.started_at, step.finished_at)}</span>
+                  <span>, {labDuration(step.started_at, step.finished_at)}</span>
                 )}
-                {step.status !== 'done' && step.status !== 'running' && <span className="text-ink-2"> · {statusName(step.status)}</span>}
+                {step.status !== 'done' && step.status !== 'running' && <span> · {statusName(step.status)}</span>}
               </p>
               {step.status === 'failed' && (
-                <p className="text-destructive">
+                <p className="flex items-start gap-2 border-s-2 border-destructive px-3 text-ink">
+                  <CircleAlert aria-hidden className="mt-0.5 size-4 shrink-0" />
                   {operationName(step.step)} failed: {step.message?.replace(/[.\s]+$/, '') ?? 'The operation stopped'}. Check the source and try Collect again.
                 </p>
               )}
@@ -109,7 +100,7 @@ function RunPage() {
       </ol>
       {reviews.length > 0 && (
         <section>
-          <h2 className="mb-3 text-xl font-medium">In review</h2>
+          <h2 className="mb-3 font-sans text-[0.9375rem] font-medium text-ink">In review</h2>
           <ul className="grid gap-2">
             {reviews.map((finding) => (
               <li key={finding.code}>
@@ -120,8 +111,8 @@ function RunPage() {
                 >
                   {findingName(finding.code)}
                 </Link>
-                <span className="ms-3 text-ink-2 tabular-nums">
-                  {finding.count} findings
+                <span className="ms-3 text-ink tabular-nums">
+                  {finding.count} {finding.count === 1 ? 'finding' : 'findings'}
                 </span>
               </li>
             ))}

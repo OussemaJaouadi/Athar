@@ -13,6 +13,8 @@ import {
   labPrimary,
   labTime,
 } from '@/components/athar/lab'
+import { TriangleAlert } from 'lucide-react'
+import { PageHeader } from '@/components/athar/kit'
 import { findRows, getTrace } from '#/server/api/portal'
 
 export const Route = createFileRoute('/portal/trace/$rowId')({
@@ -55,12 +57,15 @@ function valueText(value: unknown): string {
   return String(value)
 }
 const display = (value: unknown) =>
-  valueText(value) || <em className="text-ink-2">Empty</em>
+  valueText(value) || <em className="text-ink-2 not-italic">Empty</em>
 const recordValue = (record: Record<string, unknown> | null, field: string) => {
   const value = record?.[field]
-  return field === 'founders_json' && typeof value === 'string'
-    ? JSON.parse(value)
-    : value
+  if (field !== 'founders_json' || typeof value !== 'string') return value
+  try {
+    return JSON.parse(value)
+  } catch {
+    return value
+  }
 }
 
 function TracePage() {
@@ -81,7 +86,7 @@ function TracePage() {
     const step = operations.find((operation) => operation.step === name)
     return (
       step && (
-        <span className="inline-flex min-w-0 max-w-full flex-wrap gap-x-3 gap-y-1 text-sm font-normal text-ink-2">
+        <span className="inline-flex min-w-0 max-w-full flex-wrap gap-x-3 gap-y-1 text-[0.8125rem] font-normal text-ink">
           <Link
             to="/portal/runs/$runId"
             params={{ runId: step.run_id }}
@@ -100,14 +105,9 @@ function TracePage() {
   return (
     <main className="grid gap-6 p-4 lg:p-6">
       <header className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="font-display text-[1.75rem] leading-9 font-medium">
-            Trace of source row {row.row_number}
-          </h1>
-          <p className="mt-1 text-ink-2">
-            From the download to the startup it became, one operation at a time
-          </p>
-        </div>
+        <PageHeader title={`Trace of source row ${row.row_number}`}>
+          From the download to the startup it became, one operation at a time.
+        </PageHeader>
         <form
           className="flex flex-wrap items-center gap-2"
           onSubmit={async (event) => {
@@ -122,7 +122,7 @@ function TracePage() {
             else await navigate({ to: '/portal/trace', search: { q } })
           }}
         >
-          <label htmlFor="trace-row" className="text-ink-2">
+          <label htmlFor="trace-row" className="text-[0.8125rem] text-ink-2">
             Row
           </label>
           <input
@@ -142,31 +142,31 @@ function TracePage() {
         {...counts}
         notes={[
           `Row ${row.row_number} kept`,
-          record ? `${changes.length} fields changed` : 'Not cleaned yet',
+          record ? `${changes.length} ${changes.length === 1 ? 'field' : 'fields'} changed` : 'Not cleaned yet',
           siblings.length
             ? `Matched with ${siblings.length} other source ${siblings.length === 1 ? 'row' : 'rows'}`
             : startup
               ? 'One source row matched'
               : 'Not matched yet',
           'Not built yet',
-          `${openFindings.length} open findings for this row`,
+          `${openFindings.length} open ${openFindings.length === 1 ? 'finding' : 'findings'} for this row`,
         ]}
       />
       <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_22.5rem]">
         <ol aria-label={`Operations on source row ${row.row_number}`}>
           <Station title="Collect" meta={metadata('collect')}>
-            <p className="text-ink-2">
+            <p className="text-ink">
               Downloaded as source row {row.row_number} of the registry on{' '}
               {labTime(row.fetched_at)}. {Object.keys(raw).length} fields,
               stored exactly as received.
             </p>
           </Station>
           <Station title="Clean" meta={metadata('clean')}>
-            <p className="text-ink-2">
+            <p className="text-ink">
               {!record
                 ? 'Not cleaned yet.'
                 : changes.length
-                  ? `${changes.length} fields changed. The original values are kept below.`
+                  ? `${changes.length} ${changes.length === 1 ? 'field' : 'fields'} changed. The original values are kept below.`
                   : 'No fields changed.'}
             </p>
             {changes.length > 0 && (
@@ -174,11 +174,11 @@ function TracePage() {
                 {changes.map((change) => (
                   <li key={change.field} className="grid gap-1 border-b border-hairline pb-3">
                     <span className="font-medium">{fieldName(change.field)}</span>
-                    <span className="wrap-anywhere text-ink-2">
+                    <span className="wrap-anywhere">
                       Before: {display(raw[change.field])}
                     </span>
                     <span className="wrap-anywhere">After: {display(change.to)}</span>
-                    <span className="text-ink-2">{change.why}</span>
+                    <span>{change.why}</span>
                   </li>
                 ))}
               </ul>
@@ -190,7 +190,7 @@ function TracePage() {
                     {['Field', 'Before', 'After', 'Why'].map((label) => (
                       <th
                         key={label}
-                        className="border-b border-control border-input py-2 pe-3 text-start font-medium text-ink-2"
+                        className="border-b border-edge py-2 pe-3 text-start text-[0.8125rem] font-medium text-ink-2"
                       >
                         {label}
                       </th>
@@ -203,13 +203,13 @@ function TracePage() {
                       <td className="border-b border-hairline py-2 pe-3 wrap-anywhere">
                         {fieldName(change.field)}
                       </td>
-                      <td className="border-b border-hairline py-2 pe-3 wrap-anywhere whitespace-pre-wrap text-ink-2">
+                      <td className="border-b border-hairline py-2 pe-3 wrap-anywhere whitespace-pre-wrap">
                         {display(raw[change.field])}
                       </td>
                       <td className="border-b border-hairline py-2 pe-3 wrap-anywhere">
                         {display(change.to)}
                       </td>
-                      <td className="border-b border-hairline py-2 wrap-anywhere text-ink-2">
+                      <td className="border-b border-hairline py-2 wrap-anywhere">
                         {change.why}
                       </td>
                     </tr>
@@ -219,7 +219,7 @@ function TracePage() {
             )}
           </Station>
           <Station title="Merge" meta={metadata('merge')}>
-            <p className="text-ink-2">
+            <p className="text-ink">
               {!startup
                 ? 'Not matched to a startup yet.'
                 : siblings.length
@@ -246,7 +246,7 @@ function TracePage() {
                       ].map((label) => (
                         <th
                           key={label}
-                          className="border-b border-control border-input py-2 pe-3 text-start font-medium text-ink-2"
+                          className="border-b border-edge py-2 pe-3 text-start text-[0.8125rem] font-medium text-ink-2"
                         >
                           {label}
                         </th>
@@ -262,7 +262,7 @@ function TracePage() {
                         <td className="border-b border-hairline py-2 pe-3 wrap-anywhere">
                           {display(recordValue(record, field))}
                         </td>
-                        <td className="border-b border-hairline py-2 pe-3 wrap-anywhere text-ink-2">
+                        <td className="border-b border-hairline py-2 pe-3 wrap-anywhere">
                           {display(recordValue(sibling, field))}
                         </td>
                         <td className="border-b border-hairline py-2 wrap-anywhere">
@@ -277,13 +277,13 @@ function TracePage() {
             {openFindings.map((finding, index) => (
               <p
                 key={`${finding.code}-${index}`}
-                className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-[4px] bg-warn-bg px-3 py-2 text-warn"
+                className="mt-3 flex flex-wrap items-center justify-between gap-3 border-s-2 border-ochre bg-surface px-3 py-2 text-ink"
               >
-                <span>Open finding: {findingName(finding.code)}.</span>
+                <span className="flex items-center gap-2"><TriangleAlert aria-hidden className="size-4 shrink-0" />Open finding: {findingName(finding.code)}.</span>
                 <Link
                   to="/portal/review"
                   search={{ code: finding.code }}
-                  className="text-warn underline"
+                  className="text-glaze underline"
                 >
                   Open in review
                 </Link>
@@ -291,7 +291,7 @@ function TracePage() {
             ))}
           </Station>
           <Station title="Prepare">
-            <p className="text-ink-2">Not run yet</p>
+            <p className="text-ink">Not run yet</p>
           </Station>
           <Station
             title={`Startup: ${startup?.name ?? 'Not matched yet'}`}
@@ -306,14 +306,14 @@ function TracePage() {
                 Open profile in the main app
               </Link>
             ) : (
-              <p className="text-ink-2">
+              <p className="text-ink">
                 A startup profile is available after Merge.
               </p>
             )}
           </Station>
         </ol>
-        <aside className="min-w-0 bg-surface p-4 lg:sticky lg:top-4">
-          <h2 className="text-base font-medium">
+        <aside className="min-w-0 border border-edge bg-surface p-4 lg:sticky lg:top-4">
+          <h2 className="font-sans text-[0.9375rem] font-medium text-ink">
             Source row {row.row_number} as downloaded
           </h2>
           <p className="mt-1 text-ink-2">
@@ -323,7 +323,7 @@ function TracePage() {
           <dl className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4">
             {Object.entries(raw).map(([key, value]) => (
               <div key={key} className="contents">
-                <dt className="border-b border-hairline py-2 pe-3 font-mono text-sm whitespace-nowrap text-ink-2">
+                <dt className="border-b border-hairline py-2 pe-3 font-mono text-[0.8125rem] whitespace-nowrap text-ink-2">
                   {key}
                 </dt>
                 <dd className="border-b border-hairline py-2 wrap-anywhere whitespace-pre-wrap">
@@ -366,7 +366,7 @@ function Station({
       </span>
       <div className="min-w-0 pb-7">
         <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <h2 className="text-base font-medium">{title}</h2>
+          <h2 className="font-sans text-[0.9375rem] font-medium text-ink">{title}</h2>
           {meta}
         </div>
         {children}

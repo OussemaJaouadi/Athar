@@ -448,8 +448,8 @@ function Teams({ rows, t, renderer, founders }: { rows: LandscapeRow[]; t: Token
       })
     })(),
   ]
-  const dark = !!t && t.canvas.toLowerCase() === '#171412'
-  const ramp = dark ? ['#1f7a66', '#3fbf9b', '#8fe0c8', '#e3f7f0'] : ['#0f5e4f', '#178a72', '#5fbfa5', '#a9dfcf']
+  // One distinct glaze per team size, so each size reads as its own colour, not a shade.
+  const ramp = t ? [t.glaze, t.ochre, t.terracotta, t.steel] : []
   const last = n - 1
   const first = cols[0]
   const firstBig = cols.find((c) => c.n >= 30) ?? first
@@ -509,11 +509,13 @@ function Teams({ rows, t, renderer, founders }: { rows: LandscapeRow[]; t: Token
       question="Do founders start alone or together, and has that changed?"
       chart={
         <>
+          <Swatches items={TEAM_SIZES.map((size, i) => [size, ramp[i] ?? 'transparent'] as [string, string])} />
+          <div className="mt-3" />
           {def ? <Chart definition={def} renderer={renderer} height={440} ariaLabel={`Solo founders went from ${solo(firstBig)}% of startups founded in ${bucketLabel(firstBig.i)} to ${solo(recent)}% in ${bucketLabel(recent.i)}.`} /> : <Empty h={440} />}
           <DataTable caption="Team size by founding year" head={['Founded', 'Startups', ...TEAM_SIZES, 'Average']} rows={cols.map((c) => [bucketLabel(c.i), c.n, ...c.counts, c.avg.toFixed(1)])} />
         </>
       }
-      caption={`Each column is the startups founded that year. A wider column is a bigger year. Brighter green is a bigger team.`}
+      caption={`Each column is the startups founded that year. A wider column is a bigger year. Each colour is one team size.`}
       findings={[
         { figure: `${solo(firstBig)}% → ${solo(recent)}%`, text: `started solo: founded ${bucketLabel(firstBig.i)} against founded ${bucketLabel(recent.i)}.` },
         { figure: `${firstBig.avg.toFixed(1)} → ${recent.avg.toFixed(1)}`, text: 'average founders per startup, same years.' },

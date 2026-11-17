@@ -1,7 +1,7 @@
 import { createServerFn } from '@tanstack/react-start'
 
 import { getDatabase } from '../db'
-import { entryView, findEntries, pipelineState } from '../pipeline/state'
+import { entryView, findEntries, leadEntry, pipelineState } from '../pipeline/state'
 
 // The operator's questions, answered from the data: is each step up to date, and how was this entry read.
 // The logic lives in pipeline/state.ts so it can be tested without a server.
@@ -13,6 +13,11 @@ export const getPipelineState = createServerFn().handler(async () => pipelineSta
 export const searchEntries = createServerFn()
   .validator((q: string) => q)
   .handler(async ({ data }) => findEntries(getDatabase(), data))
+
+/** The id of the entry a startup's values were read from, for every "open its entry" link; null for an unknown startup. */
+export const getLeadEntry = createServerFn()
+  .validator((startupId: string) => startupId)
+  .handler(async ({ data }) => leadEntry(getDatabase(), data))
 
 /** One entry: the published row, how it was read, the startup it became, why, and what the later steps hold. */
 export const getEntry = createServerFn()

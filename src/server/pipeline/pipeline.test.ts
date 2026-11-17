@@ -223,6 +223,8 @@ describe('state of the pipeline', () => {
     run(db)
     const s = by(db)
     expect(s.rebuild).toMatchObject({ state: 'up_to_date', current: 2, next: null })
+    expect(s.collect).toMatchObject({ state: 'up_to_date', total: 2, current: 2 })
+    expect(s.collect.counts).toMatch(/Last compared with the registry on \d{1,2} [A-Z][a-z]{2} \d{4}\./)
     expect(s.check).toMatchObject({ state: 'never_run', total: 2, missing: 2 })
     expect(s.embed).toMatchObject({ state: 'never_run', total: 1, missing: 1 }) // Paymee has no description
     expect(s.prepare).toMatchObject({ state: 'not_configured', next: null }) // no key: nothing is asked of the operator
@@ -278,6 +280,9 @@ describe('state of the pipeline', () => {
     expect(findEntries(db, id.slice(0, 6)).map((e) => e.id)).toEqual([id])
     expect(findEntries(db, 'tanit').map((e) => e.startupId)).toEqual(['tanit-ai'])
     expect(findEntries(db, 'relead.tn').map((e) => e.startupId)).toEqual(['relead'])
+    expect(findEntries(db, 'tanit-ai').map((e) => e.id)).toEqual([id])
+    expect((require('./state') as typeof import('./state')).leadEntry(db, 'tanit-ai')).toBe(id)
+    expect((require('./state') as typeof import('./state')).leadEntry(db, 'nobody')).toBeNull()
     expect(JSON.stringify(entryView(db, id))).not.toContain('Secret')
   })
 })

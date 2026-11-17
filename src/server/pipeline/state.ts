@@ -33,6 +33,10 @@ export type StepState = {
   lastRun: { id: string; status: string; startedAt: string; finishedAt: string | null } | null
 }
 
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+/** "17 Nov 2026", the way the pages write a date. */
+const day = (iso: string) => `${Number(iso.slice(8, 10))} ${MONTHS[Number(iso.slice(5, 7)) - 1]} ${iso.slice(0, 4)}`
+
 const CHECKABLE = "website IS NOT NULL AND website_kind IN ('own', 'hosted', 'shortlink')"
 
 export function pipelineState(db: Database): { steps: StepState[]; upToDate: boolean } {
@@ -54,8 +58,9 @@ export function pipelineState(db: Database): { steps: StepState[]; upToDate: boo
   const download = db.query<{ id: number; fetched_at: string; last_checked_at: string; row_count: number }, []>('SELECT id, fetched_at, last_checked_at, row_count FROM downloads ORDER BY id DESC LIMIT 1').get()
   const entries = download ? n('SELECT COUNT(*) AS n FROM entries WHERE last_download = ?', download.id) : 0
   const collect: Omit<StepState, 'state'> = {
-    operation: 'collect', label: 'Collect', total: download?.row_count ?? 0, current: entries, outOfDate: 0, missing: 0,
-    counts: download ? `${download.row_count} rows in the latest download, ${entries} distinct entries. Last compared with the registry on ${download.last_checked_at.slice(0, 10)}.` : 'Nothing collected yet.',
+    // total and current count distinct entries; rows published twice, character for character, are one entry.
+    operation: 'collect', label: 'Collect', total: entries, current: entries, outOfDate: 0, missing: 0,
+    counts: download ? `${download.row_count} rows in the latest download, ${entries} distinct entries. Last compared with the registry on ${day(download.last_checked_at)}.` : 'Nothing collected yet.',
     reasons: [], next: download ? null : 'Run Collect to download the registry.', lastRun: lastRun(['collect']),
   }
 
@@ -81,7 +86,7 @@ export function pipelineState(db: Database): { steps: StepState[]; upToDate: boo
   const answers = n("SELECT COUNT(*) AS n FROM website_checks WHERE status = 'reachable'")
   const check = step({
     operation: 'check', label: 'Check websites', total: checkable, current: checkable - neverAsked - moved, outOfDate: moved, missing: neverAsked,
-    counts: oldest ? `${checkable - neverAsked} of ${checkable} websites asked, the oldest answer from ${oldest.slice(0, 10)}. ${answers} answer.` : `${checkable} websites to ask. None asked yet.`,
+    counts: oldest ? `${checkable - neverAsked} of ${checkable} websites asked, the oldest answer from ${day(oldest)}. ${answers} answer.` : `${checkable} websites to ask. None asked yet.`,
     reasons: [
       neverAsked > 0 && oldest && `${neverAsked} ${neverAsked === 1 ? 'startup has' : 'startups have'} a website that was never asked.`,
       moved > 0 && `${moved} ${moved === 1 ? 'startup has' : 'startups have'} a new address in the registry since it was asked.`,
@@ -153,7 +158,13 @@ export function pipelineState(db: Database): { steps: StepState[]; upToDate: boo
 
 export type EntryHit = { id: string; name: string; startupId: string | null; startupName: string | null; lead: boolean; firstSeen: string; lastSeen: string; published: boolean }
 
-/** Find entries by the start of their id, by words in the published row (name, description, founders), or by the startup's website. */
+/** The entry a startup's values were read from; null for an unknown startup. */
+export const leadEntry = (db: Database, startupId: string) => db.query<{ entry_id: string }, [string]>('SELECT entry_id FROM startups WHERE id = ?').get(startupId)?.entry_id ?? null
+
+/**
+ * Find entries by the start of their id, by a startup's exact slug (its lead entry first), by words in the
+ * published row (name, description, founders), or by the startup's website.
+ */
 export function findEntries(db: Database, q: string, limit = 30): EntryHit[] {
   const text = q.trim()
   if (!text) return []
@@ -164,10 +175,10 @@ export function findEntries(db: Database, q: string, limit = 30): EntryHit[] {
       `SELECT e.id, json_extract(e.raw_json, '$.name') AS name, e.startup_id, s.name AS startup_name, s.entry_id = e.id AS lead,
               d1.fetched_at AS first_seen, d2.last_checked_at AS last_seen, e.last_download = (SELECT MAX(id) FROM downloads) AS published
        FROM entries e LEFT JOIN startups s ON s.id = e.startup_id JOIN downloads d1 ON d1.id = e.first_download JOIN downloads d2 ON d2.id = e.last_download
-       WHERE ${byId ? "e.id LIKE ?1 || '%'" : "1 = 0"} OR json_extract(e.raw_json, '$.name') LIKE ?2 ESCAPE '\\'
+       WHERE ${byId ? "e.id LIKE ?1 || '%'" : "1 = 0"} OR e.startup_id = ?1 OR json_extract(e.raw_json, '$.name') LIKE ?2 ESCAPE '\\'
           OR json_extract(e.raw_json, '$.desc') LIKE ?2 ESCAPE '\\' OR json_extract(e.raw_json, '$.founders') LIKE ?2 ESCAPE '\\'
           OR s.website LIKE ?2 ESCAPE '\\'
-       ORDER BY ${byId ? "e.id LIKE ?1 || '%' DESC," : ''} name COLLATE NOCASE, e.id LIMIT ?3`,
+       ORDER BY ${byId ? "e.id LIKE ?1 || '%' DESC," : ''} e.startup_id = ?1 DESC, lead DESC, name COLLATE NOCASE, e.id LIMIT ?3`,
     )
     .all(text.toLowerCase(), like, limit)
     .map((r) => ({ id: r.id, name: r.name, startupId: r.startup_id, startupName: r.startup_name, lead: r.lead === 1, firstSeen: r.first_seen, lastSeen: r.last_seen, published: r.published === 1 }))

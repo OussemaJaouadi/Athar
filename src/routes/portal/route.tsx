@@ -1,5 +1,5 @@
 import { Outlet, createFileRoute, redirect } from '@tanstack/react-router'
-import { Database, KeyRound, LayoutDashboard, ListChecks, Route as RouteIcon, Workflow } from 'lucide-react'
+import { Database, KeyRound, ListChecks, Route as RouteIcon, Workflow } from 'lucide-react'
 
 import { AccountMenu } from '@/components/athar/account-menu'
 import { LabInstruments } from '@/components/athar/lab'
@@ -15,8 +15,7 @@ export const Route = createFileRoute('/portal')({
 })
 
 const NAV: NavItem[] = [
-  { to: '/portal', label: 'Overview', Icon: LayoutDashboard, exact: true },
-  { to: '/portal/runs', label: 'Runs', Icon: Workflow },
+  { to: '/portal', label: 'Pipeline', Icon: Workflow, exact: true, also: ['/portal/runs'] },
   { to: '/portal/review', label: 'Review', Icon: ListChecks },
   { to: '/portal/trace', label: 'Trace', Icon: RouteIcon },
   { to: '/portal/database', label: 'Database', Icon: Database },
@@ -27,7 +26,7 @@ const NAV: NavItem[] = [
 function Lab() {
   return (
     <LabInstruments>
-      <div className="flex min-h-dvh flex-col bg-canvas text-sm text-ink [&_a]:underline-offset-4 [&_main]:mx-auto [&_main]:w-full [&_main]:max-w-[1440px] [&_main]:content-start [&_main]:pb-20">
+      <div className="flex min-h-dvh flex-col bg-canvas text-sm text-ink [&_a]:underline-offset-4 [&_main]:w-full [&_main]:content-start [&_main]:pb-20">
         <SiteHeader nav={NAV} home="/portal" mark="Operator">
           <AccountMenu role="operator" room="operator" />
         </SiteHeader>

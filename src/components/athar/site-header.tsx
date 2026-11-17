@@ -1,7 +1,8 @@
-import { Link } from '@tanstack/react-router'
+import { Link, useRouterState } from '@tanstack/react-router'
 import type { LucideIcon } from 'lucide-react'
 
-export type NavItem = { to: string; label: string; Icon?: LucideIcon; exact?: boolean }
+/** `also`: other path prefixes that belong to this tab (a run page under Pipeline). */
+export type NavItem = { to: string; label: string; Icon?: LucideIcon; exact?: boolean; also?: string[] }
 
 export const NAV: NavItem[] = [
   { to: '/', label: 'Ask', exact: true },
@@ -14,6 +15,7 @@ export const NAV: NavItem[] = [
  * page adds (search, account menu).
  */
 export function SiteHeader({ children, nav = NAV, home = '/', mark }: { children?: React.ReactNode; nav?: NavItem[]; home?: string; mark?: string }) {
+  const path = useRouterState({ select: (s) => s.location.pathname })
   return (
     <header className="sticky top-0 z-30 border-b border-hairline bg-canvas">
       <div className="flex flex-wrap items-center gap-x-4 px-4 sm:h-14 sm:flex-nowrap sm:gap-8 sm:px-8">
@@ -23,12 +25,13 @@ export function SiteHeader({ children, nav = NAV, home = '/', mark }: { children
           {mark && <span className="ms-1 border-s border-edge ps-3 font-sans text-sm font-medium text-ink-2">{mark}</span>}
         </Link>
         <nav aria-label="Main" className="order-last -mx-3 flex h-11 w-[calc(100%+1.5rem)] min-w-0 gap-1 overflow-x-auto sm:order-none sm:mx-0 sm:h-full sm:w-auto">
-          {nav.map(({ to, label, Icon, exact }) => (
+          {nav.map(({ to, label, Icon, exact, also }) => (
             <Link
               key={to}
+              data-also={also?.some((p) => path.startsWith(p)) || undefined}
               activeOptions={{ exact: exact ?? to === home }}
               to={to}
-              className="flex h-full flex-1 items-center justify-center gap-2 px-2 text-sm font-medium whitespace-nowrap text-ink-2 no-underline hover:text-ink data-[status=active]:text-ink data-[status=active]:shadow-[inset_0_-2px_0_var(--glaze)] sm:flex-none sm:px-3"
+              className="flex h-full flex-1 items-center justify-center gap-2 px-2 text-sm font-medium whitespace-nowrap text-ink-2 no-underline hover:text-ink data-[status=active]:text-ink data-[status=active]:shadow-[inset_0_-2px_0_var(--glaze)] data-also:text-ink data-also:shadow-[inset_0_-2px_0_var(--glaze)] sm:flex-none sm:px-3"
             >
               {Icon && <Icon className="size-4" strokeWidth={1.5} aria-hidden />}
               {label}

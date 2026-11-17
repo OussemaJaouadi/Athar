@@ -37,6 +37,7 @@ export function LabInstruments({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let stop = false
     let wasRunning = false
+    let lastSig = ''
     let timer: ReturnType<typeof setTimeout> | undefined
     const tick = async () => {
       if (stop) return
@@ -50,8 +51,10 @@ export function LabInstruments({ children }: { children: React.ReactNode }) {
         setOffline(false)
         setActive(next)
         const running = next?.run.status === 'running'
-        // While a run is going every portal page follows it; one last refresh when it ends.
-        if (running || wasRunning) router.invalidate()
+        // Refresh the page when a step changes state or the run ends, not on every tick.
+        const sig = next ? `${next.run.id}:${next.steps.map((st) => st.status).join(',')}` : ''
+        if ((wasRunning && !running) || (running && sig !== lastSig)) router.invalidate()
+        lastSig = sig
         wasRunning = running
         timer = setTimeout(tick, running ? 1000 : 4000)
       } catch {

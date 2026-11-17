@@ -1,0 +1,74 @@
+import { useNavigate } from '@tanstack/react-router'
+import { LoaderCircle, RefreshCw } from 'lucide-react'
+import { useState } from 'react'
+
+import { labPrimary, useLabToaster } from '@/components/athar/lab'
+import { cn } from '@/lib/utils'
+import { startOperation } from '#/server/api/portal'
+
+/** The pipeline's one action. Starts Collect, then opens the run so the operator can follow it. */
+export function CollectButton({ running, again, className }: { running: boolean; again: boolean; className?: string }) {
+  const navigate = useNavigate()
+  const toaster = useLabToaster()
+  const [starting, setStarting] = useState(false)
+  const busy = starting || running
+  return (
+    <button
+      type="button"
+      className={cn(labPrimary, 'inline-flex items-center gap-2', className)}
+      disabled={busy}
+      onClick={() => {
+        setStarting(true)
+        toaster.show(
+          async () => {
+            try {
+              const { runId } = await startOperation({ data: 'collect' })
+              await navigate({ to: '/portal/runs/$runId', params: { runId } })
+            } finally {
+              setStarting(false)
+            }
+          },
+          {
+            loading: 'Starting Collect',
+            success: ['Collect started', 'Follow it on the run page.'],
+            error: (error) => [
+              `Collect could not start: ${error instanceof Error ? error.message.replace(/[.\s]+$/, '') : String(error)}.`,
+              'The stored registry is unchanged.',
+            ],
+          },
+        )
+      }}
+    >
+      {busy ? (
+        <LoaderCircle className="size-4 animate-spin motion-reduce:animate-none" aria-hidden />
+      ) : (
+        <RefreshCw className="size-4" aria-hidden />
+      )}
+      {busy ? 'Collecting…' : again ? 'Collect again' : 'Collect the registry'}
+    </button>
+  )
+}
+
+export const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString('en-GB')} ${n === 1 ? one : many}`
+
+/** What a collect changed against the one before, in words. */
+export function diffSentence(diff: { added: number; removed: number; changed: number; first: boolean } | null) {
+  if (!diff) return '—'
+  if (diff.first) return 'First collect'
+  const parts = [
+    diff.added && `${diff.added} new`,
+    diff.removed && `${diff.removed} gone`,
+    diff.changed && `${diff.changed} changed`,
+  ].filter(Boolean)
+  return parts.length ? parts.join(', ') : 'No change'
+}
+
+export const shortId = (id: string) => id.slice(-4)
+
+export function duration(start: string | null, end: string | null) {
+  if (!start || !end) return null
+  const ms = Date.parse(end) - Date.parse(start)
+  if (ms < 1000) return `${Math.max(0.1, ms / 1000).toFixed(1)} s`
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)} s`
+  return `${Math.floor(ms / 60_000)} min ${Math.round((ms % 60_000) / 1000)} s`
+}

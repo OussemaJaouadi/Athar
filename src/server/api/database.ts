@@ -7,6 +7,7 @@ import { DB_PAGE_SIZE as PAGE_SIZE } from '#/shared/database'
 import { getDatabase } from '../db'
 import { displayRow } from '../pipeline/clean'
 import type { RegistryRow } from '../pipeline/registry'
+import { foundersOf, websiteCheckOf, type WebsiteCheck } from './trace'
 
 // Every database call is operator-only, checked on the server, not only in the UI.
 function requireOperator() {
@@ -14,17 +15,19 @@ function requireOperator() {
 }
 
 /*
- * Pipeline v2 in the Database view: downloads, entries and startups, plus the runner and keys.
- * Internal tables (startup_keys, migrations, search and vector indexes) are not listed; the stubs for engines not built
- * yet appear only once they hold rows.
+ * The Database view lists the pipeline's tables by the stage that writes them, plus the runner and keys.
+ * Internal tables (startup_keys, migrations, the search index and the vector table with its shadow tables) are not listed.
  */
 const STAGES: [string, string[]][] = [
   ['Collect', ['downloads', 'entries']],
-  ['Build', ['startups']],
+  ['Build', ['startups', 'founders']],
+  ['Check', ['website_checks']],
+  ['Prepare', ['prepared_texts', 'ai_usage']],
+  ['Embed', ['embedding_meta']],
   ['Runner', ['runs', 'run_steps']],
-  ['Keys', ['ai_keys', 'ai_usage']],
+  ['Keys', ['ai_keys']],
 ]
-const NOT_BUILT = ['embedding_meta', 'prepared_texts']
+const NOT_BUILT: string[] = []
 const STAGE_OF = new Map(STAGES.flatMap(([stage, names]) => names.map((n) => [n, stage] as const)))
 
 // Secrets never leave the server: these columns are masked in rows and left out of search.
@@ -78,7 +81,9 @@ function shownEntry(rawJson: string | null): RegistryRow | null {
 function describe(db: Db, table: string) {
   if (!visibleTables(db).includes(table)) return null
   const columns = db.query<Column, []>(`PRAGMA table_info("${table}")`).all()
-  const pk = columns.find((c) => c.pk === 1)?.name ?? null
+  // A single-column primary key addresses a row; a composite one (founders: startup_id + position) does not, so rowid does.
+  const pks = columns.filter((c) => c.pk > 0)
+  const pk = pks.length === 1 ? pks[0].name : null
   const secret = new Set(SECRET[table] ?? [])
   const select = [
     pk ? null : 'rowid AS "__rowid"',
@@ -165,9 +170,13 @@ export type DbRecord =
       description: string | null
       sector: string | null
       website: string | null
+      language: string | null
+      websiteKind: string | null
       founders: string[]
-      cohort: string | null
+      /** Month of the label, YYYY-MM. */
+      labelled: string | null
       creationYear: number | null
+      websiteCheck: WebsiteCheck | null
       notes: { code: string; text: string }[]
       entryId: string
       listings: number
@@ -241,8 +250,9 @@ export const getDbRecord = createServerFn()
             description: string | null
             sector: string | null
             website: string | null
-            founders_json: string
-            cohort: string | null
+            language: string | null
+            website_kind: string | null
+            labelled: string | null
             creation_year: number | null
             notes_json: string
             first_download: number
@@ -250,7 +260,7 @@ export const getDbRecord = createServerFn()
           },
           [string]
         >(
-          'SELECT id, entry_id, name, description, sector, website, founders_json, cohort, creation_year, notes_json, first_download, last_download FROM startups WHERE id = ?',
+          'SELECT id, entry_id, name, description, sector, website, language, website_kind, labelled, creation_year, notes_json, first_download, last_download FROM startups WHERE id = ?',
         )
         .get(data.key)
       if (!s) return { kind: 'missing' }
@@ -266,9 +276,12 @@ export const getDbRecord = createServerFn()
         description: s.description,
         sector: s.sector,
         website: s.website,
-        founders: parse<string[]>(s.founders_json, []),
-        cohort: s.cohort,
+        language: s.language,
+        websiteKind: s.website_kind,
+        founders: foundersOf(db, s.id),
+        labelled: s.labelled,
         creationYear: s.creation_year,
+        websiteCheck: websiteCheckOf(db, s.id),
         notes: parse<{ code: string; text: string }[]>(s.notes_json, []),
         entryId: s.entry_id,
         listings,

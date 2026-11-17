@@ -2,6 +2,7 @@ import { Link } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 
 import { Fields, JsonBlock, PaneSection, isEmpty, type DeskField } from '@/components/athar/desk'
+import { languageName, month, websiteCheckWords, websiteKindName } from '@/components/athar/trace-parts'
 import { getDbRecord, type DbColumnInfo, type DbRecord, type DbRow, type DbValue } from '#/server/api/database'
 
 export type DbColumn = DbColumnInfo
@@ -20,7 +21,9 @@ export const TABLE_NAMES: Record<string, string> = {
   run_steps: 'Run steps',
   ai_keys: 'AI keys',
   ai_usage: 'AI usage',
-  embedding_meta: 'Embedding meta',
+  founders: 'Founders',
+  website_checks: 'Website checks',
+  embedding_meta: 'Embeddings',
   prepared_texts: 'Prepared texts',
 }
 
@@ -37,7 +40,7 @@ const KEY_NAMES: Record<string, string> = {
   copies: 'Copies',
 }
 
-/** "identity_key" → "Identity key"; "founders_json" → "Founders"; "id" → "ID". */
+/** "identity_key" → "Identity key"; "person_key" → "Person key"; "id" → "ID". */
 export function humanize(col: string) {
   if (KEY_NAMES[col]) return KEY_NAMES[col]
   const words = col.replace(/_json$/, '').split('_').filter(Boolean)
@@ -209,8 +212,10 @@ export function RecordPane({ table, rowKey }: { table: string; rowKey: string | 
                 description: rec.description,
                 sector: rec.sector,
                 website: rec.website,
+                language: rec.language,
+                website_kind: rec.websiteKind,
                 founders: rec.founders,
-                cohort: rec.cohort,
+                labelled: rec.labelled,
                 creation_year: rec.creationYear,
               }}
               label="Startup"
@@ -221,10 +226,13 @@ export function RecordPane({ table, rowKey }: { table: string; rowKey: string | 
           fields={[
             { label: 'Name', value: rec.name },
             { label: 'Description', value: rec.description },
+            { label: 'Language', value: languageName(rec.language) },
             { label: 'Sector', value: rec.sector },
             { label: 'Website', value: rec.website, mono: !!rec.website },
+            { label: 'Website kind', value: websiteKindName(rec.websiteKind) },
+            { label: 'Website check', value: websiteCheckWords(rec.websiteCheck, rec.websiteKind) },
             { label: 'Founders', value: rec.founders.length ? rec.founders.join(', ') : null },
-            { label: 'Label date', value: rec.cohort },
+            { label: 'Labelled', value: month(rec.labelled) },
             { label: 'Founded', value: rec.creationYear === null ? null : String(rec.creationYear) },
           ]}
         />

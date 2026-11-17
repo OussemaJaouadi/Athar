@@ -11,7 +11,8 @@ export type StartupRow = {
   name: string
   description: string | null
   sector: string | null
-  cohort: string | null
+  /** The month the startup was labelled, 'YYYY-MM'. */
+  labelled: string | null
   creation_year: number | null
   website: string | null
 }
@@ -34,8 +35,8 @@ export type SearchInput = {
 
 export const PAGE_SIZE = 20
 
-const COLUMNS = 's.id, s.name, s.description, s.sector, s.cohort, s.creation_year, s.website'
-const LABELLED = 'CAST(substr(s.cohort, 4, 4) AS INTEGER)'
+const COLUMNS = 's.id, s.name, s.description, s.sector, s.labelled, s.creation_year, s.website'
+const LABELLED = 'CAST(substr(s.labelled, 1, 4) AS INTEGER)'
 
 /** FTS5 query from free words: every word must match, as a prefix. */
 export const ftsAll = (q: string) =>
@@ -56,7 +57,7 @@ export const searchStartups = createServerFn()
       .query<{ sector: string; count: number }, []>('SELECT sector, COUNT(*) AS count FROM startups WHERE sector IS NOT NULL GROUP BY sector ORDER BY sector')
       .all()
     const years = db
-      .query<{ year: number; count: number }, []>(`SELECT ${LABELLED} AS year, COUNT(*) AS count FROM startups s WHERE cohort IS NOT NULL GROUP BY year ORDER BY year`)
+      .query<{ year: number; count: number }, []>(`SELECT ${LABELLED} AS year, COUNT(*) AS count FROM startups s WHERE labelled IS NOT NULL GROUP BY year ORDER BY year`)
       .all()
     const total = db.query<{ n: number }, []>('SELECT COUNT(*) AS n FROM startups').get()?.n ?? 0
     const foundedYears = db
@@ -105,10 +106,11 @@ export type Change = { field: string; from: string | null; to: string | null; wh
 export type ChainInfo = { entryId: string; changes: Change[] }
 export type EntryInfo = { id: string; copies: number; firstSeen: string; lastSeen: string; primary: boolean }
 export type StartupNote = { code: string; text: string }
+export type WebsiteCheck = { status: 'reachable' | 'unreachable'; detail: string; final_host: string | null; checked_at: string; since: string }
 
 const text = (v: unknown) => (v === null || v === undefined ? null : typeof v === 'string' ? v : Array.isArray(v) ? v.join(', ') : JSON.stringify(v))
 // Registry field names to the startup's own, so a change lands on the fact it changed.
-const FIELD: Record<string, string> = { desc: 'description', label: 'cohort' }
+const FIELD: Record<string, string> = { desc: 'description', label: 'labelled' }
 
 const parseRow = (json: string): RegistryRow | null => {
   try {
@@ -126,9 +128,10 @@ export const getStartup = createServerFn()
     const startup = db
       .query<
         StartupRow & {
-          founders_json: string
           entry_id: string
           notes_json: string
+          website_kind: string | null
+          language: string | null
           domain: string | null
           first_download: number
           last_download: number
@@ -171,25 +174,33 @@ export const getStartup = createServerFn()
         }
       : null
     const notes = JSON.parse(startup.notes_json) as StartupNote[]
-    // The same people on other startups: matched on the written name.
+    const founders = db.query<{ name: string }, [string]>('SELECT name FROM founders WHERE startup_id = ? ORDER BY position').all(id).map((f) => f.name)
+    // The same people on other startups: matched on person_key, so one person under two spellings is one person.
     const alsoFounded = db
       .query<{ fn: string; id: string; name: string }, [string, string]>(
-        `SELECT trim(j.value) AS fn, s.id, s.name FROM startups s, json_each(s.founders_json) j
-         WHERE s.id != ? AND lower(trim(j.value)) IN (SELECT lower(trim(value)) FROM json_each(?))`,
+        `SELECT mine.name AS fn, s.id, s.name FROM founders mine
+         JOIN founders other ON other.person_key = mine.person_key AND other.startup_id != mine.startup_id
+         JOIN startups s ON s.id = other.startup_id
+         WHERE mine.startup_id = ? AND s.id != ? ORDER BY mine.position, s.name`,
       )
-      .all(id, startup.founders_json)
+      .all(id, id)
+    // Our latest observation of the website: whether it answered, never a verdict on the company.
+    const websiteCheck = db
+      .query<WebsiteCheck, [string]>('SELECT status, detail, final_host, checked_at, since FROM website_checks WHERE startup_id = ?')
+      .get(id)
     // Neighbours are facts, not guesses: same sector, closest labelling year first.
     const neighbours = startup.sector
       ? db
           .query<StartupRow, [string, string, string | null]>(
             `SELECT ${COLUMNS} FROM startups s WHERE s.sector = ? AND s.id != ?
-             ORDER BY abs(CAST(substr(s.cohort, 4, 4) AS INTEGER) - CAST(substr(?, 4, 4) AS INTEGER)), s.name LIMIT 5`,
+             ORDER BY abs(CAST(substr(s.labelled, 1, 4) AS INTEGER) - CAST(substr(?, 1, 4) AS INTEGER)), s.name LIMIT 5`,
           )
-          .all(startup.sector, id, startup.cohort)
+          .all(startup.sector, id, startup.labelled)
       : []
-    const { notes_json: _n, founders_json, ...rest } = startup
+    const { notes_json: _n, ...rest } = startup
     return {
-      startup: { ...rest, founders: JSON.parse(founders_json) as string[] },
+      startup: { ...rest, founders },
+      websiteCheck: websiteCheck ?? null,
       entries: entries.map((e): EntryInfo => ({ id: e.id, copies: e.copies, firstSeen: e.first_seen, lastSeen: e.last_seen, primary: e.id === startup.entry_id })),
       firstSeen: seen?.first_seen ?? null,
       lastSeen: seen?.last_seen ?? null,
@@ -207,7 +218,7 @@ export type WallTile = { id: string; name: string; sector: string | null; year: 
 export const getWall = createServerFn().handler(async () => {
   return getDatabase()
     .query<{ id: string; name: string; sector: string | null; year: number | null; described: number }, []>(
-      `SELECT id, name, sector, CAST(substr(cohort, 4, 4) AS INTEGER) AS year, description IS NOT NULL AS described
+      `SELECT id, name, sector, CAST(substr(labelled, 1, 4) AS INTEGER) AS year, description IS NOT NULL AS described
        FROM startups ORDER BY sector, year, name`,
     )
     .all()
@@ -219,7 +230,7 @@ export const getLandscape = createServerFn().handler(async () => {
   const db = getDatabase()
   const byYear = db
     .query<{ year: string; count: number }, []>(
-      'SELECT substr(cohort, 4, 4) AS year, COUNT(*) AS count FROM startups WHERE cohort IS NOT NULL GROUP BY year ORDER BY year',
+      'SELECT substr(labelled, 1, 4) AS year, COUNT(*) AS count FROM startups WHERE labelled IS NOT NULL GROUP BY year ORDER BY year',
     )
     .all()
   const bySector = db
@@ -227,13 +238,13 @@ export const getLandscape = createServerFn().handler(async () => {
     .all()
   const grid = db
     .query<{ sector: string; year: string; count: number }, []>(
-      'SELECT sector, substr(cohort, 4, 4) AS year, COUNT(*) AS count FROM startups WHERE sector IS NOT NULL AND cohort IS NOT NULL GROUP BY sector, year',
+      'SELECT sector, substr(labelled, 1, 4) AS year, COUNT(*) AS count FROM startups WHERE sector IS NOT NULL AND labelled IS NOT NULL GROUP BY sector, year',
     )
     .all()
   const facts = db
     .query<{ total: number; described: number; websites: number; lag: number | null; rows: number }, []>(
       `SELECT COUNT(*) AS total, SUM(description IS NOT NULL) AS described, SUM(website IS NOT NULL) AS websites,
-              AVG(CAST(substr(cohort, 4, 4) AS INTEGER) - creation_year) AS lag,
+              AVG(CAST(substr(labelled, 1, 4) AS INTEGER) - creation_year) AS lag,
               (SELECT COUNT(*) FROM entries) AS rows
        FROM startups`,
     )
@@ -260,18 +271,18 @@ export const getLandscapeRows = createServerFn().handler(async () => {
   const db = getDatabase()
   const rows = db
     .query<{ id: string; name: string; sector: string; month: number; year: number; founded: number | null; founders: number; website: number; description: string | null }, []>(
-      `SELECT id, name, sector, CAST(substr(cohort, 1, 2) AS INTEGER) AS month, CAST(substr(cohort, 4, 4) AS INTEGER) AS year,
-              creation_year AS founded, json_array_length(founders_json) AS founders, website IS NOT NULL AS website, description
-       FROM startups WHERE sector IS NOT NULL AND cohort IS NOT NULL ORDER BY name COLLATE NOCASE`,
+      `SELECT id, name, sector, CAST(substr(labelled, 6, 2) AS INTEGER) AS month, CAST(substr(labelled, 1, 4) AS INTEGER) AS year,
+              creation_year AS founded, (SELECT COUNT(*) FROM founders f WHERE f.startup_id = s.id) AS founders, website IS NOT NULL AS website, description
+       FROM startups s WHERE sector IS NOT NULL AND labelled IS NOT NULL ORDER BY name COLLATE NOCASE`,
     )
     .all()
     .map(({ description, ...r }): LandscapeRow => ({ ...r, website: r.website === 1, described: !!description?.trim(), themes: themesOf(description) }))
-  // People named on two or more startups. Matched on the written name, so a namesake can join by mistake.
+  // People on two or more startups, by person_key: one person under two spellings counts once.
   const repeat = db
     .query<{ fn: string; ids: string }, []>(
-      `WITH f AS (SELECT s.id, trim(j.value) AS fn FROM startups s, json_each(s.founders_json) j WHERE s.cohort IS NOT NULL)
-       SELECT min(fn) AS fn, json_group_array(DISTINCT id) AS ids FROM f GROUP BY lower(fn) HAVING count(DISTINCT id) > 1
-       ORDER BY count(DISTINCT id) DESC, lower(fn)`,
+      `WITH f AS (SELECT fo.startup_id AS id, fo.name AS fn, fo.person_key AS pk FROM founders fo JOIN startups s ON s.id = fo.startup_id WHERE s.labelled IS NOT NULL)
+       SELECT min(fn) AS fn, json_group_array(DISTINCT id) AS ids FROM f GROUP BY pk HAVING count(DISTINCT id) > 1
+       ORDER BY count(DISTINCT id) DESC, pk`,
     )
     .all()
   const byId = new Map(rows.map((r) => [r.id, r]))
@@ -298,9 +309,9 @@ export const getCorpus = createServerFn().handler(async () => {
   return { startups, rows: snap?.row_count ?? 0, fetchedAt: snap?.fetched_at ?? null, checkedAt: snap?.last_checked_at ?? null, embedded }
 })
 
-export type RegistryCard = { id: string; name: string; sector: string | null; cohort: string | null; description: string | null }
+export type RegistryCard = { id: string; name: string; sector: string | null; labelled: string | null; description: string | null }
 
-const CARD_SQL = `SELECT s.id, s.name, s.sector, s.cohort, substr(s.description, 1, 320) AS description FROM startups s`
+const CARD_SQL = `SELECT s.id, s.name, s.sector, s.labelled, substr(s.description, 1, 320) AS description FROM startups s`
 
 // The wall on the home page: a few startups from every sector, the same ones on every visit.
 export const getWallCards = createServerFn()
@@ -315,7 +326,7 @@ export const getWallCards = createServerFn()
     const per = Math.min(8, Math.max(1, data.perSector ?? 3))
     return db
       .query<RegistryCard, [number]>(
-        `SELECT id, name, sector, cohort, description FROM (
+        `SELECT id, name, sector, labelled, description FROM (
            SELECT c.*, ROW_NUMBER() OVER (PARTITION BY c.sector ORDER BY length(c.description) DESC, c.name) AS k
            FROM (${CARD_SQL} WHERE s.description IS NOT NULL) c
          ) WHERE k <= ? ORDER BY k, sector`,

@@ -2,6 +2,7 @@ import { createServerFn } from '@tanstack/react-start'
 import { getCookie } from '@tanstack/react-start/server'
 
 import { getDatabase } from '../db'
+import { OPERATIONS, getOperation } from '../pipeline/operations'
 import { recoverInterrupted, startRun } from '../pipeline/runner'
 
 // Every portal call is operator-only, checked on the server, not only in the UI.
@@ -50,7 +51,7 @@ export const startOperation = createServerFn({ method: 'POST' })
   .validator((operation: string) => operation)
   .handler(async ({ data }) => {
     requireOperator()
-    if (data !== 'collect') throw new Error('Not built yet')
+    if (!getOperation(data)) throw new Error(`Unknown operation: ${data}`)
     return { runId: startRun(data) }
   })
 
@@ -145,6 +146,9 @@ export const getPipeline = createServerFn().handler(async () => {
     startups: db.query<{ n: number }, []>('SELECT COUNT(*) AS n FROM startups').get()?.n ?? 0,
     withdrawn: one('SELECT COUNT(*) AS n FROM startups WHERE last_download < ?'),
     runs: runs.map((run) => runSummary(db, run)),
+    // What the operator can start. Prepare is the only one that needs something first: an active AI key.
+    operations: OPERATIONS.map((o) => ({ id: o.id, label: o.label, description: o.description })),
+    hasKey: !!db.query<{ id: string }, []>("SELECT id FROM ai_keys WHERE status = 'active' LIMIT 1").get(),
   }
 })
 

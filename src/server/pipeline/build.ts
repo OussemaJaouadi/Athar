@@ -1,17 +1,10 @@
 import { now } from '../ids'
-import { cleanEntry, type Cleaned, type Note } from './clean'
+import { cleanEntry, nameKey, type Cleaned, type Founder, type Note } from './clean'
 import type { RegistryRow } from './registry'
 import type { RunNote, Step } from './types'
 
 type EntryRow = { id: string; raw_json: string; copies: number; first_download: number; last_download: number; startup_id: string | null }
 type Item = EntryRow & { cleaned: Cleaned; notes: Note[]; nameKey: string }
-
-export const nameKey = (name: string) =>
-  name
-    .normalize('NFKD')
-    .replace(/\p{M}/gu, '')
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, '')
 
 /** A readable, permanent id: "Mon Ingénieur Express" is mon-ingenieur-express. */
 export const slug = (name: string) =>
@@ -24,7 +17,16 @@ export const slug = (name: string) =>
     .replace(/-[^-]*$/, (tail, at: number, all: string) => (all.length === 48 && at > 16 ? '' : tail)) // cut at a word, not inside one
     .replace(/^-+|-+$/g, '') || 'startup'
 
-const FIELDS = ['name', 'description', 'sector', 'website', 'founders', 'cohort', 'creationYear'] as const
+// A gap in the fullest listing may be filled from another listing of the same startup.
+// Fields that travel together are filled together.
+const FILLABLE: Record<string, (keyof Cleaned)[]> = {
+  description: ['description', 'language'],
+  sector: ['sector'],
+  website: ['website', 'websiteKind', 'domain', 'otherWebsites'],
+  founders: ['founders'],
+  labelled: ['labelled'],
+  creationYear: ['creationYear'],
+}
 const isEmpty = (v: unknown) => v === null || v === '' || (Array.isArray(v) && !v.length)
 
 /**
@@ -36,7 +38,7 @@ function group(items: Item[]): Item[][] {
   const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])))
   const info = items.map((it) => ({
     domains: new Set(it.cleaned.domain ? [it.cleaned.domain] : []),
-    founders: new Set(it.cleaned.founders.map((f) => f.toLowerCase())),
+    founders: new Set(it.cleaned.founders.map((f) => f.personKey)),
   }))
   const union = (a: number, b: number) => {
     const [ra, rb] = [find(a), find(b)]
@@ -77,19 +79,17 @@ function assemble(entries: Item[]) {
     .filter((e) => e.last_download === newest)
     .sort((a, b) => (b.cleaned.description?.length ?? 0) - (a.cleaned.description?.length ?? 0) || (a.id < b.id ? -1 : 1))
   const lead = current[0]
-  const values = { ...lead.cleaned }
+  const values: Cleaned = { ...lead.cleaned }
   // Only the gaps of the lead entry that another listing fills: field -> that entry's id.
   const filled: Record<string, string> = {}
-  for (const field of FIELDS) {
-    if (!isEmpty(lead.cleaned[field])) continue
-    const from = current.find((e) => !isEmpty(e.cleaned[field]))
+  for (const [field, together] of Object.entries(FILLABLE)) {
+    if (!isEmpty(lead.cleaned[field as keyof Cleaned])) continue
+    const from = current.find((e) => !isEmpty(e.cleaned[field as keyof Cleaned]))
     if (!from) continue
-    ;(values as Record<string, unknown>)[field] = from.cleaned[field]
+    for (const f of together) (values as Record<string, unknown>)[f] = from.cleaned[f]
     filled[field] = from.id
   }
   const websiteFrom = current.find((e) => e.id === (filled.website ?? lead.id))
-  values.domain = websiteFrom?.cleaned.domain ?? null
-  values.cohortDate = current.find((e) => e.id === (filled.cohort ?? lead.id))?.cleaned.cohortDate ?? null
 
   const notes: Note[] = []
   if (!values.description) notes.push({ code: 'no_description', text: 'The registry publishes no description' })
@@ -101,17 +101,19 @@ function assemble(entries: Item[]) {
   if (names.length) notes.push({ code: 'other_name', text: `Also listed as ${names.join(', ')}` })
   for (const note of websiteFrom?.notes ?? []) if (note.code.includes('website')) notes.push(note)
   if (!values.website) for (const note of lead.notes) if (note.code === 'website_unreadable') notes.push(note)
-  for (const note of lead.notes) if (note.code.startsWith('cohort') || note.code.startsWith('label')) notes.push(note)
+  for (const note of lead.notes) if (note.code.startsWith('label')) notes.push(note)
 
-  return {
-    values,
-    lead: lead.id,
-    filled,
-    notes,
-    first: Math.min(...entries.map((e) => e.first_download)),
-    last: newest,
-  }
+  return { values, lead: lead.id, filled, notes, first: Math.min(...entries.map((e) => e.first_download)), last: newest }
 }
+
+type Stored = {
+  id: string; entry_id: string; name: string; description: string | null; language: string | null; sector: string | null
+  website: string | null; website_kind: string | null; domain: string | null; labelled: string | null
+  creation_year: number | null; filled_json: string; notes_json: string
+}
+const fingerprint = (s: Omit<Stored, 'id'>, founders: Founder[]) =>
+  JSON.stringify([s.entry_id, s.name, s.description, s.language, s.sector, s.website, s.website_kind, s.domain, s.labelled,
+    s.creation_year, s.filled_json, s.notes_json, founders.map((f) => [f.name, f.personKey])])
 
 // Build: every entry ever collected is read again and the startups are rebuilt from them.
 // A startup keeps its id through the entries already linked to it, then through its websites, then its name.
@@ -131,11 +133,14 @@ export const build: Step = {
       })
     const groups = group(items).sort((a, b) => b.length - a.length || (a[0].id < b[0].id ? -1 : 1))
 
+    const storedFounders = new Map<string, Founder[]>()
+    for (const f of db.query<{ startup_id: string; name: string; person_key: string }, []>('SELECT startup_id, name, person_key FROM founders ORDER BY startup_id, position').all())
+      storedFounders.set(f.startup_id, [...(storedFounders.get(f.startup_id) ?? []), { name: f.name, personKey: f.person_key }])
     const stored = new Map(
-      db.query<{ id: string; fingerprint: string }, []>(
-        `SELECT id, json_array(entry_id, name, description, sector, website, domain, founders_json, cohort, cohort_date, creation_year,
-                               filled_json, notes_json) AS fingerprint FROM startups`,
-      ).all().map((s) => [s.id, s.fingerprint]),
+      db.query<Stored, []>(
+        `SELECT id, entry_id, name, description, language, sector, website, website_kind, domain, labelled, creation_year,
+                filled_json, notes_json FROM startups`,
+      ).all().map((s) => [s.id, fingerprint(s, storedFounders.get(s.id) ?? [])]),
     )
     const keyOwner = new Map(db.query<{ key: string; startup_id: string }, []>('SELECT key, startup_id FROM startup_keys').all().map((k) => [k.key, k.startup_id]))
     const claimed = new Set<string>()
@@ -145,14 +150,16 @@ export const build: Step = {
 
     db.transaction(() => {
       const upsert = db.query(
-        `INSERT INTO startups (id, entry_id, name, description, sector, website, domain, founders_json, cohort, cohort_date,
+        `INSERT INTO startups (id, entry_id, name, description, language, sector, website, website_kind, domain, labelled,
            creation_year, filled_json, notes_json, first_download, last_download, created_at, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?16)
-         ON CONFLICT(id) DO UPDATE SET entry_id = ?2, name = ?3, description = ?4, sector = ?5, website = ?6, domain = ?7,
-           founders_json = ?8, cohort = ?9, cohort_date = ?10, creation_year = ?11, filled_json = ?12, notes_json = ?13,
-           updated_at = ?16`,
+         ON CONFLICT(id) DO UPDATE SET entry_id = ?2, name = ?3, description = ?4, language = ?5, sector = ?6, website = ?7,
+           website_kind = ?8, domain = ?9, labelled = ?10, creation_year = ?11, filled_json = ?12, notes_json = ?13,
+           first_download = ?14, last_download = ?15, updated_at = ?16`,
       )
       const seenIn = db.query('UPDATE startups SET first_download = ?, last_download = ? WHERE id = ?')
+      const dropFounders = db.query('DELETE FROM founders WHERE startup_id = ?')
+      const addFounder = db.query('INSERT INTO founders (startup_id, position, name, person_key) VALUES (?, ?, ?, ?)')
       const link = db.query('UPDATE entries SET startup_id = ? WHERE id = ?')
       const addKey = db.query('INSERT OR IGNORE INTO startup_keys (key, startup_id) VALUES (?, ?)')
       db.run('DELETE FROM startup_keys')
@@ -176,15 +183,23 @@ export const build: Step = {
         claimed.add(id)
 
         const v = s.values
-        const row = [s.lead, v.name, v.description, v.sector, v.website, v.domain, JSON.stringify(v.founders), v.cohort, v.cohortDate,
-          v.creationYear, JSON.stringify(s.filled), JSON.stringify(s.notes)] as const
+        const row: Omit<Stored, 'id'> = {
+          entry_id: s.lead, name: v.name, description: v.description, language: v.language, sector: v.sector, website: v.website,
+          website_kind: v.websiteKind, domain: v.domain, labelled: v.labelled, creation_year: v.creationYear,
+          filled_json: JSON.stringify(s.filled), notes_json: JSON.stringify(s.notes),
+        }
         const before = stored.get(id)
+        const after = fingerprint(row, v.founders)
         if (before === undefined) tally.created++
-        else if (before === JSON.stringify(row)) tally.unchanged++
+        else if (before === after) tally.unchanged++
         else tally.changed++
         // updated_at moves only when what a reader sees changed, not on every download.
-        if (before !== JSON.stringify(row)) upsert.run(id, ...row, s.first, s.last, at)
-        else seenIn.run(s.first, s.last, id)
+        if (before !== after) {
+          upsert.run(id, row.entry_id, row.name, row.description, row.language, row.sector, row.website, row.website_kind, row.domain,
+            row.labelled, row.creation_year, row.filled_json, row.notes_json, s.first, s.last, at)
+          dropFounders.run(id)
+          v.founders.forEach((f, i) => addFounder.run(id, i, f.name, f.personKey))
+        } else seenIn.run(s.first, s.last, id)
 
         for (const e of entries) if (e.startup_id !== id) link.run(id, e.id)
         for (const key of [...siteKeys, ...nameKeys]) addKey.run(key, id)
@@ -200,7 +215,7 @@ export const build: Step = {
       for (const id of stored.keys())
         if (!claimed.has(id)) {
           for (const table of ['prepared_texts', 'embedding_meta', 'startup_vectors']) db.query(`DELETE FROM ${table} WHERE startup_id = ?`).run(id)
-          db.query('DELETE FROM startups WHERE id = ?').run(id)
+          db.query('DELETE FROM startups WHERE id = ?').run(id) // founders and website_checks go with it
         }
 
       db.run('DELETE FROM startups_fts')
@@ -234,6 +249,6 @@ const NOTE_TEXT: Record<string, string> = {
   website_text_removed: 'website fields that held extra text; only the address is kept',
   website_unreadable: 'website fields that hold no address',
   second_website: 'website fields with two addresses; the first is kept',
-  cohort_unreadable: 'labels that are not a month and year',
+  label_unreadable: 'labels that are not a month and year',
   label_before_creation: 'startups labelled before their creation year',
 }

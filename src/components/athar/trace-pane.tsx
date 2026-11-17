@@ -2,7 +2,7 @@ import { Link } from '@tanstack/react-router'
 import { ExternalLink, Database as DatabaseIcon } from 'lucide-react'
 
 import { DeskPane, Evidence, Fields, JsonBlock, PaneSection, type DeskField } from '@/components/athar/desk'
-import { day, fieldLabel, plural, valueText } from '@/components/athar/trace-parts'
+import { day, fieldLabel, languageName, month, plural, valueText, websiteCheckWords, websiteKindName } from '@/components/athar/trace-parts'
 import type { TraceStartup } from '#/server/api/trace'
 
 const link = 'inline-flex items-center gap-1.5 text-[0.875rem] text-glaze underline [&_svg]:size-4'
@@ -16,13 +16,13 @@ export function TracePane({ data }: { data: TraceStartup }) {
   const values: DeskField[] = [
     { label: 'Name', value: data.name },
     { label: 'Description', value: data.description },
+    ...(data.language ? [{ label: 'Language', value: languageName(data.language) }] : []),
     { label: 'Sector', value: data.sector },
     { label: 'Website', value: data.website, mono: !!data.website },
-    ...(data.websiteStatus
-      ? [{ label: 'Website check', value: `${data.websiteStatus}${data.websiteCheckedAt ? ` · ${day(data.websiteCheckedAt)}` : ''}` }]
-      : []),
+    ...(data.websiteKind ? [{ label: 'Website kind', value: websiteKindName(data.websiteKind) }] : []),
+    ...(websiteCheckWords(data.websiteCheck, data.websiteKind) ? [{ label: 'Website check', value: websiteCheckWords(data.websiteCheck, data.websiteKind) }] : []),
     { label: 'Founders', value: data.founders.length ? data.founders.join(', ') : null },
-    { label: 'Label date', value: data.cohort },
+    { label: 'Labelled', value: month(data.labelled) },
     { label: 'Founded', value: data.creationYear },
     {
       label: 'In the registry',

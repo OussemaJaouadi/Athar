@@ -214,7 +214,7 @@ function ArchivePage() {
                       >
                         {r.description ? <TileMark id={r.id} sector={r.sector} size={20} title={r.sector ?? undefined} /> : <span role="img" aria-label="No description" className="size-5 border border-dashed border-edge" />}
                         <span className="truncate text-sm font-medium text-ink">{r.name}</span>
-                        <span className="font-mono text-[0.8125rem] text-ink-3">{r.cohort?.slice(3)}</span>
+                        <span className="font-mono text-[0.8125rem] text-ink-3">{r.labelled?.slice(0, 4)}</span>
                       </Link>
                     </li>
                   )

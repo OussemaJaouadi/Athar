@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { ArrowRight, CircleAlert } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { CollectButton, duration, plural } from '@/components/athar/collect-button'
+import { CollectButton, RunMenu, duration, plural } from '@/components/athar/collect-button'
 import { Desk, DeskBar, DeskEmpty, DeskItem, DeskPane, PaneSection, useDeskKeys } from '@/components/athar/desk'
 import { labTime, operationName } from '@/components/athar/lab'
 import { RunStatus } from '@/components/athar/run-status'
@@ -76,7 +76,12 @@ function Pipeline() {
               ].join(' · ')
             : 'Nothing collected yet'
         }
-        actions={<CollectButton running={!!running} again={!!data.download} />}
+        actions={
+          <>
+            <RunMenu operations={data.operations} running={!!running} hasKey={data.hasKey} />
+            <CollectButton running={!!running} again={!!data.download} />
+          </>
+        }
       />
       <Desk
         storageKey="pipeline"
@@ -120,16 +125,40 @@ const FACT: Record<string, string> = {
   second_website: 'two websites, first kept',
   website_text_removed: 'extra text removed from a website',
   website_unreadable: 'unreadable websites',
-  cohort_unreadable: 'unreadable label dates',
+  label_unreadable: 'unreadable label dates',
   label_before_creation: 'labelled before founded',
+  // check
+  unreachable: 'did not answer, asked twice',
+  moved: 'answered from another domain',
+  turned: 'changed status since the last check',
+  social_not_checked: 'social pages, not checked',
+  no_website: 'no website in the registry',
+  // embed and prepare
+  embedded: 'embedded by this run',
+  up_to_date: 'already up to date',
+  from_prepared: 'embedded from a prepared text',
+  removed: 'removed: no description any more',
+  prepared: 'prepared by this run',
 }
 // Already told by the flow strip.
-const IN_FLOW = new Set(['entries_new'])
+const IN_FLOW = new Set(['entries_new', 'reachable'])
 
-// What each step's output is called, for the flow strip. clean and merge belong to runs before pipeline v2.
+// What each step takes in and gives out, for the flow strip. clean and merge belong to runs before pipeline v2.
+const IN_UNIT: Record<string, string> = {
+  collect: 'rows published',
+  build: 'entries',
+  check: 'websites',
+  prepare: 'descriptions',
+  embed: 'startups',
+  clean: 'rows',
+  merge: 'records',
+}
 const OUT_UNIT: Record<string, [string, string]> = {
   collect: ['entry', 'entries'],
   build: ['startup', 'startups'],
+  check: ['answering', 'answering'],
+  prepare: ['prepared', 'prepared'],
+  embed: ['vector', 'vectors'],
   clean: ['record', 'records'],
   merge: ['startup', 'startups'],
 }
@@ -143,7 +172,8 @@ function RunPane({ detail, position }: { detail: Detail; position: string }) {
   const failedStep = steps.find((s) => s.status === 'failed')
   const failure = (failedStep?.message ?? run.error)?.replace(/^.*?failed:\s*/i, '').replace(/[.\s]+$/, '')
   const took = run.finished_at ? duration(run.started_at, run.finished_at) : duration(run.started_at, nowIso)
-  const facts = steps.flatMap((st) => st.notes.filter((n) => !IN_FLOW.has(n.code) && n.count > 0)).sort((a, b) => b.count - a.count)
+  // In the order the steps wrote them, so "of those" lines stay under the line they detail.
+  const facts = steps.flatMap((st) => st.notes.filter((n) => !IN_FLOW.has(n.code) && n.count > 0))
   const first = steps[0]
 
   return (
@@ -172,7 +202,7 @@ function RunPane({ detail, position }: { detail: Detail; position: string }) {
       <ol aria-label="What the run did" className="flex flex-wrap items-center gap-x-1 gap-y-3 py-1">
         <li className="grid">
           <span className="font-display text-[1.75rem] leading-8 text-ink tabular-nums">{first?.items_in !== null && first?.items_in !== undefined ? first.items_in.toLocaleString('en-GB') : '—'}</span>
-          <span className="text-[0.8125rem] text-ink-2">rows published</span>
+          <span className="text-[0.8125rem] text-ink-2">{(first && IN_UNIT[first.step]) ?? 'items'}</span>
         </li>
         {steps.map((st) => {
           const [one, many] = OUT_UNIT[st.step] ?? ['item', 'items']
@@ -204,7 +234,7 @@ function RunPane({ detail, position }: { detail: Detail; position: string }) {
         })}
       </ol>
 
-      {!live && !failed && (
+      {!live && !failed && run.operation === 'collect' && (
         <PaneSection title="What changed">
           <p className="text-[0.875rem] text-ink">{changeSentence(run.change)}</p>
         </PaneSection>

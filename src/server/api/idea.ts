@@ -22,7 +22,7 @@ export const ideaWords = (text: string) => [
   ),
 ].slice(0, 12)
 
-export type IdeaMatch = { id: string; name: string; sector: string | null; cohort: string | null; creation_year: number | null; description: string | null; website: string | null; shared: string[]; missing: string[]; score: number }
+export type IdeaMatch = { id: string; name: string; sector: string | null; labelled: string | null; creation_year: number | null; description: string | null; website: string | null; shared: string[]; missing: string[]; score: number }
 export type IdeaCheck = {
   id: string
   idea: string
@@ -57,7 +57,7 @@ function run(idea: string, saved = false): IdeaCheck {
   const hits = words.length
     ? db
         .query<Omit<IdeaMatch, 'shared' | 'missing' | 'score'>, [string]>(
-          `SELECT s.id, s.name, s.sector, s.cohort, s.creation_year, s.description, s.website FROM startups_fts f
+          `SELECT s.id, s.name, s.sector, s.labelled, s.creation_year, s.description, s.website FROM startups_fts f
            JOIN startups s ON s.id = f.startup_id WHERE startups_fts MATCH ? ORDER BY rank LIMIT 400`,
         )
         .all(words.map(fts).join(' OR '))
@@ -82,7 +82,7 @@ function run(idea: string, saved = false): IdeaCheck {
         name: top,
         since,
         total: db.query<{ n: number }, [string]>('SELECT COUNT(*) AS n FROM startups WHERE sector = ?').get(top)?.n ?? 0,
-        recent: db.query<{ n: number }, [string, number]>('SELECT COUNT(*) AS n FROM startups WHERE sector = ? AND CAST(substr(cohort, 4, 4) AS INTEGER) >= ?').get(top, since)?.n ?? 0,
+        recent: db.query<{ n: number }, [string, number]>('SELECT COUNT(*) AS n FROM startups WHERE sector = ? AND CAST(substr(labelled, 1, 4) AS INTEGER) >= ?').get(top, since)?.n ?? 0,
       }
     : null
   return { id: newId(), idea, checkedAt: now(), snapshotAt, against, words, strong: strong.length, any, matches: strong.slice(0, 8), weak: scored.filter((m) => !isStrong(m)).slice(0, 12), weakTotal: scored.filter((m) => !isStrong(m)).length, sector, saved }

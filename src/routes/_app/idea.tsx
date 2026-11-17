@@ -187,7 +187,7 @@ function marked(text: string, words: string[]) {
 }
 
 function facts(m: IdeaMatch) {
-  return [m.sector, m.creation_year && `created ${m.creation_year}`, yearOf(m.cohort) && `labelled ${yearOf(m.cohort)}`].filter(Boolean).join(' · ')
+  return [m.sector, m.creation_year && `created ${m.creation_year}`, yearOf(m.labelled) && `labelled ${yearOf(m.labelled)}`].filter(Boolean).join(' · ')
 }
 
 function Report({ report }: { report: IdeaCheck }) {

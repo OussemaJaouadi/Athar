@@ -123,11 +123,13 @@ export type TraceStartup = {
   description: string | null
   sector: string | null
   website: string | null
+  language: string | null
+  websiteKind: string | null
   founders: string[]
-  cohort: string | null
+  /** Month of the label, YYYY-MM. */
+  labelled: string | null
   creationYear: number | null
-  websiteStatus: string | null
-  websiteCheckedAt: string | null
+  websiteCheck: WebsiteCheck | null
   entryId: string
   filled: Record<string, string>
   notes: { code: string; text: string }[]
@@ -139,6 +141,9 @@ export type TraceStartup = {
   entries: TraceEntry[]
 }
 
+/** The latest observation of a startup's website (website_checks); never a verdict about the company. */
+export type WebsiteCheck = { url: string; status: string; detail: string; finalHost: string | null; checkedAt: string; since: string }
+
 type StartupRow = {
   id: string
   entry_id: string
@@ -146,15 +151,28 @@ type StartupRow = {
   description: string | null
   sector: string | null
   website: string | null
-  founders_json: string
-  cohort: string | null
+  language: string | null
+  website_kind: string | null
+  labelled: string | null
   creation_year: number | null
   filled_json: string
   notes_json: string
   first_download: number
   last_download: number
-  website_status: string | null
-  website_checked_at: string | null
+}
+
+/** A startup's founders in published order, from the founders table. */
+export const foundersOf = (db: Db, startupId: string) =>
+  db.query<{ name: string }, [string]>('SELECT name FROM founders WHERE startup_id = ? ORDER BY position').all(startupId).map((f) => f.name)
+
+/** A startup's website observation, if it was checked. */
+export const websiteCheckOf = (db: Db, startupId: string): WebsiteCheck | null => {
+  const c = db
+    .query<{ url: string; status: string; detail: string; final_host: string | null; checked_at: string; since: string }, [string]>(
+      'SELECT url, status, detail, final_host, checked_at, since FROM website_checks WHERE startup_id = ?',
+    )
+    .get(startupId)
+  return c ? { url: c.url, status: c.status, detail: c.detail, finalHost: c.final_host, checkedAt: c.checked_at, since: c.since } : null
 }
 
 export const getTraceStartup = createServerFn()
@@ -212,11 +230,12 @@ export const getTraceStartup = createServerFn()
       description: s.description,
       sector: s.sector,
       website: s.website,
-      founders: parse<string[]>(s.founders_json, []),
-      cohort: s.cohort,
+      language: s.language,
+      websiteKind: s.website_kind,
+      founders: foundersOf(db, s.id),
+      labelled: s.labelled,
       creationYear: s.creation_year,
-      websiteStatus: s.website_status,
-      websiteCheckedAt: s.website_checked_at,
+      websiteCheck: websiteCheckOf(db, s.id),
       entryId: s.entry_id,
       filled: parse<Record<string, string>>(s.filled_json, {}),
       notes: parse<{ code: string; text: string }[]>(s.notes_json, []),

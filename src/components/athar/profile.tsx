@@ -9,12 +9,22 @@ import type { Change, getStartup } from '#/server/api/app'
 export type ProfileData = NonNullable<Awaited<ReturnType<typeof getStartup>>>
 
 export const longDate = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
-export const yearOf = (cohort: string | null) => (cohort ? cohort.slice(3) : null)
+/** The year of a label month ('YYYY-MM'). */
+export const yearOf = (labelled: string | null) => (labelled ? labelled.slice(0, 4) : null)
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
-const monthYear = (cohort: string | null) => {
-  const m = cohort?.match(/^(\d{2})\/(\d{4})$/)
-  return m ? `${MONTHS[Number(m[1]) - 1]} ${m[2]}` : cohort
+const monthYear = (labelled: string | null) => {
+  const m = labelled?.match(/^(\d{4})-(\d{2})$/)
+  return m ? `${MONTHS[Number(m[2]) - 1]} ${m[1]}` : labelled
+}
+// Our observation of the website, in words. It says whether the address answered, never whether the company lives.
+function websiteNote(kind: string | null, check: ProfileData['websiteCheck']) {
+  if (kind === 'social') return 'A page on a social network; not checked.'
+  if (!check) return null
+  const when = longDate(check.checked_at)
+  if (check.status === 'reachable')
+    return check.final_host ? `Answers, now from ${check.final_host} (checked ${when}).` : `Answers (checked ${when}).`
+  return `Does not answer since ${longDate(check.since)}: ${check.detail} (checked ${when}).`
 }
 const decode = (t: string) => t.replace(/&amp;/g, '&').replace(/&#39;|&apos;/g, "'").replace(/&quot;/g, '"')
 
@@ -25,13 +35,13 @@ type Fact = { key: string; label: string; value: React.ReactNode }
  * a fact carries a note only when cleaning changed it.
  */
 export function Profile({ data, operator }: { data: ProfileData; compact?: boolean; operator?: boolean }) {
-  const { startup, entries, firstSeen, lastSeen, withdrawnSince, notes, chain, neighbours, alsoFounded } = data
+  const { startup, entries, firstSeen, lastSeen, withdrawnSince, notes, chain, neighbours, alsoFounded, websiteCheck } = data
   // "Listed N times" is said by the entries themselves; the other notes are plain facts.
   const facts2 = notes.filter((n) => n.code !== 'listed_more_than_once')
   const site = startup.website?.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '')
   const facts: Fact[] = [
     { key: 'sector', label: 'Sector', value: startup.sector },
-    { key: 'cohort', label: 'Startup label', value: startup.cohort && `since ${monthYear(startup.cohort)}` },
+    { key: 'labelled', label: 'Startup label', value: startup.labelled && `since ${monthYear(startup.labelled)}` },
     { key: 'creation_year', label: 'Founded', value: startup.creation_year },
     {
       key: 'founders',
@@ -63,7 +73,19 @@ export function Profile({ data, operator }: { data: ProfileData; compact?: boole
         </span>
       ) : null,
     },
-    { key: 'website', label: 'Website', value: site && <a href={startup.website ?? undefined} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 [overflow-wrap:anywhere]">{site}<ArrowUpRight className="size-3.5 shrink-0" aria-hidden /></a> },
+    {
+      key: 'website',
+      label: 'Website',
+      value: site && (
+        <span className="grid gap-0.5">
+          <a href={startup.website ?? undefined} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 [overflow-wrap:anywhere]">
+            {site}
+            <ArrowUpRight className="size-3.5 shrink-0" aria-hidden />
+          </a>
+          {websiteNote(startup.website_kind, websiteCheck) && <span className="text-[0.8125rem] text-ink-2">{websiteNote(startup.website_kind, websiteCheck)}</span>}
+        </span>
+      ),
+    },
   ]
 
   return (
@@ -155,7 +177,7 @@ export function Profile({ data, operator }: { data: ProfileData; compact?: boole
                 <Link to="/startups/$id" params={{ id: n.id }} className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto] gap-x-3 gap-y-1 py-3 no-underline -outline-offset-2 hover:bg-surface">
                   <TileMark id={n.id} sector={n.sector} size={20} className="mt-0.5" />
                   <span className="truncate text-sm font-medium text-ink">{n.name}</span>
-                  <span className="font-mono text-[0.8125rem] text-ink-3">{yearOf(n.cohort)}</span>
+                  <span className="font-mono text-[0.8125rem] text-ink-3">{yearOf(n.labelled)}</span>
                   <span className="col-start-2 col-end-4 line-clamp-2 text-sm text-ink">{n.description ? decode(n.description) : 'The registry doesn’t say what it does.'}</span>
                 </Link>
               </li>

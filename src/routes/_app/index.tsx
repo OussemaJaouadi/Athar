@@ -178,7 +178,7 @@ function Answer({ report, cards }: { report: Report; cards: RegistryCard[] }) {
   const more = report.matches.slice(3)
   const n = report.strong
   const verdict = n === 0 ? 'No close precedent.' : n >= 6 ? 'Many tried parts of this.' : 'Tried before.'
-  const card = (m: IdeaMatch) => byId.get(m.id) ?? { id: m.id, name: m.name, sector: m.sector, cohort: m.cohort, description: m.description }
+  const card = (m: IdeaMatch) => byId.get(m.id) ?? { id: m.id, name: m.name, sector: m.sector, labelled: m.labelled, description: m.description }
 
   return (
     <main className="mx-auto w-full max-w-[90rem] flex-1 px-4 pt-10 pb-24 sm:px-8 lg:pt-14">
@@ -283,7 +283,7 @@ const YEARS = [2019, 2020, 2021, 2022, 2023, 2024, 2025]
 function Crowd({ report }: { report: Report }) {
   const close = report.matches
   if (close.length === 0) return null
-  const years = close.map((m) => Number(m.cohort?.slice(3))).filter((y) => y > 0)
+  const years = close.map((m) => Number(m.labelled?.slice(0, 4))).filter((y) => y > 0)
   const per = new Map<number, number>()
   for (const y of years) per.set(y, (per.get(y) ?? 0) + 1)
   const peak = Math.max(...per.values(), 1)

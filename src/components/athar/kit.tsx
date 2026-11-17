@@ -67,5 +67,5 @@ export function Score({ value, className }: { value: number; className?: string 
 }
 
 export const shortDate = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
-export const labelledYear = (cohort: string | null) => (cohort ? cohort.slice(3) : null)
+export const labelledYear = (labelled: string | null) => (labelled ? labelled.slice(0, 4) : null)
 

@@ -141,6 +141,8 @@ export function LabInstruments({ children }: { children: React.ReactNode }) {
 export const operationName = (value: string) =>
   ({
     collect: 'Collect',
+    rebuild: 'Rebuild',
+    check: 'Check websites',
     clean: 'Clean',
     merge: 'Merge',
     build: 'Build',
@@ -157,28 +159,6 @@ export const statusName = (value: string) =>
     skipped: 'Not run yet',
     'not run': 'Not run yet',
   })[value] ?? 'Not run yet'
-export const findingName = (value: string) =>
-  ({
-    missing_description: 'No description in the registry',
-    website_unrepairable: 'Website could not be repaired',
-    industry_differs: 'Industry differs from sector',
-    cohort_unreadable: 'Label date could not be read',
-    cohort_before_creation: 'Label date is before the creation year',
-    possible_duplicate: 'Startups may be duplicates',
-  })[value] ?? 'Finding needs review'
-export const findingSentence = (value: string) =>
-  ({
-    missing_description:
-      'The description stays missing until a source fills it.',
-    website_unrepairable:
-      'The website stays out of the condition checks until a usable address is supplied.',
-    industry_differs: 'Check which sector best describes the startup.',
-    cohort_unreadable: 'Check the label date against the registry.',
-    cohort_before_creation:
-      'Check the label date and creation year against their sources.',
-    possible_duplicate:
-      'Check whether these source rows describe the same startup.',
-  })[value] ?? 'Check the source row before resolving this finding.'
 export const labControl =
   'h-10 rounded-[4px] border border-control border-input bg-canvas px-3 text-sm text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-glaze disabled:cursor-not-allowed'
 export const labPrimary =

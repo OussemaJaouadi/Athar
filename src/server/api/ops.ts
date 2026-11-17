@@ -27,7 +27,7 @@ export const getEntry = createServerFn()
 // ── The rows behind the numbers ─────────────────────────────────────────────────────────────────
 
 import { askModel } from '../ai/ask'
-import { downloadChanges, downloads, factRows, ideaChecks, people } from '../pipeline/facts'
+import { downloadChanges, downloads, factRows, foundersOf, ideaCheck, ideaChecks, people, person } from '../pipeline/facts'
 import type { Provider } from '#/shared/providers'
 
 /** The startups or entries a counted fact stands for, by the note's code. Null when the code has no rows behind it. */
@@ -80,3 +80,18 @@ export const probeKey = createServerFn({ method: 'POST' })
       return { ok: false, error: message, milliseconds: Date.now() - started }
     }
   })
+
+/** The founders of one startup, in published order, each with the slug of the person and how many startups name them. */
+export const getFoundersOf = createServerFn()
+  .validator((startupId: string) => startupId)
+  .handler(async ({ data }) => foundersOf(getDatabase(), data))
+
+/** One person by slug, whatever page of the people list they are on. */
+export const getPersonRow = createServerFn()
+  .validator((slug: string) => slug)
+  .handler(async ({ data }) => person(getDatabase(), data))
+
+/** One stored idea check by id, however old. */
+export const getIdeaCheckRow = createServerFn()
+  .validator((id: string) => id)
+  .handler(async ({ data }) => ideaCheck(getDatabase(), data))

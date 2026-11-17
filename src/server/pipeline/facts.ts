@@ -157,3 +157,52 @@ export function ideaChecks(db: Database, options: { savedOnly?: boolean; limit?:
         }),
     }))
 }
+
+// ── One of each, by its own id ──────────────────────────────────────────────────────────────────
+
+export type FounderRow = { position: number; name: string; slug: string; /** Startups this person is named on, this one included. */ startups: number }
+
+/** The founders of one startup, in published order, each with the slug of the person. */
+export function foundersOf(db: Database, startupId: string): FounderRow[] {
+  return db
+    .query<{ position: number; name: string; person_key: string; startups: number }, [string]>(
+      `SELECT f.position, f.name, f.person_key, (SELECT COUNT(DISTINCT o.startup_id) FROM founders o WHERE o.person_key = f.person_key) AS startups
+       FROM founders f WHERE f.startup_id = ? ORDER BY f.position`,
+    )
+    .all(startupId)
+    .map((f) => ({ position: f.position, name: f.name, slug: f.person_key.replace(/ /g, '-'), startups: f.startups }))
+}
+
+/** One person by slug, whatever page of the list they are on; null when nobody has that key. */
+export function person(db: Database, slug: string): PersonRow | null {
+  const on = db
+    .query<{ name: string; id: string; startup: string; labelled: string | null }, [string]>(
+      'SELECT f.name, s.id, s.name AS startup, s.labelled FROM founders f JOIN startups s ON s.id = f.startup_id WHERE f.person_key = ? ORDER BY s.labelled, s.name',
+    )
+    .all(slug.replace(/-/g, ' '))
+  if (!on.length) return null
+  const spellings = [...new Set(on.map((o) => o.name))]
+  const count = (s: string) => on.filter((o) => o.name === s).length
+  const name = [...spellings].sort((a, b) => count(b) - count(a) || capitals(a) - capitals(b))[0]
+  return { slug, name, spellings: spellings.filter((s) => s !== name), startups: on.map((o) => ({ id: o.id, name: o.startup, labelled: o.labelled })) }
+}
+
+/** One stored idea check by id, however old; null when it does not exist. */
+export function ideaCheck(db: Database, id: string): IdeaCheckRow | null {
+  const c = db
+    .query<{ id: string; idea: string; language: string | null; checked_at: string; saved: number; matches_json: string; explained_model: string | null }, [string]>(
+      'SELECT id, idea, language, checked_at, saved, matches_json, explained_model FROM idea_checks WHERE id = ?',
+    )
+    .get(id)
+  if (!c) return null
+  const name = db.query<{ name: string }, [string]>('SELECT name FROM startups WHERE id = ?')
+  return {
+    id: c.id, idea: c.idea, language: c.language, checkedAt: c.checked_at, saved: c.saved === 1, explainedBy: c.explained_model,
+    close: (JSON.parse(c.matches_json) as { startupId: string; band: string }[])
+      .filter((m) => m.band === 'close')
+      .flatMap((m) => {
+        const s = name.get(m.startupId)
+        return s ? [{ id: m.startupId, name: s.name }] : []
+      }),
+  }
+}

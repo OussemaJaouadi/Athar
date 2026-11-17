@@ -323,6 +323,11 @@ describe('the rows behind the numbers', () => {
     expect(repeat.rows[0]).toMatchObject({ slug: 'cherni-rayen', name: 'Rayen Cherni', spellings: ['Rayen CHERNI'] })
     expect(repeat.rows[0].startups.map((s) => s.id).sort()).toEqual(['relead', 'rgpd-tunisie'])
     expect(people(db, { q: 'CHERNI' }).rows.map((p) => p.slug)).toEqual(['cherni-rayen'])
+    const { foundersOf, person } = require('./facts') as typeof import('./facts')
+    expect(foundersOf(db, 'relead')).toEqual([{ position: 0, name: 'Hadhami Rjiba', slug: 'hadhami-rjiba', startups: 1 }, { position: 1, name: 'Rayen Cherni', slug: 'cherni-rayen', startups: 2 }])
+    expect(foundersOf(db, 'cherni')).toEqual([]) // a startup id, never a person's name
+    expect(person(db, 'cherni-rayen')).toEqual(repeat.rows[0])
+    expect(person(db, 'nobody-here')).toBeNull()
   })
 
   test('stored idea checks list the startups they found close', () => {
@@ -334,5 +339,8 @@ describe('the rows behind the numbers', () => {
     )
     expect(ideaChecks(db)).toEqual([{ id: 'abc', idea: 'Free Wi-Fi for cafes', language: 'en', checkedAt: '2026-11-17T10:00:00Z', saved: true, explainedBy: null, close: [{ id: 'relead', name: 'Relead' }] }])
     expect(ideaChecks(db, { savedOnly: true })).toHaveLength(1)
+    const { ideaCheck } = require('./facts') as typeof import('./facts')
+    expect(ideaCheck(db, 'abc')).toEqual(ideaChecks(db)[0])
+    expect(ideaCheck(db, 'zzz')).toBeNull()
   })
 })

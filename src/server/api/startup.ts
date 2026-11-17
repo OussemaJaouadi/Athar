@@ -111,3 +111,69 @@ export const getStartupPage = createServerFn()
   })
 
 export type StartupPage = NonNullable<Awaited<ReturnType<typeof getStartupPage>>>
+
+// ── Glimpse ─────────────────────────────────────────────────────────────────────────────────────
+// What a hover on a startup link shows. One row, one join: no vectors, no re-reading of the raw entry.
+
+export type StartupGlimpse = {
+  id: string
+  name: string
+  sector: string | null
+  /** 'YYYY-MM' */
+  labelled: string | null
+  /** The start of the description, cut at a word; null when the registry publishes none. */
+  description: string | null
+  /** The address as read by Clean: only the address, never the extra text some entries carry after it. */
+  website: string | null
+  /** not_asked: it has a website of its own, and Check has not run since it was collected. */
+  websiteState: 'answers' | 'does_not_answer' | 'none' | 'social' | 'not_asked'
+  /** When "does not answer" was first observed; null for every other state. */
+  since: string | null
+  founders: number
+  /** No longer published by the registry. */
+  withdrawn: boolean
+}
+
+const GLIMPSE_LENGTH = 180
+const startOf = (text: string) => {
+  if (text.length <= GLIMPSE_LENGTH) return text
+  const cut = text.slice(0, GLIMPSE_LENGTH)
+  const at = cut.lastIndexOf(' ')
+  return `${(at > GLIMPSE_LENGTH / 2 ? cut.slice(0, at) : cut).replace(/[\s,;:.-]+$/, '')}…`
+}
+
+export const getStartupGlimpse = createServerFn()
+  .validator((id: string) => id)
+  .handler(async ({ data: id }): Promise<StartupGlimpse | null> => {
+    const s = getDatabase()
+      .query<
+        { id: string; name: string; sector: string | null; labelled: string | null; description: string | null; website: string | null
+          website_kind: string | null; status: string | null; since: string | null; founders: number; withdrawn: number },
+        [string]
+      >(
+        `SELECT s.id, s.name, s.sector, s.labelled, s.description, s.website, s.website_kind, w.status, w.since,
+                (SELECT COUNT(*) FROM founders f WHERE f.startup_id = s.id) AS founders,
+                s.last_download < (SELECT MAX(id) FROM downloads) AS withdrawn
+         FROM startups s LEFT JOIN website_checks w ON w.startup_id = s.id WHERE s.id = ?`,
+      )
+      .get(id)
+    if (!s) return null
+    const websiteState: StartupGlimpse['websiteState'] = !s.website
+      ? 'none'
+      : s.website_kind === 'social'
+        ? 'social'
+        : s.status === 'reachable'
+          ? 'answers'
+          : s.status === 'unreachable'
+            ? 'does_not_answer'
+            : 'not_asked'
+    return {
+      id: s.id, name: s.name, sector: s.sector, labelled: s.labelled,
+      description: s.description ? startOf(s.description) : null,
+      website: s.website,
+      websiteState,
+      since: websiteState === 'does_not_answer' ? s.since : null,
+      founders: s.founders,
+      withdrawn: s.withdrawn === 1,
+    }
+  })

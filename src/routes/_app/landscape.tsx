@@ -32,7 +32,7 @@ export const Route = createFileRoute('/_app/landscape')({
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 const OTHER = 'other'
-// Compare colours go by selection order, so two sectors that share a tile glaze never collide.
+// The five glazes, for a compared sector whose own glaze is already taken.
 const COMPARE = ['var(--glaze)', 'var(--ochre)', 'var(--tile-manganese)', 'var(--tile-terracotta)', 'var(--tile-steel)']
 const OTHER_FILL = 'color-mix(in oklab, var(--ink-2) 48%, var(--canvas))'
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
@@ -48,7 +48,14 @@ function LandscapePage() {
   const hoverTimer = useRef<number | undefined>(undefined)
   const active = selected.length === 1 ? selected[0] : undefined
   const comparing = selected.length > 1
-  const colour = (name: string) => COMPARE[selected.indexOf(name)]
+  // Each compared sector keeps its own glaze; only a later one that shares a glaze moves to the first free one.
+  const assigned = new Map<string, string>()
+  for (const n of selected) {
+    const own = sectorStyle(n).glaze.fill
+    const used = new Set(assigned.values())
+    assigned.set(n, used.has(own) ? (COMPARE.find((c) => !used.has(c)) ?? own) : own)
+  }
+  const colour = (name: string) => assigned.get(name) ?? sectorStyle(name).glaze.fill
 
   const sectors = useMemo(() => {
     const m = new Map<string, { name: string; total: number; before: number }>()
@@ -131,7 +138,7 @@ function LandscapePage() {
                   selected.length ? (selected.includes(s.name) ? 'bg-surface' : 'opacity-50') : preview && preview !== s.name && sectors.slice(0, 5).some((t) => t.name === preview) && 'opacity-60',
                 )}
               >
-                {comparing && selected.includes(s.name) ? <span className="size-[15px] rounded-[3px]" style={{ background: colour(s.name) }} /> : <SectorSwatch sector={s.name} size={15} />}
+                {comparing && selected.includes(s.name) && colour(s.name) !== sectorStyle(s.name).glaze.fill ? <span className="size-[15px] rounded-[3px]" style={{ background: colour(s.name) }} /> : <SectorSwatch sector={s.name} size={15} />}
                 <span className="truncate">{s.name}</span>
                 <span className="text-end tabular-nums">{s.total}</span>
                 <span className="text-end text-ink-2 tabular-nums">{s.before}</span>
@@ -509,7 +516,7 @@ function Growth({
           )}
         </text>
         {years.map((yr, i) => {
-          const showVal = !compact || read === i
+          const showVal = !compact
           return (
             <g key={yr}>
               {comparing
@@ -642,7 +649,7 @@ function Numbers({
   const basis = search.basis ?? 'founded'
   const show = search.show ?? 'each'
   const unit = search.as ?? 'count'
-  const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({ key: 'total', dir: 'desc' })
+  const [sortState, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({ key: 'total', dir: 'desc' })
 
   const keyOf = (r: LandscapeRow) => (basis === 'founded' ? r.founded : r.year)
   const span = yearSpan(rows)
@@ -654,6 +661,8 @@ function Numbers({
     return { per, vals: show === 'cum' ? cum : per, total: list.length }
   }
   const all = line(rows)
+  // So far: the total is the last year, so the column goes and its sort moves to that year.
+  const sort = show === 'cum' && sortState.key === 'total' ? { ...sortState, key: years[years.length - 1] as SortKey } : sortState
   const table = sectors.map((s) => ({ name: s, ...line(rows.filter((r) => r.sector === s)) }))
   const cellOf = (v: number, i: number) => (unit === 'share' ? (all.vals[i] ? (v / all.vals[i]) * 100 : 0) : v)
   const totalOf = (t: number) => (unit === 'share' ? (t / all.total) * 100 : t)
@@ -665,7 +674,7 @@ function Numbers({
     const i = years.indexOf(sort.key)
     return d * (a.vals[i] - b.vals[i]) || a.name.localeCompare(b.name)
   })
-  const sortBy = (key: SortKey) => setSort((s) => ({ key, dir: s.key === key ? (s.dir === 'desc' ? 'asc' : 'desc') : key === 'name' ? 'asc' : 'desc' }))
+  const sortBy = (key: SortKey) => setSort(() => ({ key, dir: sort.key === key ? (sort.dir === 'desc' ? 'asc' : 'desc') : key === 'name' ? 'asc' : 'desc' }))
   const ariaSort = (key: SortKey) => (sort.key === key ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none')
   const set = (patch: Partial<{ basis: Basis; show: Show; as: As }>) =>
     navigate({
@@ -689,9 +698,13 @@ function Numbers({
 
   const exportShown = () =>
     download(`athar-landscape-${basis}-${show}-${unit}.csv`, [
-      ['Sector', ...years, 'Total'],
-      ['All sectors', ...all.vals.map((v, i) => (unit === 'share' ? (all.vals[i] ? 100 : 0) : v)), unit === 'share' ? 100 : all.total],
-      ...sorted.map((r) => [r.name, ...r.vals.map((v, i) => (unit === 'share' ? Number(cellOf(v, i).toFixed(1)) : v)), unit === 'share' ? Number(totalOf(r.total).toFixed(1)) : r.total]),
+      ['Sector', ...years, ...(show === 'each' ? ['Total'] : [])],
+      [unit === 'share' ? 'All sectors (count)' : 'All sectors', ...all.vals, ...(show === 'each' ? [all.total] : [])],
+      ...sorted.map((r) => [
+        r.name,
+        ...r.vals.map((v, i) => (unit === 'share' ? Number(cellOf(v, i).toFixed(1)) : v)),
+        ...(show === 'each' ? [unit === 'share' ? Number(totalOf(r.total).toFixed(1)) : r.total] : []),
+      ]),
     ])
   const exportAll = () =>
     download('athar-startups.csv', [
@@ -700,7 +713,7 @@ function Numbers({
     ])
 
   const row = (name: string, vals: number[], total: number, opts: { all?: boolean; sector?: string }) => {
-    const shown = vals.map((v, i) => cellOf(v, i))
+    const shown = opts.all ? vals : vals.map((v, i) => cellOf(v, i))
     const peak = Math.max(...shown)
     const on = opts.sector !== undefined && selected.includes(opts.sector)
     return (
@@ -723,16 +736,16 @@ function Numbers({
         {shown.map((v, i) => {
           const raw = (show === 'cum' ? vals : vals)[i]
           const y = years[i]
-          const isPeak = !opts.all && v === peak && v > 0
-          const text = raw === 0 ? '·' : fmt(opts.all && unit === 'share' ? 100 : v)
-          const cls = cn('px-2 text-end font-mono text-[12.5px] tabular-nums', y === pinned && 'bg-surface', raw === 0 ? 'text-center text-ink-2' : isPeak || opts.all ? 'font-medium text-ink' : 'text-ink-2')
+          const isPeak = show === 'each' && !opts.all && v === peak && v > 0
+          const text = raw === 0 ? '·' : opts.all ? String(v) : fmt(v)
+          const cls = cn('px-2 text-end font-mono text-[12.5px] tabular-nums', y === pinned && 'bg-surface', raw === 0 ? 'text-ink-2' : opts.all ? (unit === 'share' ? 'text-ink-2' : 'font-medium text-ink') : isPeak ? 'font-medium text-ink' : 'text-ink-2')
           return (
             <td key={y} className={cls}>
               {show === 'each' && raw > 0 ? (
                 <Link
                   to="/search"
                   search={basis === 'label' ? { sector: opts.sector, from: y, to: y } : { sector: opts.sector, founded: y }}
-                  className="text-inherit no-underline hover:text-glaze hover:underline"
+                  className="text-inherit no-underline hover:text-glaze hover:underline focus-visible:text-glaze focus-visible:underline"
                 >
                   {text}
                 </Link>
@@ -742,7 +755,9 @@ function Numbers({
             </td>
           )
         })}
-        <td className="border-s border-hairline px-2 text-end font-mono text-[12.5px] text-ink tabular-nums">{fmt(opts.all && unit === 'share' ? 100 : totalOf(total))}</td>
+        {show === 'each' && (
+          <td className={cn('border-s border-hairline px-2 text-end font-mono text-[12.5px] tabular-nums', opts.all && unit === 'share' ? 'text-ink-2' : 'text-ink')}>{opts.all ? total : fmt(totalOf(total))}</td>
+        )}
       </tr>
     )
   }
@@ -780,17 +795,17 @@ function Numbers({
                 </button>
               </th>
               {years.map((y) => head(y, String(y), 'text-end'))}
-              {head('total', 'Total', 'border-s border-hairline text-end')}
+              {show === 'each' && head('total', 'Total', 'border-s border-hairline text-end')}
             </tr>
           </thead>
           <tbody>
-            {row('All sectors', all.vals, all.total, { all: true })}
+            {row(unit === 'share' ? 'All sectors (count)' : 'All sectors', all.vals, all.total, { all: true })}
             {sorted.map((r) => row(r.name, r.vals, r.total, { sector: r.name }))}
           </tbody>
         </table>
       </Scroller>
       <p className="mt-2 text-xs text-ink-2">
-        {unit === 'share' ? 'Share is the sector’s part of that year’s total. ' : ''}Bold marks each sector’s highest year. {show === 'each' ? 'Every count opens its startups in the Archive.' : ''}
+        {unit === 'share' ? 'Share is the sector’s part of that year’s total. ' : ''}{show === 'each' ? 'Bold marks each sector’s highest year. Every count opens its startups in the Archive.' : 'Running totals to the end of each year.'}
       </p>
     </section>
   )

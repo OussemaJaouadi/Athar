@@ -2,6 +2,8 @@ import { Link } from '@tanstack/react-router'
 
 import type { PersonPage } from '#/server/api/person'
 import { websiteAnswers, websiteReason, type WebsiteCheck } from '#/shared/website'
+import { StartupTitle } from '@/components/athar/startup-title'
+import { StartupLink } from '@/components/athar/startup-glimpse'
 
 // The person page, in the same form as the startup page: the record on the left, what the data connects to it on the right.
 
@@ -83,9 +85,7 @@ export function PersonRecord({ data }: { data: PersonPage }) {
           <ul className="border-t border-edge">
             {startups.map((s) => (
               <li key={s.id} className="grid grid-cols-[minmax(0,1fr)_max-content] gap-x-5 gap-y-0.5 border-b border-hairline py-3">
-                <Link to="/startups/$id" params={{ id: s.id }} className="font-display text-xl leading-snug font-bold text-ink" dir="auto">
-                  {s.name}
-                </Link>
+                <StartupTitle id={s.id} name={s.name} sector={s.sector} />
                 <span className="text-end text-sm whitespace-nowrap tabular-nums">{s.labelled ? `Labelled ${month(s.labelled)}` : ''}</span>
                 <p className="col-span-full text-sm">{s.sector}</p>
                 {s.description && (
@@ -120,9 +120,9 @@ export function PersonRecord({ data }: { data: PersonPage }) {
                       {c.startups.map((s, i) => (
                         <span key={s.id}>
                           {i > 0 && ', '}
-                          <Link to="/startups/$id" params={{ id: s.id }}>
+                          <StartupLink id={s.id}>
                             {s.name}
-                          </Link>
+                          </StartupLink>
                         </span>
                       ))}
                     </span>

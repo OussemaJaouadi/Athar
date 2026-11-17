@@ -11,6 +11,7 @@ import { useMemo } from 'react'
 import { ChartSpace, axisText, chartTheme, useChartTokens, type ChartTokens } from '@/components/athar/chart-kit'
 import { StateBars, StateKey } from '@/components/athar/state-bars'
 import type { SectorPage, SectorYear } from '#/server/api/sector'
+import { StartupLink } from '@/components/athar/startup-glimpse'
 
 // The sector page, in the form picked for the startup page: the record on the left, what the data says on the right.
 // Two charts share the label years (the owner's pick, 17 Nov 2026): how many and what is left, then its share of each year.
@@ -172,9 +173,9 @@ export function SectorRecord({ data }: { data: SectorPage }) {
                     {p.startups.map((s, i) => (
                       <span key={s.id}>
                         {i > 0 && ', '}
-                        <Link to="/startups/$id" params={{ id: s.id }}>
+                        <StartupLink id={s.id}>
                           {s.name}
-                        </Link>
+                        </StartupLink>
                       </span>
                     ))}
                   </span>

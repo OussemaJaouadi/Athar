@@ -3,6 +3,9 @@ import { Link } from '@tanstack/react-router'
 import type { Neighbour, StartupPage } from '#/server/api/startup'
 import { sectorSlug } from '#/shared/sector'
 import { bareAddress, websiteAnswers, websiteReason, type WebsiteCheck } from '#/shared/website'
+import { StartupTitle } from '@/components/athar/startup-title'
+import { TileMark } from '@/components/athar/tile-mark'
+import { StartupLink } from '@/components/athar/startup-glimpse'
 
 // The startup page (direction C, picked by the owner on 17 Nov 2026): the record stays on the left,
 // everything the data connects to it stands on the right. Every list is a relation in the data model.
@@ -72,9 +75,7 @@ function ideaSentence(data: StartupPage): string {
 function NeighbourRow({ s }: { s: Neighbour }) {
   return (
     <li className="grid grid-cols-[minmax(0,1fr)_max-content] gap-x-5 gap-y-0.5 border-b border-hairline py-3">
-      <Link to="/startups/$id" params={{ id: s.id }} className="font-display text-xl leading-snug font-bold text-ink" dir="auto">
-        {s.name}
-      </Link>
+      <StartupTitle id={s.id} name={s.name} sector={s.sector} />
       <span className="text-end text-sm whitespace-nowrap tabular-nums">{s.labelled ? `Labelled ${month(s.labelled, true)}` : ''}</span>
       {s.description && (
         <p className="col-span-full line-clamp-2 max-w-[70ch] text-sm" dir="auto">
@@ -142,13 +143,16 @@ export function StartupRecord({ data, operator }: { data: StartupPage; operator?
     <article className="grid items-start gap-x-12 gap-y-10 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
       <div className="grid gap-7 lg:sticky lg:top-6">
         <header className="grid gap-2.5">
-          <h1 className="font-display text-[2.125rem] leading-[1.1] font-bold text-balance sm:text-[2.75rem]" dir="auto">
-            {startup.name}
-          </h1>
+          <div className="flex items-start gap-4">
+            <TileMark id={startup.id} sector={startup.sector} size={48} className="mt-1.5 shrink-0" title={startup.sector ?? undefined} />
+            <h1 className="font-display text-[2.125rem] leading-[1.1] font-bold text-balance sm:text-[2.75rem]" dir="auto">
+              {startup.name}
+            </h1>
+          </div>
           <p className="text-sm">
-            From registry row{' '}
+            From entry{' '}
             {operator ? (
-              <Link to="/portal/trace/$rowId" params={{ rowId: source.entryId }} className="font-mono text-[0.8125rem]">
+              <Link to="/portal/trace" search={{ startup: startup.id }} className="font-mono text-[0.8125rem]">
                 {source.entryId}
               </Link>
             ) : (
@@ -206,9 +210,9 @@ export function StartupRecord({ data, operator }: { data: StartupPage; operator?
                     {p.others.map((o, i) => (
                       <span key={o.id}>
                         {i > 0 && (i === p.others.length - 1 ? ' and ' : ', ')}
-                        <Link to="/startups/$id" params={{ id: o.id }}>
+                        <StartupLink id={o.id}>
                           {o.name}
-                        </Link>
+                        </StartupLink>
                         {[o.sector, o.labelled && `labelled in ${o.labelled.slice(0, 4)}`].filter(Boolean).map((t) => `, ${t}`)}
                       </span>
                     ))}
@@ -235,9 +239,9 @@ export function StartupRecord({ data, operator }: { data: StartupPage; operator?
                 {shownOthers.map((o, i) => (
                   <span key={o.id}>
                     {i > 0 && ' · '}
-                    <Link to="/startups/$id" params={{ id: o.id }}>
+                    <StartupLink id={o.id}>
                       {o.name}
-                    </Link>
+                    </StartupLink>
                   </span>
                 ))}
                 {sectorYear.others.length > shownOthers.length && (

@@ -7,6 +7,8 @@ import { StateBars, StateKey } from '@/components/athar/state-bars'
 import { explainIdea, saveIdea, type Explanation, type IdeaMatch, type IdeaPage } from '#/server/api/ideas'
 import { sectorSlug } from '#/shared/sector'
 import { websiteAnswers, websiteReason, type WebsiteCheck } from '#/shared/website'
+import { Disclosure, StartupTitle } from '@/components/athar/startup-title'
+import { StartupLink } from '@/components/athar/startup-glimpse'
 
 // The idea page (the owner picked the version with AI sentences, 17 Nov 2026), in the form of every entity page:
 // the idea is the record on the left; what the registry holds about it is on the right.
@@ -44,9 +46,7 @@ const Heading = ({ children, count }: { children: React.ReactNode; count?: React
 function MatchRow({ m, why }: { m: IdeaMatch; why?: Explanation }) {
   return (
     <li className="grid grid-cols-[minmax(0,1fr)_max-content] gap-x-5 gap-y-1 border-b border-hairline py-3">
-      <Link to="/startups/$id" params={{ id: m.id }} className="font-display text-xl leading-snug font-bold text-ink" dir="auto">
-        {m.name}
-      </Link>
+      <StartupTitle id={m.id} name={m.name} sector={m.sector} />
       <span className="text-end text-sm whitespace-nowrap tabular-nums">{m.labelled ? `Labelled ${month(m.labelled)}` : ''}</span>
       {m.description && (
         <p className="col-span-full line-clamp-3 max-w-[72ch] text-sm" dir="auto">
@@ -128,7 +128,7 @@ export function IdeaRecord({ data }: { data: IdeaPage }) {
     [
       'Closest',
       close.length ? (
-        <Link to="/startups/$id" params={{ id: [...close].sort((a, b) => b.closeness - a.closeness)[0].id }}>{[...close].sort((a, b) => b.closeness - a.closeness)[0].name}</Link>
+        <StartupLink id={[...close].sort((a, b) => b.closeness - a.closeness)[0].id}>{[...close].sort((a, b) => b.closeness - a.closeness)[0].name}</StartupLink>
       ) : (
         'None close'
       ),
@@ -232,19 +232,19 @@ export function IdeaRecord({ data }: { data: IdeaPage }) {
         )}
 
         {far.length > 0 && (
-          <details className="border-t border-edge" open={close.length === 0}>
-            <summary className="cursor-pointer py-3 font-normal">
-              {close.length === 0
+          <Disclosure
+            defaultOpen={close.length === 0}
+            summary={close.length === 0
                 ? `The nearest ones, none of them close: ${word(far.length)} ${far.length === 1 ? 'startup' : 'startups'}`
                 : `Further away: ${word(far.length)} ${far.length === 1 ? 'startup that shares' : 'startups that share'} words with your idea, or a neighbouring one`}
-            </summary>
+          >
             <ul className="border-t border-hairline">
               {[...far].sort((a, b) => b.closeness - a.closeness).map((m) => (
                 <MatchRow key={m.id} m={m} />
               ))}
             </ul>
             {nearestOnly && <p className="py-3 text-sm">They are shown so you can see how far the registry is from this idea, not as matches.</p>}
-          </details>
+          </Disclosure>
         )}
       </div>
     </article>

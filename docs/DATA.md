@@ -1,317 +1,100 @@
-# Athar — Data Layer Architecture & Contracts
+# Data
 
-> Authority document for the shared Turso database (`athar.db`). Both Python DataOps and the Go Backend must strictly comply with the contracts defined here.
+One SQLite file (`data/athar.db`) holds everything. Three kinds of table, kept apart:
 
----
-
-## 1. Operating Model & Table Ownership
-
-The single local database file contains two completely segregated table domains. Dual-writer tables are strictly prohibited.
-
-```mermaid
-flowchart TD
-    subgraph DataOps["Python DataOps (Maintainer Ingestion)"]
-        DO_WRITE["Product Data Writer<br/>(Acquisition, Normalization, Vectors)"]
-    end
-
-    subgraph Backend["Go Backend (User Application)"]
-        BE_READ["Product Data Reader<br/>(Search, Aggregations, RAG)"]
-        BE_WRITE["Account Data Writer<br/>(Identity, History, Usage)"]
-    end
-
-    subgraph DB["One Embedded Turso Database (athar.db)"]
-        subgraph ProductGroup["Product Table Group (Exclusive Writer: DataOps)"]
-            T_SNAP["source_snapshots"]
-            T_ROWS["source_rows"]
-            T_ENT["entities"]
-            T_FND["entity_founders"]
-            T_REV["entity_review_items"]
-            T_VEC["entity_embeddings"]
-            T_PRP["preparation_usage"]
-            T_TXT["text_preparations"]
-            T_PRO["profiles"]
-            T_QUO["dataops_quotas"]
-            T_RUN["pipeline_runs"]
-        end
-
-        subgraph AccountGroup["Account Table Group (Exclusive Writer: Go Backend)"]
-            T_USR["user_profile"]
-            T_HIST["user_history"]
-            T_USG["user_usage"]
-        end
-
-        subgraph MetaGroup["System Meta"]
-            T_MIG["schema_migrations"]
-        end
-    end
-
-    DO_WRITE -->|exclusive writes| ProductGroup
-    BE_READ -.->|read-only| ProductGroup
-    BE_WRITE -->|exclusive writes| AccountGroup
-    DO_WRITE -->|runs migrations| MetaGroup
-    BE_WRITE -.->|validates checksums| MetaGroup
-
-    classDef do fill:#0C447C,stroke:#85B7EB,color:#FFFFFF
-    classDef be fill:#145443,stroke:#63D5AF,color:#FFFFFF
-    classDef table fill:#1E293B,stroke:#94A3B8,color:#F8FAFC
-    class DO_WRITE do
-    class BE_READ,BE_WRITE be
-    class T_SNAP,T_ROWS,T_ENT,T_FND,T_REV,T_VEC,T_PRP,T_TXT,T_PRO,T_QUO,T_RUN,T_USR,T_HIST,T_USG,T_MIG table
-```
-
-### Strict Ownership Rules
-* **Product Tables:**
-  * **DataOps:** Exclusive writer. Handles fetch, snapshot preservation, normalization, and vector embedding.
-  * **Go Backend:** Read-only. Queries entities, runs full-text/vector searches, and aggregates landscape metrics.
-* **Account Tables:**
-  * **Go Backend:** Exclusive writer. Records local user identity, search history, and inference consumption.
-  * **DataOps:** Zero access. DataOps never touches account tables.
-* **Public Exports:**
-  * Public datasets query product tables explicitly (`SELECT ... FROM entities`).
-  * The database file itself is **never** copied directly to public releases.
-
----
-
-## 2. Product Schema & Relationships (ERD)
-
-All searchable attributes are indexed first-class columns. Content-equivalent rows are flagged `is_duplicate` on the derived layer and suppressed from default views, never deleted; `source_rows` serves as citation evidence. An entity is keyed by normalized name and site identity, including hosted page paths for Facebook and Google Sites. Distinct descriptions from one entity remain linked and visible. Prepare fills `retrieval_text`/`detected_language` from one call per entity: a single-description result or a combined English summary of multiple labeled descriptions. The ordered description set is hashed so changed input invalidates prepared output. Review findings carry `code`/`category` (automatic, incomplete, or human); unresolved incomplete and human findings put nonduplicate rows in review. Incomplete findings are nonblocking source gaps; human findings need a decision.
+- **As published**: what the registry said, never edited.
+- **Derived by rule**: rebuilt from the published rows at any time; nobody decides anything by hand.
+- **Observed or computed by Athar**: website answers, prepared text, vectors, idea checks.
 
 ```mermaid
 erDiagram
-    SOURCE_SNAPSHOTS ||--|{ SOURCE_ROWS : "contains"
-    SOURCE_SNAPSHOTS ||--o{ ENTITIES : "first seen in"
-    SOURCE_SNAPSHOTS ||--o{ ENTITIES : "latest updated in"
-    SOURCE_ROWS ||--o{ ENTITIES : "cites verbatim evidence"
-    ENTITIES ||--o{ ENTITY_FOUNDERS : "founded by"
-    ENTITIES ||--o{ ENTITY_RELATIONS : "related to"
-    ENTITIES ||--o{ ENTITY_REVIEW_ITEMS : "flags"
-    SOURCE_ROWS ||--o{ ENTITY_REVIEW_ITEMS : "flagged evidence"
-    ENTITIES ||--o| ENTITY_EMBEDDINGS : "vectorized into"
-    SOURCE_SNAPSHOTS ||--o{ PIPELINE_RUNS : "produced in"
-    SOURCE_ROWS ||--o{ TEXT_PREPARATIONS : "prepared once per hashed description"
-    SOURCE_ROWS ||--o{ TEXT_PREPARATION_SOURCES : "contributes description"
-    TEXT_PREPARATIONS ||--o{ TEXT_PREPARATION_SOURCES : "source provenance"
-    ENTITIES ||--o{ TEXT_PREPARATIONS : "canonical output"
-    PIPELINE_RUNS ||--o{ PREPARATION_USAGE : "consumed"
-    SOURCE_ROWS ||--o{ PREPARATION_USAGE : "attempted per record"
-
-    SOURCE_SNAPSHOTS {
-        string id PK
-        string source_url
-        string content_hash UK
-        string fetched_at
-        int row_count
-    }
-
-    SOURCE_ROWS {
-        string id PK
-        string snapshot_id FK
-        int row_number "audit/display only"
-        string raw_json
-        int is_duplicate "1 when content-equivalent row"
-    }
-
-    ENTITIES {
-        string id PK
-        string name
-        string name_key
-        string domain
-        string identity_key "host or hosted page"
-        string website
-        string description
-        string sector
-        string cohort_label
-        string cohort_date
-        int creation_year
-        string retrieval_text "NULL until LLM fluff removal"
-        string preparation_input_hash "ordered descriptions"
-        string detected_language "NULL until LLM language detection"
-        int is_embedded "0 until Qwen embeddings generated"
-        string status_signal "NULL reserved for R3/R4"
-        string first_snapshot_id FK
-        string latest_snapshot_id FK
-        string latest_row_id FK
-        string created_at
-        string updated_at
-    }
-
-    ENTITY_FOUNDERS {
-        string id PK
-        string entity_id FK
-        string full_name
-        string name_key
-        string evidence_status "confirmed | to_confirm | reported"
-        int support_count
-        string created_at
-    }
-
-    ENTITY_RELATIONS {
-        string entity_a_id PK, FK
-        string entity_b_id PK, FK
-        string relation_kind
-        int shared_founders
-    }
-
-    ENTITY_REVIEW_ITEMS {
-        string id PK
-        string entity_id FK
-        string source_row_id FK
-        string reason
-        string code "shared issue code"
-        string category "automatic | incomplete | human"
-        int resolved
-        string resolution_note
-        string created_at
-    }
-
-    ENTITY_EMBEDDINGS {
-        string entity_id PK, FK
-        string model_version
-        blob embedding
-        string updated_at
-    }
-
-    PIPELINE_RUNS {
-        string id PK
-        string operation "collect | clean | prepare"
-        string started_at
-        string completed_at
-        string snapshot_id FK
-        string status
-        int records_processed
-        int review_count
-        string error
-    }
-
-    PIPELINE_RUNS ||--|{ RUN_STEPS : "records each"
-    RUN_STEPS {
-        string run_id PK, FK
-        string step_name PK
-        string status
-        string started_at
-        string completed_at
-        int items_processed
-        string message
-    }
-
-    TEXT_PREPARATIONS {
-        string cache_key PK
-        string source_row_id FK
-        string entity_id FK
-        string input_hash "sha-256 of ordered descriptions"
-        string provider "groq"
-        string model
-        string prompt_version
-        string schema_version
-        string target_language "en"
-        string output_json "single result or per-source results and English summary"
-        string created_at
-    }
-
-    TEXT_PREPARATION_SOURCES {
-        string cache_key PK, FK
-        string source_row_id PK, FK
-        string role "main | secondary"
-        string input_hash
-    }
-
-    PREPARATION_USAGE {
-        string id PK
-        string run_id FK "nullable after registry reset"
-        string source_row_id FK "nullable after registry reset"
-        string provider
-        string model
-        string profile
-        string key_fingerprint "partial digest; never the key"
-        string started_at
-        number duration_seconds
-        int input_tokens
-        int output_tokens
-        string request_id
-        string outcome "started | completed | failed | cancelled | rate_limited | authentication | transport | provider_error"
-        string error
-    }
-
-    PROFILES ||--o{ DATAOPS_QUOTAS : "constrained by"
-    PROFILES ||--o{ PREPARATION_USAGE : "accounts for"
-    PROFILES {
-        string id PK
-        string name UK "registry identity; the TOML store is authoritative"
-        string provider "groq"
-        string model
-        string fingerprint "partial digest; never the key"
-        int disabled "1 after failed authentication, until operator repairs"
-        string created_at
-        string updated_at
-    }
-
-    DATAOPS_QUOTAS {
-        string id PK
-        string profile_id FK
-        string task "prepare (embeddings later)"
-        string metric "records_per_day | tokens_per_day | requests_per_minute | estimate_tokens_per_record"
-        number limit_value "0 means unlimited"
-        string period "day | minute"
-        string created_at
-        string updated_at
-    }
+    downloads ||--|{ entries : "first and last seen in"
+    entries }|--|| startups : "many rows, one startup"
+    startups ||--|{ founders : "has"
+    startups ||--o| website_checks : "observed"
+    startups ||--o| prepared_texts : "prepared"
+    startups ||--o| startup_vectors : "embedded"
+    startups ||--|{ startup_keys : "known as"
+    runs ||--|{ run_steps : "has"
+    runs ||--o{ downloads : "made"
 ```
 
----
+## The source
 
-## 3. Account Schema & Relationships (ERD)
+The Startup Tunisia registry: one public GET, about 920 rows of JSON. It gives rows **no id** and returns them in a **different order on every request**, so a row's position means nothing. Fields: `name`, `desc`, `sector`, `industry`, `website`, `founders`, `label`, `creation_year`, `email`, `phone`, `logo`, `logo_id`.
 
-Local single-user workspace tables isolated from product data.
+## Steps
 
-```mermaid
-erDiagram
-    USER_PROFILE ||--o{ USER_HISTORY : "performs"
-    USER_PROFILE ||--o{ USER_USAGE : "consumes"
+| Operation | Step | Writes | What it does |
+|---|---|---|---|
+| `collect` | collect | `downloads`, `entries` | Downloads the registry; stores each distinct row once, verbatim. The same rows in another order store nothing. |
+| `collect`, `rebuild` | build | `startups`, `founders`, `startup_keys` | Reads every entry field by field and groups the rows of one company. |
+| `check` | check | `website_checks` | Asks each website whether it answers, twice if it fails. About five minutes. |
+| `prepare` | prepare | `prepared_texts`, `ai_usage` | Optional, needs an AI key. One plain English statement per description, used only for matching. |
+| `embed` | embed | `startup_vectors`, `embedding_meta` | One vector per described startup, computed on this machine (Qwen3-Embedding-0.6B, 8-bit, 1024 dimensions). |
 
-    USER_PROFILE {
-        string id PK
-        string display_name
-        string created_at
-    }
+Every step writes counted facts to `run_steps.notes_json`. A run fails, with a plain message, only when the registry itself breaks: a used field disappears, a row has no name, or the row count drops by more than half.
 
-    USER_HISTORY {
-        string id PK
-        string user_id FK
-        string query_type
-        string input_text
-        string result_metadata
-        string created_at
-    }
+## Tables
 
-    USER_USAGE {
-        string id PK
-        string user_id FK
-        string operation
-        string model_name
-        int prompt_tokens
-        int completion_tokens
-        int duration_ms
-        string recorded_at
-    }
-```
+### As published
 
----
+**`downloads`**: one row per download that published a different set of rows.
+`id` (1, 2, 3), `url`, `fetched_at`, `last_checked_at` (moved by an identical download), `content_hash` (over the set of rows, not the bytes), `byte_size`, `row_count`, `run_id`.
 
-## 4. Database Engine & Concurrency Rules
+**`entries`**: one row per distinct registry row.
+`id` (first 12 hex characters of the SHA-256 of the row's content: same row, same id, in every download; an edited row is a new entry), `raw_json` (verbatim), `copies` (times the registry listed that exact row), `first_download`, `last_download`, `startup_id`.
 
-1. **Embedded SQLite / Turso Pragmas:**
-   * `PRAGMA foreign_keys = ON;` (enforce relational integrity on every connection).
-   * `PRAGMA journal_mode = WAL;` (non-blocking reads while DataOps writes).
-   * `PRAGMA busy_timeout = 5000;` (queue instead of throwing busy errors).
-2. **File Permissions:** DataOps runs with umask `077`, creates the database directory `0700`, and tightens an existing `athar.db`, `-wal`, or `-shm` to `0600` at startup, because raw rows hold real phone numbers and emails. Startup warns when any of these files is readable by other accounts.
-3. **Table Ownership in Code:** DataOps lists, pages, and wipes only the product tables named in `PRODUCT_TABLES`; account tables in the same file are never shown or touched.
-4. **Connection Lifecycles:**
-   * DataOps writes are batch-scoped (`BEGIN IMMEDIATE`), keeping write locks minimal.
-   * Go Backend product reads execute as read-only queries.
+### Derived by rule
 
----
+**`startups`**: one row per real company.
+`id` (a readable, permanent slug: `mon-ingenieur-express`), `entry_id` (the entry its values were read from), `name`, `description`, `language` (`en`, `fr`, `ar` or NULL), `sector`, `website`, `website_kind` (`own`, `hosted`, `social`, `shortlink` or NULL), `domain`, `labelled` (`YYYY-MM`), `creation_year`, `filled_json` (field to entry id, only when a second listing filled a gap), `notes_json` (plain facts as `[{code, text}]`), `first_download`, `last_download` (older than the newest download means the registry no longer publishes it; the startup is kept), `created_at`, `updated_at` (moves only when visible content changed).
 
-## 5. Migration Discipline
+**`founders`**: one row per founder per startup.
+`startup_id`, `position`, `name` (as published), `person_key` (the name without case, accents or word order; the same key is the same person across startups).
 
-* **Shared Migration Files:** Idempotent, numbered `.sql` files in `migrations/`.
-* **Checksum Verification:** Applied SHA-256 checksums should record the SQL that actually ran and must not be rewritten. DataOps accepts and visibly labels the known old checksum for migration 003 as `legacy`; other mismatches halt startup. The old 003 could discard review items, which cannot be restored without a pre-upgrade backup. A prior DataOps version already re-keyed some old checksums, so their provenance cannot be inferred from the checksum alone. The planned Go reader must recognize this legacy status without changing it.
+**`startup_keys`**: every website (`site:…`) and name (`name:…`) a startup has been published under, so it keeps its id when one changes. Internal, never shown.
+
+### Observed or computed
+
+**`website_checks`**: the latest answer from each startup's own website. An observation with a date, never a verdict about the company.
+`startup_id`, `url`, `status` (`reachable` or `unreachable`), `detail` (in words: `answered 200`, `no such domain`, `certificate problem`, `timed out`), `final_host` (when it answered from another domain), `checked_at`, `since`. No row means not asked: no website, or a page on a social network.
+
+**`prepared_texts`**: `startup_id`, `input_hash`, `text`, `removed_json`, `key_id`, `model`. Used by Embed only; the registry description stays what the app cites.
+
+**`startup_vectors`**, **`embedding_meta`**: one vector per startup that has a description, with the model, revision and text hash that produced it. A change in any of them re-embeds.
+
+**`idea_checks`**: an idea someone typed and what the registry held about it at that moment.
+`id`, `idea`, `language`, `checked_at`, `download`, `compared`, `matches_json` (`[{startupId, closeness, band}]` with band `close`, `far` or `nearest`), `explained_json` and `explained_model` (the AI's same and different sentences, when a key is saved), `saved`.
+
+**`runs`**, **`run_steps`**: every operation and its steps, with `pid` (the process that owns the run) and `notes_json` (counted facts).
+
+**`ai_keys`**, **`ai_usage`**: provider keys saved in the portal, and one row per AI call.
+
+## How each registry field is read
+
+One reader per field, in `src/server/pipeline/clean.ts`. Clean is a pure function: nothing it returns is stored per row, and Trace calls it again to show how a value was read.
+
+| Field | Rule | Stored as |
+|---|---|---|
+| `name` | Kept as published, spaces tidied. Matching ignores case, accents, punctuation and a trailing legal form (SARL, S.A, Ltd). | `startups.name` |
+| `desc` | Entities decoded, line breaks to spaces, language detected. | `startups.description`, `language` |
+| `sector` | Kept. | `startups.sector` |
+| `website` | The first address is kept; typing errors with one reading are repaired (`http::/x`, `htp://x`, `www..x`); any other text is dropped; the host is classified. | `startups.website`, `website_kind`, `domain` |
+| `founders` | Names kept; blanks and repeats dropped; person key computed. | `founders` |
+| `label` | `MM/YYYY` to a month. | `startups.labelled` |
+| `creation_year` | Text to a number. | `startups.creation_year` |
+| `industry`, `logo`, `logo_id` | Not read: identical to sector, one placeholder image, always empty. Collect checks on every download that this still holds. | only in `entries.raw_json` |
+| `email`, `phone` | Not read. | only in `entries.raw_json` |
+
+Two entries are one company when they share a website, or share a name, unless both have websites, the websites differ and no founder is common. On hosts many startups share (Facebook, Google Sites) the page path is part of the identity.
+
+Two entries carry login details after the address in the website field. The stored entry keeps them verbatim; `displayRow` replaces them with `[extra text withheld]` before a raw row is shown, and the cleaned `startups.website` never holds them.
+
+## Measured on 17 November 2026
+
+921 rows, 918 entries, 901 startups, 1,975 founder rows, 1,915 people (56 on more than one startup). Languages: 793 English, 38 French, 70 none. Websites: 799 asked, 487 answer, 312 do not (222 domains no longer exist). 832 startups embedded; 69 have no description, 24 of them among the 28 labelled in 2025.
+
+## Tests
+
+`bun test` runs `src/server/pipeline/pipeline.test.ts`: the rules above, pinned to the cases found in the real registry.

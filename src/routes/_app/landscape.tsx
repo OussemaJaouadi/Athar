@@ -59,8 +59,10 @@ function LandscapePage() {
     const last = rows.length ? Math.max(...rows.map(qOf)) : 0
     const quarters: LandscapeRow[][] = Array.from({ length: last - first + 1 }, () => [])
     for (const r of rows) quarters[qOf(r) - first].push(r)
-    const tallest = Math.max(...quarters.map((q) => q.length))
-    return { sectors, rank, first, quarters, rowsHigh: Math.ceil(tallest / 3) }
+    const firstYear = Math.floor(first / 4)
+    const yearsB: LandscapeRow[][] = Array.from({ length: Math.floor(last / 4) - firstYear + 1 }, () => [])
+    for (const r of rows) yearsB[r.year - firstYear].push(r)
+    return { sectors, rank, first, firstYear, quarters, yearsB }
   }, [rows])
 
   // Pitch follows the plate's width.
@@ -73,32 +75,40 @@ function LandscapePage() {
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
-  const nq = model.quarters.length
-  const yearOfQ = (i: number) => Math.floor((model.first + i) / 4)
-  const years = yearOfQ(nq - 1) - yearOfQ(0) + 1
-  const P = Math.max(9, Math.min(14, Math.floor((width - RIGHT - (nq - 1) * QGAP - (years - 1) * YGAP) / (nq * 3))))
+  // Under md the wall groups by year (six wide) so the whole arc fits a phone without scrolling.
+  const compact = width < 720
+  const C = compact ? 6 : 3
+  const buckets = compact ? model.yearsB : model.quarters
+  const nb = buckets.length
+  const yearOfB = (i: number) => (compact ? model.firstYear + i : Math.floor((model.first + i) / 4))
+  const years = model.yearsB.length
+  const right = compact ? 0 : RIGHT
+  const P = compact
+    ? Math.max(4, Math.floor((width - (nb - 1) * 8) / (nb * C)))
+    : Math.max(9, Math.min(14, Math.floor((width - RIGHT - (nb - 1) * QGAP - (years - 1) * YGAP) / (nb * C))))
   const S = P - 1
-  const H = model.rowsHigh * P
+  const H = Math.ceil(Math.max(...buckets.map((b) => b.length)) / C) * P
   const qx = (i: number) => {
-    const y = yearOfQ(i) - yearOfQ(0)
-    return i * 3 * P + (i - y) * QGAP + y * YGAP
+    if (compact) return i * (C * P + 8)
+    const y = yearOfB(i) - yearOfB(0)
+    return i * C * P + (i - y) * QGAP + y * YGAP
   }
-  const W = qx(nq - 1) + 3 * P
+  const W = qx(nb - 1) + C * P
 
   const squares = useMemo(
     () =>
-      model.quarters.flatMap((q, i) =>
+      buckets.flatMap((q, i) =>
         [...q]
           .sort((a, b) => Number(b.sector === active) - Number(a.sector === active) || model.rank.get(a.sector)! - model.rank.get(b.sector)! || a.name.localeCompare(b.name))
-          .map((r, j) => ({ r, i, col: j % 3, row: Math.floor(j / 3) })),
+          .map((r, j) => ({ r, i, col: j % C, row: Math.floor(j / C) })),
       ),
-    [model, active],
+    [buckets, C, model.rank, active],
   )
 
   const cur = active ? rows.filter((r) => r.sector === active) : rows
   const byYear = new Map<number, number>()
   for (const r of cur) byYear.set(r.year, (byYear.get(r.year) ?? 0) + 1)
-  const yearList = Array.from({ length: years }, (_, k) => yearOfQ(0) + k)
+  const yearList = Array.from({ length: years }, (_, k) => model.firstYear + k)
 
   // Clear with Escape.
   useEffect(() => {
@@ -131,15 +141,15 @@ function LandscapePage() {
   }
 
   return (
-    <main className="grid flex-1 grid-cols-[minmax(0,1fr)] gap-x-14 gap-y-10 px-4 pt-10 pb-14 sm:px-8 xl:grid-cols-[minmax(0,1fr)_372px]">
+    <main className="grid flex-1 grid-cols-[minmax(0,1fr)] gap-x-8 gap-y-10 px-4 pt-10 2xl:gap-x-14 pb-14 sm:px-8 xl:grid-cols-[minmax(0,1fr)_372px]">
       <section className="min-w-0">
         <h1 className="text-[2.75rem] leading-[3rem]">Landscape</h1>
         <Sentence rows={rows} cur={cur} active={active} byYear={byYear} />
         <div ref={plate} className="relative mt-6">
           <Scroller axis="both" label="Startups by quarter labelled">
-            <svg width={W + RIGHT} height={H + 48} className="block" onPointerLeave={() => setTip(null)}>
-              {[15, 30, 45, 60]
-                .filter((v) => v / 3 <= model.rowsHigh)
+            <svg width={W + right} height={H + (compact ? 60 : 48)} className="block" onPointerLeave={() => setTip(null)}>
+              {(compact ? [] : [15, 30, 45, 60])
+                .filter((v) => (v / 3) * P <= H)
                 .map((v) => {
                   const y = H - (v / 3) * P + 0.5
                   return (
@@ -152,6 +162,7 @@ function LandscapePage() {
                   )
                 })}
               <g
+                className={compact ? 'pointer-events-none' : 'cursor-pointer'}
                 onPointerMove={(e) => {
                   const k = (e.target as SVGElement).dataset.k
                   if (k === undefined) return // keep the last square across the 1px gaps
@@ -167,23 +178,23 @@ function LandscapePage() {
                   const x = qx(i) + col * P
                   const y = H - (row + 1) * P
                   return !active || r.sector === active ? (
-                    <rect key={r.id} data-k={k} x={x} y={y} width={S} height={S} className="cursor-pointer" style={{ fill: sectorStyle(r.sector).glaze.fill }} />
+                    <rect key={r.id} data-k={k} x={x} y={y} width={S} height={S} style={{ fill: sectorStyle(r.sector).glaze.fill }} />
                   ) : (
-                    <rect key={r.id} data-k={k} x={x} y={y} width={S} height={S} className="cursor-pointer fill-surface" />
+                    <rect key={r.id} data-k={k} x={x} y={y} width={S} height={S} className="fill-surface" />
                   )
                 })}
               </g>
               {yearList.map((yr) => {
-                const qs = model.quarters.map((_, i) => i).filter((i) => yearOfQ(i) === yr)
+                const qs = buckets.map((_, i) => i).filter((i) => yearOfB(i) === yr)
                 if (!qs.length) return null
                 const a = qx(qs[0])
-                const b = qx(qs[qs.length - 1]) + 3 * P - 1
+                const b = qx(qs[qs.length - 1]) + C * P - 1
                 return (
                   <g key={yr}>
                     <line x1={a} x2={b} y1={H + 6.5} y2={H + 6.5} className="stroke-control" />
-                    <text x={a} y={H + 26} className="fill-ink font-sans text-[13px] font-medium">
+                    <text x={a} y={H + 26} className={cn('fill-ink font-sans font-medium', compact ? 'text-[12px]' : 'text-[13px]')}>
                       {yr}
-                      <tspan dx={8} className={cn('font-mono font-normal', byYear.get(yr) ? 'fill-ink' : 'fill-ink-2')}>
+                      <tspan {...(compact ? { x: a, dy: 16 } : { dx: 8 })} className={cn('font-mono font-normal', byYear.get(yr) ? 'fill-ink' : 'fill-ink-2')}>
                         {byYear.get(yr) ?? 0}
                       </tspan>
                     </text>

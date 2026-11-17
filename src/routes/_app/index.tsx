@@ -77,17 +77,16 @@ function Ask({ cards, draft }: { cards: RegistryCard[]; draft?: string }) {
           Was it tried
           <span className="block sm:ps-[14%]">in Tunisia?</span>
         </h1>
-        <div className="mt-12 grid gap-10 lg:grid-cols-[minmax(0,1fr)_24rem] lg:items-start">
+        <div className="mt-12 max-w-[64rem]">
           <AskForm initial={draft} />
-          <p className="text-lg leading-8 text-ink lg:pt-3">
-            Athar reads all {corpus.startups} startups in the Startup Tunisia registry and answers with the exact row each one comes from.
-          </p>
         </div>
       </section>
 
       <section aria-label="The registry" className="mx-auto w-full max-w-[90rem] px-4 pb-20 sm:px-8">
-        <div className="mb-5 flex items-baseline justify-between gap-4 border-t border-hairline pt-4 text-sm text-ink-2">
-          <span>From the registry</span>
+        <div className="mb-6 flex flex-wrap items-baseline justify-between gap-x-8 gap-y-2 border-t border-hairline pt-5 text-sm text-ink-2">
+          <p className="max-w-[44rem] text-lg leading-8 text-ink">
+            Athar reads all {corpus.startups} startups in the Startup Tunisia registry and answers with the exact row each one comes from.
+          </p>
           <span>
             {corpus.startups} startups{corpus.fetchedAt && ` · snapshot of ${longDate(corpus.fetchedAt)}`}
           </span>

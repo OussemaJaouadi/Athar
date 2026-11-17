@@ -113,7 +113,7 @@ export function Desk({
       className="grid min-h-0 flex-1 grid-cols-1 min-[1100px]:grid-cols-[var(--desk-list)_1px_minmax(0,1fr)]"
       style={{ ['--desk-list' as string]: `${width}px` }}
     >
-      <div className={cn('min-h-0 min-w-0 overflow-y-auto overscroll-contain', showPaneOnNarrow && 'max-[1099px]:hidden')}>{list}</div>
+      <div className={cn('min-h-0 min-w-0 overflow-y-auto overscroll-contain [scrollbar-width:thin] [scrollbar-color:var(--edge)_transparent]', showPaneOnNarrow && 'max-[1099px]:hidden')}>{list}</div>
       <div
         role="separator"
         aria-orientation="vertical"
@@ -185,6 +185,7 @@ export function DeskItem({
   lead,
   end,
   id,
+  wrap,
 }: {
   selected: boolean
   onSelect: () => void
@@ -195,6 +196,8 @@ export function DeskItem({
   lead?: React.ReactNode
   end?: React.ReactNode
   id?: string
+  /** Let the second line wrap instead of cutting it with an ellipsis. */
+  wrap?: boolean
 }) {
   const ref = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -220,7 +223,7 @@ export function DeskItem({
           {title}
           {qualifier && <span className="text-[0.8125rem] text-ink-2 tabular-nums"> · {qualifier}</span>}
         </span>
-        {detail !== undefined && <span className={cn('truncate text-[0.8125rem] text-ink-2', detailMono && 'font-mono')}>{detail}</span>}
+        {detail !== undefined && <span className={cn('text-[0.8125rem] text-ink-2', wrap ? '[overflow-wrap:anywhere]' : 'truncate', detailMono && 'font-mono')}>{detail}</span>}
       </button>
       {end}
     </div>
@@ -253,7 +256,7 @@ export function DeskPane({
           {position && <span className="text-[0.8125rem] text-ink-2 tabular-nums">{position}</span>}
         </span>
       </header>
-      <div className="grid min-h-0 flex-1 content-start gap-5 overflow-y-auto overscroll-contain px-6 py-[18px]">{children}</div>
+      <div className="grid min-h-0 flex-1 content-start gap-5 overflow-y-auto overscroll-contain [scrollbar-width:thin] [scrollbar-color:var(--edge)_transparent] px-6 py-[18px]">{children}</div>
       {foot && <div className="flex flex-wrap items-center gap-2.5 border-t border-edge bg-surface px-6 py-3">{foot}</div>}
     </section>
   )

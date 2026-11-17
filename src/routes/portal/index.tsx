@@ -21,6 +21,7 @@ import { labTime, operationName } from "@/components/athar/lab";
 import { RunStatus, StepStateBadge } from "@/components/athar/run-status";
 import { DownloadChanges, DownloadList } from "@/components/athar/pipeline-downloads";
 import { FactList, hasRows } from "@/components/athar/pipeline-facts";
+import { StepAbout } from "@/components/athar/pipeline-steps";
 import { cn } from "@/lib/utils";
 import {
   getDownloadChanges,
@@ -177,13 +178,17 @@ function Pipeline() {
               : "Nothing collected yet."
         }
         actions={
-          nextStep && (
+          nextStep ? (
             <RunStepButton
               primary
               operation={nextStep.operation}
               label={runLabel(nextStep)}
               disabled={!!running}
             />
+          ) : (
+            <RunStepButton operation="collect" label="Collect" disabled={!!running}>
+              Check the registry now
+            </RunStepButton>
           )
         }
       />
@@ -194,12 +199,13 @@ function Pipeline() {
         backLabel="All steps"
         list={
           <div role="list" aria-label="Steps">
-            {state.steps.map((s) => (
+            {state.steps.map((s, i) => (
               <div role="listitem" key={s.operation}>
                 <DeskItem
+                  wrap
                   selected={s.operation === key}
                   onSelect={() => select(s.operation)}
-                  title={s.label}
+                  title={`${i + 1}. ${s.label}`}
                   detail={
                     s.state === "not_configured"
                       ? "Needs an AI key"
@@ -358,7 +364,11 @@ function StepPane({
         />
       ) : (
         <>
-          <PaneSection title="Coverage">
+          <PaneSection title="What this step does">
+            <StepAbout operation={step.operation} />
+          </PaneSection>
+
+          <PaneSection title="Where it stands now">
             <p className="text-[0.875rem] text-ink">{step.counts}</p>
             <p className="mt-2 flex flex-wrap items-baseline gap-x-6 gap-y-1 text-[0.875rem] text-ink tabular-nums">
               <span>
@@ -367,7 +377,7 @@ function StepPane({
                 </span>
                 <span className="text-ink-2">
                   {" "}
-                  of {step.total.toLocaleString("en-GB")} current
+                  of {step.total.toLocaleString("en-GB")} done and up to date
                 </span>
               </span>
               {step.outOfDate > 0 && (
@@ -416,6 +426,25 @@ function StepPane({
                     {changeSentence(detail.run.change)}
                   </p>
                 )}
+              {detail.steps.length > 0 && (
+                <p className="mb-2 text-[0.875rem] text-ink tabular-nums">
+                  <span className="text-[0.8125rem] text-ink-2">Steps of this run: </span>
+                  {detail.steps.map((st, i) => (
+                    <span key={st.position}>
+                      {i > 0 && <span className="text-ink-2"> → </span>}
+                      {operationName(st.step)}
+                      <span className="text-ink-2">
+                        {" "}
+                        {st.status === "done"
+                          ? (duration(st.started_at, st.finished_at) ?? "")
+                          : st.status === "running"
+                            ? "running"
+                            : st.status}
+                      </span>
+                    </span>
+                  ))}
+                </p>
+              )}
               {facts.length ? (
                 <ul className="grid max-w-[880px] gap-x-10 md:grid-cols-2">
                   {facts.map((n) => (

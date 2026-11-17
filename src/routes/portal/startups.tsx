@@ -2,8 +2,8 @@ import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
 import { Check, Copy, Search } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { Desk, DeskBar, DeskEmpty, DeskGroup, DeskItem, DeskPane, DeskSelect, Fields, JsonBlock, Kbd, PaneSection, deskBtn, deskInput, useDeskKeys } from '@/components/athar/desk'
-import { GROUP_NAME, costOf, groupFacts } from '@/components/athar/quality-facts'
+import { Desk, DeskBar, DeskEmpty, DeskItem, DeskPane, DeskSelect, Fields, JsonBlock, Kbd, PaneSection, deskBtn, deskInput, useDeskKeys } from '@/components/athar/desk'
+import { GROUP_NAME, costOf, factShort, groupFacts, isSilent } from '@/components/athar/quality-facts'
 import { Differences, HowRead, Namesakes, Observed } from '@/components/athar/ops-startup-sections'
 import { Disclosure } from '@/components/athar/startup-title'
 import { day, plural } from '@/components/athar/trace-parts'
@@ -140,7 +140,11 @@ function StartupsPage() {
   const list = (
     <div role="list" aria-label="Startups">
       {fact && !search.q && <FactHeader fact={fact} rows={factRows} total={factTotal} />}
-      {!fact && !search.q && items.length > 0 && <DeskGroup label="Read these first: more than one entry, or read differently from the registry" count={items.length} />}
+      {!fact && !search.q && items.length > 0 && (
+        <p className="border-b border-edge px-4 py-3 text-[0.875rem] text-ink">
+          {plural(items.length, 'startup', 'startups')} to read first: the registry lists them more than once, or Athar read them differently from what was published.
+        </p>
+      )}
       {items.length === 0 ? (
         <p className="px-4 py-6 text-[0.875rem] text-ink">{search.q ? `No startup matches “${search.q}”.` : fact ? 'Nothing in the data matches this today.' : 'Type a startup name, its slug, its website or the start of an entry id.'}</p>
       ) : (
@@ -187,21 +191,36 @@ function StartupsPage() {
             label="Show startups by fact"
             value={fact?.code ?? '-'}
             onChange={(v) => pickFact(v === '-' ? undefined : v)}
-            options={[{ value: '-', label: 'Read these first' }, ...grouped.flatMap((g) => g.facts.map((f) => ({ value: f.code, label: f.label, hint: f.count ? `${f.count.toLocaleString('en-GB')} · ${GROUP_NAME[g.group]}` : 'none' })))]}
+            options={[{ value: '-', label: 'To read first' }, ...grouped.flatMap((g) => g.facts.map((f) => ({ value: f.code, label: f.label, hint: f.count ? `${f.count.toLocaleString('en-GB')} · ${GROUP_NAME[g.group]}` : 'none' })))]}
           />
         </div>
       </DeskBar>
       <div className="flex min-h-0 flex-1">
-        <nav aria-label="Facts about the data" className="hidden w-[264px] shrink-0 overflow-y-auto overscroll-contain border-e border-edge min-[1100px]:block">
-          <FactRowButton selected={!fact} label="Read these first" onSelect={() => pickFact(undefined)} />
-          {grouped.map((g) => (
-            <div key={g.group}>
-              <p className="border-b border-hairline px-4 pt-3 pb-1.5 text-[0.8125rem] text-ink-2">{GROUP_NAME[g.group]}</p>
-              {g.facts.map((f) => (
-                <FactRowButton key={f.code} selected={fact?.code === f.code} label={f.label} count={f.count} of={startups} onSelect={() => pickFact(f.code)} />
-              ))}
-            </div>
-          ))}
+        <nav aria-label="Facts about the data" className="hidden w-[272px] shrink-0 overflow-y-auto overscroll-contain border-e border-edge min-[1100px]:block">
+          <FactRowButton selected={!fact} label="To read first" onSelect={() => pickFact(undefined)} />
+          {grouped.map((g) => {
+            const silent = g.facts.filter(isSilent)
+            const rest = g.facts.filter((f) => !isSilent(f))
+            return (
+              <div key={g.group}>
+                <p className="border-b border-hairline px-4 pt-4 pb-1.5 text-[0.8125rem] font-medium text-ink-2">{GROUP_NAME[g.group]}</p>
+                {silent.length > 0 && (
+                  <>
+                    <p className="flex items-baseline gap-3 border-b border-hairline px-4 py-2 text-[0.875rem] text-ink">
+                      <span className="min-w-0 flex-1">Does not answer, by reason</span>
+                      <span className="shrink-0 text-[0.8125rem] text-ink-2 tabular-nums">{silent.reduce((t, f) => t + f.count, 0).toLocaleString('en-GB')}</span>
+                    </p>
+                    {silent.map((f) => (
+                      <FactRowButton key={f.code} indent selected={fact?.code === f.code} label={factShort(f)} count={f.count} of={startups} onSelect={() => pickFact(f.code)} />
+                    ))}
+                  </>
+                )}
+                {rest.map((f) => (
+                  <FactRowButton key={f.code} selected={fact?.code === f.code} label={factShort(f)} count={f.count} of={startups} onSelect={() => pickFact(f.code)} />
+                ))}
+              </div>
+            )
+          })}
         </nav>
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <Desk
@@ -219,14 +238,15 @@ function StartupsPage() {
 }
 
 /** One fact in the facts column: its words, then its count; the chosen one carries the desk's ink bar. */
-function FactRowButton({ selected, label, count, of, onSelect }: { selected: boolean; label: string; count?: number; of?: number; onSelect: () => void }) {
+function FactRowButton({ selected, label, count, of, onSelect, indent }: { selected: boolean; label: string; count?: number; of?: number; onSelect: () => void; indent?: boolean }) {
   return (
     <button
       type="button"
       onClick={onSelect}
       aria-current={selected ? 'true' : undefined}
       className={cn(
-        'flex w-full items-baseline gap-3 border-b border-hairline px-4 py-2 text-start text-[0.875rem] text-ink',
+        'flex w-full items-baseline gap-3 border-b border-hairline py-2 pe-4 text-start text-[0.875rem] text-ink',
+        indent ? 'ps-8' : 'ps-4',
         selected ? 'bg-surface shadow-[inset_3px_0_0_var(--ink)]' : 'hover:bg-surface',
       )}
     >
@@ -276,6 +296,9 @@ function FactHeader({ fact, rows, total }: { fact: QualityFact; rows: FactRow[];
   )
 }
 
+const LANGUAGE: Record<string, string> = { en: 'English', fr: 'French', ar: 'Arabic' }
+const WEBSITE_KIND: Record<string, string> = { own: 'Its own site', hosted: 'A page on a shared host', social: 'A page on a social network', shortlink: 'A short link' }
+
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 const month = (labelled: string | null) => (labelled ? `${MONTHS[Number(labelled.slice(5, 7)) - 1]} ${labelled.slice(0, 4)}` : null)
 
@@ -302,12 +325,12 @@ function StartupPane({ d, openEntry }: { d: Detail; openEntry?: string }) {
           fields={[
             { label: 'Name', value: s.name },
             { label: 'Description', value: s.description },
-            { label: 'Language', value: s.language },
+            { label: 'Language', value: s.language ? (LANGUAGE[s.language] ?? s.language) : null },
             { label: 'Sector', value: s.sector },
             { label: 'Labelled', value: month(s.labelled) },
             { label: 'Founded', value: s.creationYear },
             { label: 'Website', value: s.website, mono: true },
-            { label: 'Website kind', value: s.websiteKind },
+            { label: 'Website kind', value: s.websiteKind ? (WEBSITE_KIND[s.websiteKind] ?? s.websiteKind) : null },
             {
               label: founders.length === 1 ? 'Founder' : 'Founders',
               value: founders.length ? (

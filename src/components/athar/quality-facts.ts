@@ -32,6 +32,12 @@ export const costOf = (code: string, label: string, n: number) => {
   return `${s(n, 'startup', 'startups')}: ${label.charAt(0).toLowerCase()}${label.slice(1)}.`
 }
 
+const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1)
+/** A fact's words for the narrow facts column: no repeated prefix, no "in the registry". */
+export const factShort = (f: QualityFact) =>
+  f.code.startsWith('unreachable:') ? cap(f.label.replace(/^Website does not answer:\s*/, '')) : f.label.replace(/ in the registry$/, '')
+export const isSilent = (f: QualityFact) => f.code.startsWith('unreachable:')
+
 export const GROUP_NAME: Record<QualityFact['group'], string> = { missing: 'Missing', website: 'Websites', listing: 'Listing', reading: 'Reading', registry: 'Registry' }
 export const GROUPS = Object.keys(GROUP_NAME) as QualityFact['group'][]
 

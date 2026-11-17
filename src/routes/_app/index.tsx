@@ -59,7 +59,7 @@ function AskForm({ initial, compact }: { initial?: string; compact?: boolean }) 
       }}
       className="grid gap-3"
     >
-      <label className={cn('flex items-center gap-3 rounded-full border border-control bg-surface ps-6 pe-2 transition-colors focus-within:border-ink', compact ? 'h-14' : 'h-16 sm:h-[4.5rem]')}>
+      <label className={cn('flex items-center gap-3 rounded-full border border-edge bg-surface ps-6 pe-2 transition-colors focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-glaze focus-within:outline', compact ? 'h-14' : 'h-16 sm:h-[4.5rem]')}>
         <span className="sr-only">Describe your idea</span>
         <input
           dir="auto"
@@ -71,17 +71,17 @@ function AskForm({ initial, compact }: { initial?: string; compact?: boolean }) 
         <button
           type="submit"
           disabled={busy || text.trim().length < 12}
-          className="inline-flex h-11 shrink-0 items-center gap-2 rounded-full bg-glaze px-5 text-sm font-medium text-glaze-ink transition-opacity hover:bg-glaze-hover disabled:cursor-not-allowed disabled:bg-surface-raised disabled:text-ink-2"
+          className="inline-flex h-11 shrink-0 items-center gap-2 rounded-full bg-glaze px-5 text-sm font-medium text-glaze-ink transition-opacity hover:bg-glaze-hover disabled:cursor-not-allowed disabled:bg-surface-raised disabled:text-ink-2 motion-reduce:transition-none"
         >
           {busy ? 'Reading…' : 'Ask'} <CornerDownLeft className="size-4" aria-hidden />
         </button>
       </label>
       {error && <p className="ps-6 text-sm text-destructive">{error}</p>}
       {!compact && (
-        <ul className="flex flex-wrap gap-x-5 gap-y-1 ps-6 text-sm text-ink-2">
+        <ul className="flex flex-wrap gap-x-5 gap-y-1 ps-6 text-[0.9375rem] text-ink-2">
           {EXAMPLES.map((ex) => (
             <li key={ex}>
-              <button type="button" dir="auto" onClick={() => setText(ex)} className="underline decoration-hairline underline-offset-4 hover:text-ink hover:decoration-ink">
+              <button type="button" dir="auto" onClick={() => setText(ex)} className="min-h-8 underline decoration-edge underline-offset-4 hover:text-ink hover:decoration-ink">
                 {ex}
               </button>
             </li>
@@ -103,7 +103,7 @@ function Ask({ cards, draft }: { cards: RegistryCard[]; draft?: string }) {
         </h1>
         <div className="mt-12 grid gap-10 lg:grid-cols-[minmax(0,1fr)_24rem] lg:items-start">
           <AskForm initial={draft} />
-          <p className="text-lg leading-8 text-ink-2 lg:pt-3">
+          <p className="text-lg leading-8 text-ink lg:pt-3">
             Athar reads all {corpus.startups} startups in the Startup Tunisia registry and answers with the exact row each one comes from.
           </p>
         </div>
@@ -121,7 +121,7 @@ function Ask({ cards, draft }: { cards: RegistryCard[]; draft?: string }) {
           <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-56 bg-gradient-to-b from-transparent to-canvas" />
         </div>
         <div className="mt-2 flex justify-center">
-          <Link to="/search" className="inline-flex items-center gap-2 rounded-full border border-control px-5 py-2.5 text-sm text-ink no-underline hover:bg-surface">
+          <Link to="/search" className="inline-flex min-h-11 items-center gap-2 rounded-full border border-edge px-5 py-2.5 text-[0.9375rem] text-ink no-underline hover:bg-surface">
             Browse all {corpus.startups} <ArrowRight className="size-4" aria-hidden />
           </Link>
         </div>
@@ -173,20 +173,20 @@ function Card({ card, words = [], lit, size = 'sm' }: { card: RegistryCard; word
       to="/startups/$id"
       params={{ id: card.id }}
       className={cn(
-        'mb-3 block break-inside-avoid rounded-md border no-underline transition-colors', size === 'lg' ? 'p-5' : 'p-3.5',
-        lit ? 'border-ochre bg-canvas shadow-[0_0_0_1px_var(--ochre)]' : 'border-hairline bg-surface hover:border-control',
+        'mb-3 block break-inside-avoid rounded-md border no-underline transition-colors motion-reduce:transition-none', size === 'lg' ? 'p-5' : 'p-3.5',
+        lit ? 'border-ochre bg-canvas shadow-[0_0_0_1px_var(--ochre)]' : 'border-edge/70 bg-surface hover:border-ink',
       )}
     >
       <span className="flex items-center gap-2.5">
         <TileMark id={card.id} sector={card.sector} size={size === 'lg' ? 36 : 24} />
-        <span className="flex min-w-0 flex-1 items-baseline justify-between gap-2 font-mono text-[0.6875rem] text-ink-2">
-          <span className="truncate">{card.sector ?? 'No sector'}</span>
-          {card.row !== null && <span className="shrink-0">row {card.row}</span>}
+        <span className="flex min-w-0 flex-1 items-baseline justify-between gap-2 text-[0.8125rem]">
+          <span className="truncate text-ink-2">{card.sector ?? 'No sector'}</span>
+          {card.row !== null && <span className="shrink-0 font-mono text-ink-3">row {card.row}</span>}
         </span>
       </span>
       <span className={cn('mt-3 block font-display font-bold text-ink', size === 'lg' ? 'text-2xl' : 'text-[1.0625rem] leading-6')}>{card.name}</span>
       {card.description && (
-        <span dir="auto" className={cn('mt-1.5 block font-light text-ink-2', size === 'lg' ? 'text-[0.9375rem] leading-6' : 'line-clamp-4 text-[0.8125rem] leading-5', lit && 'text-ink/85')}>
+        <span dir="auto" className={cn('mt-1.5 block text-ink', size === 'lg' ? 'text-[0.9375rem] leading-6' : 'line-clamp-4 text-sm leading-[1.375rem]')}>
           {marked(decode(card.description), words)}
         </span>
       )}
@@ -216,7 +216,7 @@ function Answer({ report, cards }: { report: Report; cards: RegistryCard[] }) {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Link to="/" search={{ draft: report.idea }} className="inline-flex h-10 items-center rounded-full border border-control px-4 text-sm text-ink no-underline hover:bg-surface">
+          <Link to="/" search={{ draft: report.idea }} className="inline-flex h-10 items-center rounded-full border border-edge px-4 text-sm text-ink no-underline hover:bg-surface">
             Edit idea
           </Link>
           <button
@@ -226,7 +226,7 @@ function Answer({ report, cards }: { report: Report; cards: RegistryCard[] }) {
               setSaved(!saved)
               router.invalidate()
             }}
-            className="inline-flex h-10 items-center gap-2 rounded-full border border-control px-4 text-sm hover:bg-surface"
+            className="inline-flex h-10 items-center gap-2 rounded-full border border-edge px-4 text-sm hover:bg-surface"
           >
             {saved ? <BookmarkCheck className="size-4 text-glaze" /> : <Bookmark className="size-4" />} {saved ? 'Saved' : 'Save'}
           </button>
@@ -239,7 +239,7 @@ function Answer({ report, cards }: { report: Report; cards: RegistryCard[] }) {
             <h1 id="verdict" className="text-[clamp(2.75rem,6vw,5rem)] leading-[0.95]">
               {verdict}
             </h1>
-            <p className="mt-4 max-w-[60ch] text-lg leading-8 text-ink-2">
+            <p className="mt-4 max-w-[60ch] text-lg leading-8 text-ink">
               {n === 0
                 ? report.weakTotal > 0
                   ? `No startup shares more than one word with your idea. ${report.weakTotal} share a single word, which is not enough to call them precedents.`
@@ -323,25 +323,22 @@ function Crowd({ report }: { report: Report }) {
         {report.sector && inSector > 1 && <>{inSector} are {report.sector.name}. </>}
         {years.length > 0 && (first === last ? `All labelled in ${first}.` : `Labelled between ${first} and ${last}${last < YEARS[YEARS.length - 1] ? ', none since' : ''}.`)}
       </p>
-      <ol className="grid grid-cols-7 gap-[3px]" aria-label="Close matches by year labelled">
+      <ol className="grid grid-cols-7 gap-1" aria-label="Close matches by year labelled">
         {YEARS.map((y) => {
           const c = per.get(y) ?? 0
           return (
-            <li key={y} className="grid gap-1 text-center">
-              <span
-                title={`${y}: ${c}`}
-                className={cn('grid h-9 place-content-center rounded-[2px] font-mono text-xs', c === 0 && 'outline outline-1 -outline-offset-1 outline-dashed outline-hairline text-ink-2')}
-                style={c ? { background: `color-mix(in oklab, var(--ochre) ${Math.round(20 + (c / peak) * 80)}%, var(--canvas))`, color: c / peak > 0.5 ? 'var(--canvas)' : 'var(--ink)' } : undefined}
-              >
-                {c || ''}
+            <li key={y} className="grid grid-rows-[1.25rem_3rem_1.25rem] items-end gap-1 text-center">
+              <span className="font-mono text-[0.8125rem] text-ink">{c || ''}</span>
+              <span className="flex h-12 items-end border-b border-edge" aria-label={`${y}: ${c}`}>
+                {c > 0 && <span className="w-full rounded-t-[2px] bg-ochre" style={{ height: `${Math.max(12, (c / peak) * 100)}%` }} />}
               </span>
-              <span className="font-mono text-[0.6875rem] text-ink-2">{String(y).slice(2)}</span>
+              <span className="font-mono text-[0.8125rem] text-ink-3">{String(y).slice(2)}</span>
             </li>
           )
         })}
       </ol>
       {report.sector && (
-        <Link to="/landscape" search={{ sector: report.sector.name }} className="text-sm">
+        <Link to="/landscape" search={{ sector: [report.sector.name] }} className="text-sm">
           {report.sector.name} in the registry: {report.sector.total} startups, {report.sector.recent} since {report.sector.since}
         </Link>
       )}

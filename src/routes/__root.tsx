@@ -7,7 +7,7 @@ import { themeScript } from '@/components/athar/theme'
 import appCss from '../styles.css?url'
 
 const FONTS =
-  'https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Readex+Pro:wght@300;400;500;600&family=Fragment+Mono&family=Noto+Naskh+Arabic:wght@400;500&display=swap'
+  'https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Readex+Pro:wght@400;500;600&family=Fragment+Mono&family=Noto+Naskh+Arabic:wght@400;500&display=swap'
 
 export const Route = createRootRoute({
   head: () => ({

@@ -8,7 +8,8 @@ import { AIPromptInput } from '@/components/smoothui/ai-prompt-input'
 import { AISuggestions } from '@/components/smoothui/ai-suggestions'
 import { cn } from '@/lib/utils'
 import { getWallCards, type RegistryCard } from '#/server/api/app'
-import { getIdeaCheck, runIdeaCheck, saveIdeaCheck, type IdeaMatch } from '#/server/api/idea'
+import { getIdeaCheck, saveIdeaCheck, type IdeaMatch } from '#/server/api/idea'
+import { checkIdea } from '#/server/api/ideas'
 
 type Search = { check?: string; draft?: string }
 const shell = getRouteApi('/_app')
@@ -48,8 +49,8 @@ function AskForm({ initial, compact }: { initial?: string; compact?: boolean }) 
     setBusy(true)
     setError(undefined)
     try {
-      const { id } = await runIdeaCheck({ data: idea })
-      await navigate({ to: '/', search: { check: id } })
+      const { id } = await checkIdea({ data: idea })
+      await navigate({ to: '/ideas/$id', params: { id } })
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {

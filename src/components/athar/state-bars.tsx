@@ -53,7 +53,8 @@ export function StateBars({ bars, t, renderer, height = 300, ariaLabel, title, o
       ],
       scales: {
         x: { scale: () => scaleBand<string>().domain(bars.map((b) => b.key)).padding(0.1), axis: { ...axisText, ticks: { format: (k: string) => label.get(k) ?? k } } },
-        y: { scale: scaleLinear, nice: true, grid: { stroke: t.hairline }, axis: axisText },
+        // Counts of startups: a tick at 0.5 means nothing.
+        y: { scale: scaleLinear, nice: true, grid: { stroke: t.hairline }, axis: { ...axisText, ticks: { format: (v: number) => (Number.isInteger(v) ? String(v) : '') } } },
       },
       focus: 'group-x',
       maxFocusDistance: Number.POSITIVE_INFINITY,

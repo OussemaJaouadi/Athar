@@ -47,8 +47,10 @@ export const nameKey = (name: string) =>
 const ENTITIES: Record<string, string> = { amp: '&', quot: '"', apos: "'", '#39': "'", lt: '<', gt: '>', nbsp: ' ' }
 const decodeEntities = (s: string) => s.replace(/&(amp|quot|apos|#39|lt|gt|nbsp);/g, (_m, e: string) => ENTITIES[e])
 
-const FRENCH = new Set('la le les des une un et pour est du en qui sur avec aux dans nous notre vos votre ce cette par plus ou au sont'.split(' '))
-const ENGLISH = new Set('the and of for to is that with our in on we an are by from your it as this its at which'.split(' '))
+const FRENCH = new Set(
+  'la le les des une un et pour est du de en qui sur avec aux dans nous notre vos votre ce cette par plus ou au sont entre chez sans sous vers ses son sa se ne pas je il elle ils mais donc dont leurs que'.split(' '),
+)
+const ENGLISH = new Set('the and of for to is that with our in on we an are by from your it as this its at which app who their how can be or not have has they you'.split(' '))
 
 export function detectLanguage(text: string): Language | null {
   const letters = text.match(/\p{L}/gu)?.length ?? 0

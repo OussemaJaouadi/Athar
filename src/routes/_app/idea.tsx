@@ -1,10 +1,11 @@
 import { Link, createFileRoute, useNavigate, useRouter } from '@tanstack/react-router'
 import { Bookmark, BookmarkCheck, Pencil, Plus } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { longDate, yearOf } from '@/components/athar/profile'
 import { cn } from '@/lib/utils'
-import { getIdeaCheck, listIdeaChecks, runIdeaCheck, saveIdeaCheck, type IdeaCheck, type IdeaMatch } from '#/server/api/idea'
+import { getIdeaCheck, listIdeaChecks, saveIdeaCheck, type IdeaCheck, type IdeaMatch } from '#/server/api/idea'
+import { checkIdea, warmIdeaModel } from '#/server/api/ideas'
 
 type Search = { check?: string; draft?: string; edit?: boolean }
 
@@ -45,6 +46,8 @@ function Compose({ initial }: { initial?: string }) {
   const [text, setText] = useState(initial ?? '')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
+  // The embedding model takes up to a minute to load the first time; start while the idea is being typed.
+  useEffect(() => void warmIdeaModel(), [])
   return (
     <form
       className="flex flex-1 flex-col"
@@ -53,8 +56,8 @@ function Compose({ initial }: { initial?: string }) {
         setBusy(true)
         setError(undefined)
         try {
-          const { id } = await runIdeaCheck({ data: text })
-          navigate({ search: { check: id } })
+          const { id } = await checkIdea({ data: text })
+          navigate({ to: '/ideas/$id', params: { id } })
         } catch (err) {
           setError(err instanceof Error ? err.message : String(err))
           setBusy(false)

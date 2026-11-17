@@ -21,6 +21,7 @@ import { Route as PortalIndexRouteImport } from './routes/portal/index'
 import { Route as PortalDatabaseRouteImport } from './routes/portal/database'
 import { Route as PortalKeysRouteImport } from './routes/portal/keys'
 import { Route as PortalReviewRouteImport } from './routes/portal/review'
+import { Route as AppIdeasIdRouteImport } from './routes/_app/ideas.$id'
 import { Route as AppPeopleSlugRouteImport } from './routes/_app/people.$slug'
 import { Route as AppSectorsSlugRouteImport } from './routes/_app/sectors.$slug'
 import { Route as AppStartupsIdRouteImport } from './routes/_app/startups.$id'
@@ -89,6 +90,11 @@ const PortalReviewRoute = PortalReviewRouteImport.update({
   path: '/review',
   getParentRoute: () => PortalRouteRoute,
 } as any)
+const AppIdeasIdRoute = AppIdeasIdRouteImport.update({
+  id: '/ideas/$id',
+  path: '/ideas/$id',
+  getParentRoute: () => AppRouteRoute,
+} as any)
 const AppPeopleSlugRoute = AppPeopleSlugRouteImport.update({
   id: '/people/$slug',
   path: '/people/$slug',
@@ -142,6 +148,7 @@ export interface FileRoutesByFullPath {
   '/portal/keys': typeof PortalKeysRoute
   '/portal/review': typeof PortalReviewRoute
   '/portal/': typeof PortalIndexRoute
+  '/ideas/$id': typeof AppIdeasIdRoute
   '/people/$slug': typeof AppPeopleSlugRoute
   '/sectors/$slug': typeof AppSectorsSlugRoute
   '/startups/$id': typeof AppStartupsIdRoute
@@ -162,6 +169,7 @@ export interface FileRoutesByTo {
   '/portal/review': typeof PortalReviewRoute
   '/': typeof AppIndexRoute
   '/portal': typeof PortalIndexRoute
+  '/ideas/$id': typeof AppIdeasIdRoute
   '/people/$slug': typeof AppPeopleSlugRoute
   '/sectors/$slug': typeof AppSectorsSlugRoute
   '/startups/$id': typeof AppStartupsIdRoute
@@ -185,6 +193,7 @@ export interface FileRoutesById {
   '/portal/review': typeof PortalReviewRoute
   '/_app/': typeof AppIndexRoute
   '/portal/': typeof PortalIndexRoute
+  '/_app/ideas/$id': typeof AppIdeasIdRoute
   '/_app/people/$slug': typeof AppPeopleSlugRoute
   '/_app/sectors/$slug': typeof AppSectorsSlugRoute
   '/_app/startups/$id': typeof AppStartupsIdRoute
@@ -208,6 +217,7 @@ export interface FileRouteTypes {
     | '/portal/keys'
     | '/portal/review'
     | '/portal/'
+    | '/ideas/$id'
     | '/people/$slug'
     | '/sectors/$slug'
     | '/startups/$id'
@@ -228,6 +238,7 @@ export interface FileRouteTypes {
     | '/portal/review'
     | '/'
     | '/portal'
+    | '/ideas/$id'
     | '/people/$slug'
     | '/sectors/$slug'
     | '/startups/$id'
@@ -250,6 +261,7 @@ export interface FileRouteTypes {
     | '/portal/review'
     | '/_app/'
     | '/portal/'
+    | '/_app/ideas/$id'
     | '/_app/people/$slug'
     | '/_app/sectors/$slug'
     | '/_app/startups/$id'
@@ -352,6 +364,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PortalReviewRouteImport
       parentRoute: typeof PortalRouteRoute
     }
+    '/_app/ideas/$id': {
+      id: '/_app/ideas/$id'
+      path: '/ideas/$id'
+      fullPath: '/ideas/$id'
+      preLoaderRoute: typeof AppIdeasIdRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
     '/_app/people/$slug': {
       id: '/_app/people/$slug'
       path: '/people/$slug'
@@ -417,6 +436,7 @@ interface AppRouteRouteChildren {
   AppSearchRoute: typeof AppSearchRoute
   AppThemesRoute: typeof AppThemesRoute
   AppIndexRoute: typeof AppIndexRoute
+  AppIdeasIdRoute: typeof AppIdeasIdRoute
   AppPeopleSlugRoute: typeof AppPeopleSlugRoute
   AppSectorsSlugRoute: typeof AppSectorsSlugRoute
   AppStartupsIdRoute: typeof AppStartupsIdRoute
@@ -429,6 +449,7 @@ const AppRouteRouteChildren: AppRouteRouteChildren = {
   AppSearchRoute: AppSearchRoute,
   AppThemesRoute: AppThemesRoute,
   AppIndexRoute: AppIndexRoute,
+  AppIdeasIdRoute: AppIdeasIdRoute,
   AppPeopleSlugRoute: AppPeopleSlugRoute,
   AppSectorsSlugRoute: AppSectorsSlugRoute,
   AppStartupsIdRoute: AppStartupsIdRoute,

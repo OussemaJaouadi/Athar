@@ -1,8 +1,9 @@
 # Athar — Design System
 
-> Foundation v0.2 — the Qallaline palette and type, November 2026. The earlier
-> onyx and candy-blue baseline is reserved for another product and is withdrawn.
-> Runtime behavior and accessibility still require validation on real screens.
+> Foundation v0.3 — the Qallaline palette and type, corrected on 17 November 2026 to match the
+> tokens in `src/styles.css` and the components in `src/components/athar/`. The earlier onyx and
+> candy-blue baseline is reserved for another product and is withdrawn.
+> Where this document and the code disagree, the code is what ships; fix one of them.
 
 ## Authority and scope
 
@@ -15,7 +16,7 @@
 
 ## Confirmed direction
 
-- **Layout:** research workspace; results remain beside the selected profile.
+- **Layout:** research workspace; results remain beside the selected profile. The operator portal uses the same idea as a split desk: a list on the left and a permanent detail pane on the right (picked by the owner on 17 Nov 2026).
 - **Source of the palette:** Qallaline tiles of Tunis, the four historic glazes on white tin glaze: manganese, copper green, antimony ochre, cobalt. Cobalt is deliberately unused because blue belongs to the owner's other products.
 - **Brand anchors:** manganese ink `#2A211C` and glaze green `#0F7A66`.
 - **Themes:** light and dark, each designed explicitly.
@@ -37,11 +38,12 @@
 - `color.surface.raised`: `#E4DFD5` / `#2B251F` — toolbars, overlays.
 - `color.selection.background`: `#DCEDE6` / `#1F3A33` — a green tint; text on it keeps its own color (13.0:1 / 11.4:1).
 - `color.text.primary`: `#2A211C` / `#F8F6F1` (14.6:1 / 17.0:1 on canvas).
-- `color.text.secondary`: `#6B5F55` / `#A89C90` (5.7:1 / 6.8:1 on canvas; 5.2:1 / 6.3:1 on surface).
+- `color.text.secondary` (`--ink-2`): `#6B5F55` / `#D3C9BD` (5.7:1 / 11.2:1 on canvas). Labels only; sentences use primary text.
+- `color.text.tertiary` (`--ink-3`): `#6B5F55` / `#A89C90` (5.7:1 / 6.8:1 on canvas). Identifiers, timestamps and the word "empty".
 - `color.link`: `#0F7A66` on canvas, `#0D6E5C` on surface / `#6FCDB4` (4.9:1 and 5.1:1 / 9.7:1).
 - `color.focus`: same as link.
-- `color.border.subtle`: `#D6D0C4` / `#3A332D` — decorative dividers only.
-- `color.border.control`: `#8A8076` / `#7A7066` — input outlines (3.6:1 / 3.8:1, above the 3:1 floor).
+- `color.border.subtle` (`--hairline`): `#D6D0C4` / `#4D453D` — dividers between rows only (2.0:1 in dark, so never the edge of a control).
+- `color.border.control` (`--edge`): `#8A8076` / `#8F8479` — the outline of every input, button, table and pane (3.6:1 / 5.0:1, above the 3:1 floor).
 
 - Canvas is the workspace background; surface is the main reading or control surface.
 - Selected content retains primary and secondary text; its tint communicates selection.
@@ -66,17 +68,14 @@
 
 ### Semantic states
 
-- Each state combines text, an icon or symbol, and a tinted background. Ratios are text on its tint.
-- **Success, light:** foreground `#276A43`, background `#E6F1E9` (4.6:1).
-- **Success, dark:** foreground `#7BD094`, background `#17302A` (7.6:1).
-- **Warning, light:** foreground `#7A5F00`, background `#F7EDD6` (4.6:1); yellow-leaning so it never reads as copper.
-- **Warning, dark:** foreground `#E0B84A`, background `#332A12` (7.5:1).
-- **Error, light:** foreground `#B3261E`, background `#F7E2DF` (5.3:1).
-- **Error, dark:** foreground `#F08A80`, background `#35201D` (6.3:1).
-- **Information, light:** foreground `#4A6B8C`, background `#E2EAF0` (4.6:1); a muted steel, kept far from cobalt and candy blue.
-- **Information, dark:** foreground `#A9BFD6`, background `#1C262E` (8.1:1).
+- A state is an icon and a word on a tinted pill. The colour is in the icon and the tint; the word stays primary text, so a state never reads by colour alone. Ratios are primary text on the tint, then the icon on the tint.
+- **OK** (`--ok`, `--ok-bg`): light `#0F7A66` on `#D9ECE5` (12.8:1, icon 4.3:1); dark `#6FCDB4` on `#16302A` (13.0:1, icon 7.4:1). The glaze green doubles as the success colour.
+- **Warning** (`--warn`, `--warn-bg`): light `#7A5F00` on `#F7EDD6` (13.5:1, icon 5.2:1); dark `#E0B84A` on `#332A12` (13.1:1, icon 7.5:1). Yellow-leaning so it never reads as copper.
+- **Bad** (`--bad`, `--bad-bg`): light `#B3261E` on `#F7DFDC` (12.4:1, icon 5.1:1); dark `#F08A80` on `#3B1D1A` (14.1:1, icon 6.3:1).
+- **Idle and busy:** the raised surface as the tint, with a secondary-text icon (idle) or a green spinning icon (busy).
+- There is no separate information colour in the code today; context is said in words.
 
-- Success reports a completed operation; it does not certify a startup or claim.
+- OK reports a finished run or a step that is up to date; it does not certify a startup or claim.
 - Warning means attention is needed; error means an operation failed or input is invalid.
 - Information supplies context without implying urgency.
 - Missing evidence stays neutral and is described explicitly.
@@ -86,10 +85,12 @@
 
 - Slot A, glaze green: light `#0F7A66`, dark `#6FCDB4`.
 - Slot B, ochre: light `#B07A0C`, dark `#E4B64A`.
-- Slot C, manganese: light `#5A4036`, dark `#C9A999`.
-- Slot D, terracotta: light `#B5553A`, dark `#E8927B`.
-- Slot E, steel: light `#4A6B8C`, dark `#A9BFD6`.
-- Every light slot is at least 4.5:1 on canvas; every dark slot at least 7.7:1.
+- Slot C, manganese: light `#5A4036`, dark `#B98AE0`.
+- Slot D, terracotta: light `#B5553A`, dark `#EF6B4A`.
+- Slot E, steel: light `#4A6B8C`, dark `#5AA2E6`.
+- Every light slot is at least 4.5:1 on canvas; every dark slot at least 6.0:1. The dark values of C, D and E were made more saturated on 17 Nov 2026 because the owner could not tell the earlier pastels apart.
+- The same five slots plus one of four motifs make the sector tile (`TileMark`), which stands for a startup's sector wherever a startup is listed.
+- Raw JSON in the portal is the one other place with coloured text: strings ochre text, numbers `#2B5F9E` / `#7FB4EA`, null `#A13C22` / `#EF8A6E`.
 - A–E are palette slots, not product categories or rankings.
 - Preserve category-to-slot assignments across filters, views, and theme changes.
 - Add labels; use distinguishable markers, line styles, or patterns where needed.
@@ -107,18 +108,17 @@
 
 ## Typography
 
-All families are free (Google Fonts, OFL) and cover Arabic, French and English together.
+All families are free (Google Fonts, OFL).
 
-- **Display:** Readex Pro 500 and 600, variable. Built from Lexend for readability; its Latin and Arabic were designed together, with geometric, kufi-like forms that answer the tile geometry.
-- **Body and tables:** IBM Plex Sans with IBM Plex Sans Arabic, 400 and 500. One family across scripts, tabular figures (`tnum`) for every table and comparison.
-- **Fallback pair:** El Messiri 600 for display; Noto Sans with Noto Naskh Arabic for body.
-- **Arabic running text:** Noto Naskh Arabic; **Arabic UI labels:** Noto Kufi Arabic.
-- Verify Readex Pro's tabular figures before setting numbers in it; until then all numbers are Plex.
-- Page title: 28px size / 36px line height. Section heading: 20px / 28px.
-- Body and source excerpts: 16px / 24px. Controls and compact labels: 14px / 20px. Secondary metadata: 13px / 18px.
+- **Display:** Amiri 700, with Noto Naskh Arabic and Georgia behind it. Used only for page titles, the name of the record or step in a pane, and the answer sentence. Never for labels, buttons or data.
+- **Text:** Readex Pro 400 and 500. Its Latin and Arabic were designed together.
+- **Identifiers:** Fragment Mono, for entry ids, slugs, urls, model ids and raw values. Not a costume for "technical".
+- Reading room: page title 28px / 36px; body and source excerpts 16px / 24px; controls 14px / 20px; secondary 13px / 18px.
+- Operator portal: page and pane titles 22px; text 14px; labels 13px; nothing below 13px.
+- Sentences are primary text. Secondary text is for labels, column headings and qualifiers.
 - Implement sizes in rem; preserve browser zoom and user text scaling.
 - Keep prose approximately 65–75 characters wide; tables may be wider.
-- Reserve monospace for identifiers, code, and technical output.
+- Tabular figures wherever digits line up in a column.
 - Avoid tiny uppercase labels and exaggerated heading scales.
 - Source excerpts retain their original language and reading direction.
 
@@ -126,12 +126,13 @@ All families are free (Google Fonts, OFL) and cover Arabic, French and English t
 
 - Spacing scale: 4, 8, 12, 16, 24, 32, 48px.
 - Use 8–12px inside compact controls, 16–24px within sections, and 24–32px between sections.
-- Chip radius: 6px; control radius: 10px.
-- Content-section radius: 12px; overlay radius: 16px.
-- Standard controls are at least 40px high; touch layouts use at least 44px.
+- Records, tables and panes have square corners and 1px rules. Controls are rounded: 5–6px on buttons, inputs and chips, a full pill on state badges and counts, 6–8px on menus.
+- Overlays (menus, dialogs) are the only rounded containers.
+- Controls are at least 40px high in the reading room and 32–36px in the operator portal, with 36px table rows; touch layouts use at least 44px.
 - Let content grow when labels wrap or text is enlarged.
 - Group content through spacing and surface changes; do not enclose every group in a card.
-- Reserve shadows for floating layers; keep resting content flat.
+- Reserve shadows for floating layers (menus, the drawer); keep resting content flat.
+- Scrollbars inside panes are thin and take the control-border colour.
 
 ## Workspace and interaction
 
@@ -145,17 +146,29 @@ All families are free (Google Fonts, OFL) and cover Arabic, French and English t
 - Use semantic headings, controls, and links with visible accessible names.
 - Preserve conventional browser navigation and keyboard behavior.
 
+### The operator portal
+
+- Three tabs with an icon each: Status, Startups, Ideas. AI keys and the raw tables are in the account menu.
+- Every page is a desk: a page bar (title, filters, one sentence of state, the main action), then a list and a detail pane that is part of the page. No overlay for reading; the divider can be dragged.
+- The selected item carries the surface fill and a 3px bar of primary text at its start edge.
+- Status draws the pipeline: one round node per step with the step's own icon, joined by a line, each with a state pill. A step's Run action sits beside its title and is the green primary button only when the step needs running.
+- A pane that holds several kinds of content uses tabs with icons (Overview, Runs, How it works) rather than one long scroll.
+- A record is shown as prose and icon lines first, the registry entries behind it second, raw JSON last.
+- Adding something that needs a few fields (an AI key) opens a right-side drawer: fields in the order of the decision, the one action right under them, what happens next said once below.
+- Dropdowns are never the browser's own. A fixed choice is a menu with a mark and a line of explanation per option; an open set (a model id) is a menu you can type into.
+
 ### Component coverage
 
-- Initial vocabulary: navigation, search, filters, result rows, profile sections, evidence disclosure, buttons, inputs, status messages, and charts.
+- Vocabulary in the code (`src/components/athar/`): site header with icon tabs and the account menu, desk (bar, list, item, pane, section, fields, evidence table, JSON block, select, combobox), state pill, sector tile, record pages, charts.
 - Define default, hover, focus, pressed, selected, disabled, loading, and error states wherever applicable.
 - Disabled controls communicate unavailability through behavior and appearance, not fading alone.
 - Loading preserves layout and context; show progress for long-running operations.
 - Errors explain what happened and offer a relevant recovery action.
 - Empty states distinguish an empty dataset from no matching results.
 - Distinguish a failed source load from an absence of evidence.
-- Keyboard focus must remain visible and move predictably when content opens or closes.
+- Keyboard focus must remain visible and move predictably when content opens or closes. In a desk, J/K or the arrows move the selection and / focuses search.
 - Tooltips supplement labels; they do not carry essential instructions alone.
+- Charts are built on TanStack Charts, never drawn by hand. On Landscape: bars with a line for growth, a bump ranking for sectors and themes, a marimekko for team size.
 
 ### Motion and boundaries
 
@@ -170,31 +183,33 @@ One vocabulary for the whole interface; the words below are the only names for t
 
 | Term | Meaning |
 |---|---|
-| **Run** | One execution of an operation. |
-| **Collect, Clean, Prepare** | The three operations. Status prose keeps the stem: "Collect failed", not "Collection failed". |
-| **Source row** | One raw registry row as downloaded. Never "entry", "item", or "evidence" on its own. |
-| **Record** | One cleaned source row; the unit of "records in review". |
-| **Startup** | One matched entity. "Entity" is a table name, never interface copy. |
-| **Snapshot** | One downloaded copy of the registry. |
-| **In review** | A record with an open finding, which is either a **decision** or a **gap**. |
-| **Finding** | One reason a record is in review. |
-| **Profile** | One Groq key with its model and limits. |
-| **Reset registry data** | The destructive action. "Clear" never destroys stored data. |
+| **Download** | One download of the registry that published a different set of rows. |
+| **Entry** | One distinct registry row, kept as published and named by a 12-character id. |
+| **Startup** | One real company, built from one or more entries. "Entity" is never interface copy. |
+| **Person** | A founder, the same across the startups that list them. |
+| **Step** | One of the five parts of the pipeline: Collect, Build, Check websites, Prepare, Embed. |
+| **Run** | One execution of a step or of several in a row. Status prose keeps the stem: "Collect failed". |
+| **Up to date, Out of date, Never run, Needs an AI key** | The states of a step. |
+| **Fact** | Something missing or doubtful in the data today, with the startups behind it. An observation, not an error. |
+| **Website check** | Whether a startup's own website answered, with the date and the reason in words. |
+| **Idea check** | An idea someone typed and the startups closest to it at that moment. |
+| **Key** | One AI provider key with its model. |
+
+Review, findings, records, snapshots and source rows belonged to an earlier pipeline and are no longer used: nothing waits for an operator's decision.
 
 Rules:
 
-- Sentence case for every label, heading, column, and button. Uppercase only on status badges.
+- Sentence case for every label, heading, column, button and state.
 - Buttons are verb first and name the object: "Open profile", "Reset registry data".
 - Step titles and progress say what the operator asked for, never the function that runs: "Match startups and save", not "Resolve identities & commit".
 - Errors read "Operation failed: cause." followed by one next step. Never "see Logs" when the cause is known.
 - Code identifiers never reach the screen: no enum values, booleans, or theme names in copy.
-- Every terminal status says what is kept, in the same words everywhere: "Finished work is saved" (Prepare), "Stored rows are kept" (Collect).
 - No reassurance or marketing adjectives: graceful, safely, immutable, guarantee.
 - The name, tagline, and version come from one module, not literals.
 
 ## Validation and decision changes
 
-- Every text pair above was computed against its stated background; the lowest text contrast is **4.6:1** (success, warning and information on their light tints), the lowest control boundary **3.6:1**.
+- Every pair above was computed against its stated background on 17 November 2026; the lowest text contrast is **5.7:1** (secondary text on the light canvas), the lowest state icon **4.3:1** (the green icon on its light tint, a graphic, above the 3:1 floor), the lowest control boundary **3.6:1**.
 - Light-theme ochre `#B07A0C` fails for text (3.5:1) and is restricted to fills and large shapes; the text variant is `#875D08`.
 - Light-theme green `#0F7A66` passes on canvas (4.9:1) but not on surface (4.4:1); links on surfaces use `#0D6E5C`.
 - These measurements validate specified pairs, not accessibility of a rendered application.
@@ -206,7 +221,7 @@ Rules:
 
 ## References
 
-- [Readex Pro](https://fonts.google.com/specimen/Readex+Pro), [IBM Plex Sans Arabic](https://fonts.google.com/specimen/IBM+Plex+Sans+Arabic), [El Messiri](https://fonts.google.com/specimen/El+Messiri), [Noto Naskh Arabic](https://fonts.google.com/specimen/Noto+Naskh+Arabic).
+- [Amiri](https://fonts.google.com/specimen/Amiri), [Readex Pro](https://fonts.google.com/specimen/Readex+Pro), [Fragment Mono](https://fonts.google.com/specimen/Fragment+Mono), [Noto Naskh Arabic](https://fonts.google.com/specimen/Noto+Naskh+Arabic).
 - Qallaline tilework: the Tunis workshops of the 17th and 18th centuries; see the Bardo and Dar Ben Abdallah collections.
 - [WCAG 2.2 — text contrast](https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html).
 - [WCAG 2.2 — non-text contrast](https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast.html).

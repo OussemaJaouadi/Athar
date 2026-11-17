@@ -1,4 +1,4 @@
-import { areaY, barY, defineChart, lineY, ruleY, text } from '@tanstack/charts'
+import { barY, defineChart, lineY, rect, ruleY, text } from '@tanstack/charts'
 import { crosshair } from '@tanstack/charts/crosshair'
 import { motion } from '@tanstack/charts/motion'
 import { Chart } from '@tanstack/charts/react/core'
@@ -417,15 +417,39 @@ function Teams({ rows, t, renderer, founders }: { rows: LandscapeRow[]; t: Token
     const avg = list.length ? list.reduce((a, r) => a + r.founders, 0) / list.length : 0
     return { i, n: list.length, counts, avg }
   })
-  const bands = TEAM_SIZES.flatMap((size, s) =>
-    cols.map((c) => {
-      const below = c.counts.slice(0, s).reduce((a, b) => a + b, 0)
-      const lo = c.n ? below / c.n : 0
-      const hi = c.n ? (below + c.counts[s]) / c.n : 0
-      return { x: c.i, size, lo, hi, mid: (lo + hi) / 2, count: c.counts[s], share: hi - lo, n: c.n }
+  // Marimekko geometry: each column as wide as the year's count, a gap between, an "All years" column at the end.
+  const total = cols.reduce((a, c) => a + c.n, 0)
+  const gap = total * 0.0045
+  let cursor = 0
+  const spans = cols.map((c) => {
+    const x1 = cursor
+    cursor += c.n + gap
+    return { ...c, x1, x2: x1 + c.n, mid: x1 + c.n / 2 }
+  })
+  const allW = total * 0.012
+  const allX1 = cursor + gap * 3
+  const allCounts = TEAM_SIZES.map((_, s) => known.filter((r) => sizeOf(r) === s).length)
+  const segs = [
+    ...spans.flatMap((c) => {
+      let below = 0
+      return TEAM_SIZES.map((size, s) => {
+        const lo = c.n ? below / c.n : 0
+        below += c.counts[s]
+        const hi = c.n ? below / c.n : 0
+        return { key: `${c.i}-${s}`, s, size, x1: c.x1, x2: c.x2, lo, hi, i: c.i, all: false }
+      })
     }),
-  )
-  const ramp = t ? [`color-mix(in oklab, ${t.glaze} 28%, ${t.canvas})`, `color-mix(in oklab, ${t.glaze} 50%, ${t.canvas})`, `color-mix(in oklab, ${t.glaze} 75%, ${t.canvas})`, t.glaze] : []
+    ...(() => {
+      let below = 0
+      return TEAM_SIZES.map((size, s) => {
+        const lo = below / total
+        below += allCounts[s]
+        return { key: `all-${s}`, s, size, x1: allX1, x2: allX1 + allW, lo, hi: below / total, i: -1, all: true }
+      })
+    })(),
+  ]
+  const dark = !!t && t.canvas.toLowerCase() === '#171412'
+  const ramp = dark ? ['#1f7a66', '#3fbf9b', '#8fe0c8', '#e3f7f0'] : ['#0f5e4f', '#178a72', '#5fbfa5', '#a9dfcf']
   const last = n - 1
   const first = cols[0]
   const firstBig = cols.find((c) => c.n >= 30) ?? first
@@ -436,44 +460,48 @@ function Teams({ rows, t, renderer, founders }: { rows: LandscapeRow[]; t: Token
   const shown = more ? founders : founders.slice(0, 9)
   const def = useMemo(() => {
     if (!t) return null
-    // Labels at the band middles, pushed apart so thin bands never stack their names, and kept inside 0–100%.
-    const ends = (x: number) => {
-      const list = bands.filter((b) => b.x === x && b.share > 0).map((b) => ({ ...b, at: b.mid }))
-      const gap = 0.075
-      for (let i = 1; i < list.length; i++) list[i].at = Math.max(list[i].at, list[i - 1].at + gap)
-      if (list.length) list[list.length - 1].at = Math.min(list[list.length - 1].at, 0.97)
-      for (let i = list.length - 2; i >= 0; i--) list[i].at = Math.min(list[i].at, list[i + 1].at - gap)
-      return list
-    }
+    // Band names at the left, on the first column's segments, pushed apart where segments are thin.
+    const firstSegs = segs.filter((g) => g.i === spans[0].i).map((g) => ({ ...g, at: (g.lo + g.hi) / 2 }))
+    for (let i = 1; i < firstSegs.length; i++) firstSegs[i].at = Math.max(firstSegs[i].at, firstSegs[i - 1].at + 0.07)
+    firstSegs[firstSegs.length - 1].at = Math.min(firstSegs[firstSegs.length - 1].at, 0.98)
+    for (let i = firstSegs.length - 2; i >= 0; i--) firstSegs[i].at = Math.min(firstSegs[i].at, firstSegs[i + 1].at - 0.07)
+    const allSegs = segs.filter((g) => g.all).map((g) => ({ ...g, at: (g.lo + g.hi) / 2, n: allCounts[g.s] }))
+    const narrow = (c: (typeof spans)[number]) => c.n < total * 0.025
     return defineChart({
       marks: [
-        ...TEAM_SIZES.map((size, s) => areaY(bands.filter((b) => b.size === size), { id: `band-${s}`, x: 'x', y1: 'lo', y2: 'hi', key: 'x', fill: ramp[s], fillOpacity: 1, stroke: t.canvas, strokeWidth: 1 })),
-        ruleY([0.25, 0.5, 0.75], { stroke: t.hairline, strokeWidth: 1 }),
-        // Band names at both ends, ink on canvas outside the plot.
-        text(ends(0), { x: 'x', y: 'at', text: (b) => `${b.size} ${Math.round(b.share * 100)}%`, anchor: 'end', dx: -12, fontSize: 14, fill: t.ink }),
-        text(ends(last), { x: 'x', y: 'at', text: (b) => `${b.size} ${Math.round(b.share * 100)}%`, anchor: 'start', dx: 12, fontSize: 14, fill: t.ink }),
-        // Average founders above each column, count below.
-        text(cols, { x: 'i', y: () => 1.06, text: (c) => c.avg.toFixed(1), fontSize: 13, fill: t.ink }),
-        text(cols, { x: 'i', y: () => -0.07, text: (c) => String(c.n), fontSize: 13, fill: t.ink2 }),
-        crosshair({ x: { stroke: t.ink, strokeWidth: 1 }, y: false }),
+        rect(segs, { x1: 'x1', x2: 'x2', y1: 'lo', y2: 'hi', key: 'key', color: 'size', stroke: t.canvas, strokeWidth: 1.5 }),
+        ruleY([0.25, 0.5, 0.75], { stroke: t.canvas, strokeWidth: 1, strokeDasharray: '2 4' }),
+        text([0.25, 0.5, 0.75], { x: () => 0, y: (v) => v, text: (v) => `${Math.round(v * 100)}%`, anchor: 'end', dx: -10, fontSize: 13, fill: t.ink2 }),
+        text(firstSegs, { x: () => 0, y: 'at', text: (g) => g.size, anchor: 'end', dx: -64, fontSize: 14, fill: t.ink }),
+        text(allSegs, { x: (g) => g.x2, y: 'at', text: (g) => `${g.n} · ${Math.round((g.hi - g.lo) * 100)}%`, anchor: 'start', dx: 10, fontSize: 13, fill: t.ink }),
+        text([0], { x: () => allX1, y: () => 1.05, text: () => 'All years', anchor: 'start', fontSize: 13, fill: t.ink2 }),
+        text(spans, { x: 'mid', y: () => 1.05, text: (c) => c.avg.toFixed(1), fontSize: 13, fill: t.ink }),
+        text(spans, { x: 'mid', y: () => -0.05, text: (c) => (narrow(c) && c.i > 0 ? `’${String(FIRST + c.i).slice(2)}` : bucketShort(c.i)), fontSize: 13, fill: t.ink }),
+        text(spans, { x: 'mid', y: () => -0.11, text: (c) => String(c.n), fontSize: 13, fill: t.ink2 }),
+        text([0], { x: () => 0, y: () => 1.05, text: () => 'Average founders', anchor: 'end', dx: -10, fontSize: 13, fill: t.ink2 }),
+        text([0], { x: () => 0, y: () => -0.05, text: () => 'Founded', anchor: 'end', dx: -10, fontSize: 13, fill: t.ink2 }),
+        text([0], { x: () => 0, y: () => -0.11, text: () => 'Startups', anchor: 'end', dx: -10, fontSize: 13, fill: t.ink2 }),
       ],
       scales: {
-        x: { scale: scaleLinear().domain([0, last]), axis: { tickLabels: { fontSize: 13 }, ticks: { values: xs, format: (v: number) => bucketShort(v) } } },
-        y: { scale: scaleLinear().domain([-0.12, 1.12]), axis: false },
+        x: { scale: scaleLinear().domain([0, allX1 + allW]), axis: false },
+        y: { scale: scaleLinear().domain([-0.14, 1.09]), axis: false },
       },
-      focus: 'group-x',
+      focus: 'nearest-x',
       maxFocusDistance: Number.POSITIVE_INFINITY,
       tooltip: {
         use: tooltip,
-        formatGroup: (points: readonly { datum: { x?: number; i?: number } }[]) => {
-          const x = points.find((pt) => pt.datum.x !== undefined)?.datum.x ?? points[0]?.datum.i
-          const c = cols.find((cc) => cc.i === x)
+        format: (pt: { datum: unknown }) => {
+          const g = pt.datum as { i?: number; all?: boolean }
+          if (g.i === undefined) return ''
+          if (g.all) return [`All years · ${total}`, ...TEAM_SIZES.map((size, s) => `${size} · ${allCounts[s]} · ${Math.round((allCounts[s] / total) * 100)}%`).reverse()].join('\n')
+          const c = cols.find((cc) => cc.i === g.i)
           if (!c) return ''
           return [`Founded ${bucketLabel(c.i)} · ${c.n}`, ...TEAM_SIZES.map((size, s) => `${size} · ${c.counts[s]} · ${c.n ? Math.round((c.counts[s] / c.n) * 100) : 0}%`).reverse(), `Average ${c.avg.toFixed(1)} founders`].join('\n')
         },
       },
+      color: { domain: [...TEAM_SIZES], range: ramp },
       theme: theme(t, ramp),
-      margin: { left: 170, right: 170, top: 8, bottom: 28 },
+      margin: { left: 190, right: 110, top: 8, bottom: 4 },
     })
   }, [t, JSON.stringify(cols)]) // eslint-disable-line react-hooks/exhaustive-deps
   return (
@@ -481,14 +509,11 @@ function Teams({ rows, t, renderer, founders }: { rows: LandscapeRow[]; t: Token
       question="Do founders start alone or together, and has that changed?"
       chart={
         <>
-          <div className="flex justify-between text-[0.8125rem] text-ink-2" style={{ paddingInline: 170 }}>
-            <span>Average founders, by founding year</span>
-          </div>
           {def ? <Chart definition={def} renderer={renderer} height={440} ariaLabel={`Solo founders went from ${solo(firstBig)}% of startups founded in ${bucketLabel(firstBig.i)} to ${solo(recent)}% in ${bucketLabel(recent.i)}.`} /> : <Empty h={440} />}
           <DataTable caption="Team size by founding year" head={['Founded', 'Startups', ...TEAM_SIZES, 'Average']} rows={cols.map((c) => [bucketLabel(c.i), c.n, ...c.counts, c.avg.toFixed(1)])} />
         </>
       }
-      caption={`Each column is the startups founded that year (count under the axis), split by how many founders they list. Darker green: smaller teams; brighter: bigger. Faint lines mark 25%, 50% and 75%.${cols.some((c) => c.n < 40 && c.i >= last - 1) ? ` ${cols.filter((c) => c.n < 40 && c.i >= last - 1).map((c) => `${bucketLabel(c.i)} has ${c.n}`).join(' and ')}, so read those loosely.` : ''}`}
+      caption={`Each column is the startups founded that year. A wider column is a bigger year. Brighter green is a bigger team.`}
       findings={[
         { figure: `${solo(firstBig)}% → ${solo(recent)}%`, text: `started solo: founded ${bucketLabel(firstBig.i)} against founded ${bucketLabel(recent.i)}.` },
         { figure: `${firstBig.avg.toFixed(1)} → ${recent.avg.toFixed(1)}`, text: 'average founders per startup, same years.' },

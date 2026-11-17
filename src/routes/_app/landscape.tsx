@@ -1,13 +1,14 @@
-import { arrow, barY, defineChart, dot, lineY, text } from '@tanstack/charts'
+import { areaY, barY, defineChart, lineY, ruleY, text } from '@tanstack/charts'
 import { crosshair } from '@tanstack/charts/crosshair'
 import { motion } from '@tanstack/charts/motion'
 import { Chart } from '@tanstack/charts/react/core'
 import { scaleBand } from '@tanstack/charts/scales/band'
 import { scaleLinear } from '@tanstack/charts/scales/linear'
+import { scalePoint } from '@tanstack/charts/scales/point'
+import { ridgelineY } from '@tanstack/charts/ridgeline'
 import { tooltip } from '@tanstack/charts/tooltip'
-import { waffleY } from '@tanstack/charts/waffle'
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
-import { Check, ChevronDown } from 'lucide-react'
+import { Check, ChevronDown, LayoutGrid, TrendingUp, Users } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { SectorSwatch } from '@/components/athar/tile-mark'
@@ -17,26 +18,23 @@ import { getLandscapeRows, type LandscapeRow, type RepeatFounder } from '#/serve
 import { THEMES } from '#/shared/themes'
 
 const TABS = [
-  { id: 'growth', label: 'Growth' },
-  { id: 'fields', label: 'Fields' },
-  { id: 'teams', label: 'Teams' },
+  { id: 'growth', label: 'Growth', Icon: TrendingUp },
+  { id: 'fields', label: 'Fields', Icon: LayoutGrid },
+  { id: 'teams', label: 'Teams', Icon: Users },
 ] as const
 type Tab = (typeof TABS)[number]['id']
-type Search = { tab?: Tab; sector?: string; by?: 'theme'; year?: number }
+type Search = { tab?: Tab; sector?: string; by?: 'theme' }
 
 export const Route = createFileRoute('/_app/landscape')({
   validateSearch: (s: Record<string, unknown>): Search => ({
     tab: TABS.some((t) => t.id === s.tab) ? (s.tab as Tab) : undefined,
     sector: typeof s.sector === 'string' && s.sector ? s.sector : Array.isArray(s.sector) && typeof s.sector[0] === 'string' ? s.sector[0] : undefined,
     by: s.by === 'theme' ? 'theme' : undefined,
-    year: typeof s.year === 'number' ? s.year : typeof s.year === 'string' && /^\d{4}$/.test(s.year) ? Number(s.year) : undefined,
   }),
   loader: () => getLandscapeRows(),
   component: LandscapePage,
 })
 
-const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
-const TEAMS = ['1 founder', '2 founders', '3 founders', '4 or more'] as const
 const pct = (a: number, b: number) => (b ? Math.round((a / b) * 100) : 0)
 const sizeOf = (r: LandscapeRow) => (r.founders <= 1 ? 0 : r.founders === 2 ? 1 : r.founders === 3 ? 2 : 3)
 
@@ -128,8 +126,8 @@ function LandscapePage() {
 
       <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} className="pt-8">
         {tab === 'growth' && <Growth rows={rows} labelYears={labelYears} t={t} renderer={renderer} sector={sector} />}
-        {tab === 'fields' && <Fields all={all} t={t} renderer={renderer} by={search.by ?? 'sector'} onBy={(b) => setSearch({ by: b === 'theme' ? 'theme' : undefined })} sector={sector} />}
-        {tab === 'teams' && <Teams all={all} years={labelYears} t={t} renderer={renderer} sector={sector} year={search.year} onYear={(y) => setSearch({ year: y })} founders={founders} />}
+        {tab === 'fields' && <Fields all={all} t={t} renderer={renderer} by={search.by ?? 'sector'} onBy={(b) => setSearch({ by: b === 'theme' ? 'theme' : undefined })} />}
+        {tab === 'teams' && <Teams rows={rows} t={t} renderer={renderer} founders={sector ? founders.filter((f) => f.startups.some((s) => rows.some((r) => r.id === s.id))) : founders} />}
       </div>
 
       <p className="mt-14 max-w-[60rem] border-t border-edge/60 pt-4 text-sm leading-6 text-ink-2">
@@ -166,10 +164,11 @@ function Tabs({ value, onChange }: { value: Tab; onChange: (t: Tab) => void }) {
             if (e.key === 'ArrowLeft') (e.preventDefault(), go(i - 1))
           }}
           className={cn(
-            '-mb-px min-h-11 border-b-2 px-4 text-[0.9375rem] whitespace-nowrap transition-colors motion-reduce:transition-none',
+            '-mb-px inline-flex min-h-11 items-center gap-2 border-b-2 px-4 text-[0.9375rem] whitespace-nowrap transition-colors motion-reduce:transition-none',
             value === tb.id ? 'border-glaze font-medium text-ink' : 'border-transparent text-ink-2 hover:text-ink',
           )}
         >
+          <tb.Icon className="size-4" strokeWidth={1.5} aria-hidden />
           {tb.label}
         </button>
       ))}
@@ -299,89 +298,105 @@ function Growth({ rows, labelYears, t, renderer, sector }: { rows: LandscapeRow[
   )
 }
 
+/* ───────────────────────────── Founding-year buckets ───────────────────────────── */
+
+// Both tabs read founding year: "2015 or earlier", then each year to 2025, as x = 0 … 10.
+const FIRST = 2015
+const bucketOf = (r: LandscapeRow) => (r.founded === null ? null : Math.max(0, r.founded - FIRST))
+const bucketLabel = (i: number) => (i === 0 ? `${FIRST} or earlier` : String(FIRST + i))
+const bucketShort = (i: number) => (i === 0 ? `≤${FIRST}` : String(FIRST + i))
+const lastBucket = (rows: LandscapeRow[]) => Math.max(0, ...rows.map((r) => bucketOf(r) ?? 0))
+
 /* ───────────────────────────── Fields ───────────────────────────── */
 
-const EARLY = (r: LandscapeRow) => r.year <= 2021
-const PERIODS = ['2019–2021', '2022–2025']
-/** One arrow per field: its share of labels in 2019–2021 to its share in 2022–2025. */
-function Fields({ all, t, renderer, by, onBy, sector }: { all: LandscapeRow[]; t: Tokens | null; renderer: ReturnType<typeof motion>; by: 'sector' | 'theme'; onBy: (b: 'sector' | 'theme') => void; sector?: string }) {
+/** Small multiples: one panel per field, its founding years (green) against the whole scene's (grey). */
+function Fields({ all, t, renderer, by, onBy }: { all: LandscapeRow[]; t: Tokens | null; renderer: ReturnType<typeof motion>; by: 'sector' | 'theme'; onBy: (b: 'sector' | 'theme') => void }) {
   const navigate = useNavigate()
-  const base = by === 'theme' ? all.filter((r) => r.described) : all
-  const a = base.filter(EARLY)
-  const b = base.filter((r) => !EARLY(r))
+  const base = (by === 'theme' ? all.filter((r) => r.described) : all).filter((r) => bucketOf(r) !== null)
+  const n = lastBucket(all) + 1
+  const xs = Array.from({ length: n }, (_, i) => i)
+  const scene = xs.map((i) => base.filter((r) => bucketOf(r) === i).length)
+  const sceneMax = Math.max(1, ...scene)
   const ids = by === 'sector' ? [...new Set(all.map((r) => r.sector))] : THEMES.map((th) => th.id)
   const has = (r: LandscapeRow, id: string) => (by === 'sector' ? r.sector === id : r.themes.includes(id))
   const fields = ids
     .map((id) => {
-      const ka = a.filter((r) => has(r, id)).length
-      const kb = b.filter((r) => has(r, id)).length
-      const label = by === 'sector' ? id : (THEMES.find((th) => th.id === id)?.label ?? id)
-      const from = a.length ? ka / a.length : 0
-      const to = b.length ? kb / b.length : 0
-      const total = ka + kb
-      const flat = Math.abs(to - from) < 0.01 || total < 20
-      return { id, label, from, to, ka, kb, total, change: to - from, dir: flat ? 'flat' : to > from ? 'up' : 'down' }
+      const per = xs.map((i) => base.filter((r) => bucketOf(r) === i && has(r, id)).length)
+      const total = per.reduce((a, b) => a + b, 0)
+      const peakAt = per.indexOf(Math.max(...per))
+      return { id, label: by === 'sector' ? id : (THEMES.find((th) => th.id === id)?.label ?? id), per, total, peakAt, peak: per[peakAt] }
     })
     .filter((f) => f.total > 0)
-    .sort((x, y) => y.change - x.change)
-  const max = Math.ceil((Math.max(...fields.flatMap((f) => [f.from, f.to])) + 0.03) / 0.05) * 0.05
-  const riser = fields[0]
-  const faller = fields[fields.length - 1]
-  const largest = [...fields].sort((x, y) => y.to - x.to)[0]
-  const fmt = (s: number, k: number) => `${Math.round(s * 100)}% · ${k}`
+    .sort((a, b) => b.total - a.total)
+  // Findings: the biggest gainer and loser in share of foundings between 2019 and a recent year with enough startups, and the latest-peaking field.
+  const shareIn = (f: (typeof fields)[number], i: number) => (scene[i] ? f.per[i] / scene[i] : 0)
+  const from = 2019 - FIRST
+  const recent = [...xs].reverse().find((i) => scene[i] >= 30) ?? n - 1
+  const moves = fields.filter((f) => f.total >= 20).map((f) => ({ f, a: shareIn(f, from), b: shareIn(f, recent) }))
+  const up = [...moves].sort((x, y) => y.b - y.a - (x.b - x.a))[0]
+  const down = [...moves].sort((x, y) => x.b - x.a - (y.b - y.a))[0]
+  const late = fields.filter((f) => f.total >= 20).sort((a, b) => b.peakAt - a.peakAt || b.total - a.total)[0]
+  const p = (v: number) => `${Math.round(v * 100)}%`
+
+  // One chart: a ridge per field on a shared year axis, the whole scene's shape in grey behind each.
+  const ridges = fields.flatMap((f) => xs.map((i) => ({ id: f.id, field: f.label, x: i, h: f.per[i] / Math.max(1, f.peak), n: f.per[i], all: scene[i] })))
+  const ghosts = fields.flatMap((f) => xs.map((i) => ({ field: f.label, x: i, h: scene[i] / sceneMax })))
   const def = useMemo(() => {
     if (!t) return null
-    const colour = (d: (typeof fields)[number]) => (d.dir === 'up' ? t.glaze : d.dir === 'down' ? t.terracotta : t.tile4)
+    const last = xs.length - 1
     return defineChart({
       marks: [
-        arrow(fields, { x1: 'from', x2: 'to', y1: 'label', y2: 'label', key: 'id', stroke: colour, strokeWidth: 2.5, headLength: 9, headAngle: 28 }),
-        dot(fields, { x: 'from', y: 'label', key: 'id', r: 4, color: 'dir', stroke: t.canvas }),
-        // Both numbers after the arrow's far end, in reading order: then → now.
-        text(fields, { x: (d) => Math.max(d.from, d.to), y: 'label', key: (d) => `${d.id}-n`, text: (d) => `${fmt(d.from, d.ka)}  →  ${fmt(d.to, d.kb)}`, anchor: 'start', dx: 14, fontSize: 13, fill: t.ink }),
+        ridgelineY(ghosts, { id: 'scene', x: 'x', y: 'field', height: 'h', overlap: 1.25, fill: t.edge, fillOpacity: 0.35, stroke: null, key: (d) => `g-${d.field}-${d.x}` }),
+        ridgelineY(ridges, { id: 'field', x: 'x', y: 'field', height: 'h', overlap: 1.25, fill: t.glaze, fillOpacity: 0.55, stroke: t.glaze, strokeWidth: 1.5, key: (d) => `${d.id}-${d.x}` }),
+        text(fields, { x: () => last, y: 'label', text: (f) => `${f.total} · peak ${f.peak} in ${bucketShort(f.peakAt)}`, anchor: 'start', dx: 14, dy: -8, fontSize: 13, fill: t.ink2 }),
+        crosshair({ x: { stroke: t.ink, strokeWidth: 1, label: true }, y: false }),
       ],
       scales: {
-        x: { scale: scaleLinear().domain([0, max]), grid: { stroke: t.hairline }, axis: { ...axisText, ticks: { values: Array.from({ length: Math.round(max / 0.05) + 1 }, (_, i) => i * 0.05), format: (v: number) => `${Math.round(v * 100)}%` } } },
-        y: {
-          scale: () => scaleBand<string>().domain(fields.map((f) => f.label)).padding(0.2),
-          axis: { tickLabels: { fontSize: 14, fontWeight: (c: { value: string }) => (c.value === sector ? 700 : 400) }, ticks: { line: false } },
+        x: { scale: scaleLinear().domain([0, last]), grid: { stroke: t.hairline }, axis: { tickLabels: { fontSize: 13 }, ticks: { values: xs, format: (v: number) => bucketShort(v) } } },
+        y: { scale: () => scalePoint<string>().domain(fields.map((f) => f.label)).padding(1.25), axis: { tickLabels: { fontSize: 14, dy: -8 }, ticks: { line: false } } },
+      },
+      focus: 'nearest-x',
+      maxFocusDistance: 24,
+      tooltip: {
+        use: tooltip,
+        format: (pt: { datum: unknown }) => {
+          const d = pt.datum as { field?: string; x?: number; n?: number; all?: number }
+          return d.field && d.n !== undefined ? `${d.field}\nFounded ${bucketLabel(d.x ?? 0)}: ${d.n}\nOf ${d.all} founded that year` : ''
         },
       },
-      color: { domain: ['up', 'down', 'flat'], range: [t.glaze, t.terracotta, t.tile4] },
-      focus: 'nearest-y',
-      tooltip: false,
       theme: theme(t, [t.glaze]),
-      margin: { left: 250, right: 24 },
+      margin: { left: 230, right: 210, top: 8 },
     })
-  }, [t, JSON.stringify(fields), sector]) // eslint-disable-line react-hooks/exhaustive-deps
-  const open = (id: string) => navigate({ to: '/search', search: by === 'sector' ? { sector: id } : { q: THEMES.find((th) => th.id === id)?.query } })
+  }, [t, JSON.stringify(ridges)]) // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <Section
-      question={by === 'sector' ? 'Which sectors are rising, and which are fading?' : 'Which themes are rising in the descriptions?'}
+      question={by === 'sector' ? 'When was each sector founded, compared with the whole scene?' : 'When were startups in each theme founded, compared with the whole scene?'}
       controls={<Segmented label="Fields" value={by} options={[['sector', 'Sectors'], ['theme', 'Themes']]} onChange={onBy} />}
       chart={
         <>
-          {t && <Swatches items={[['Rising', t.glaze], ['Fading', t.terracotta], ['About the same, or too few to tell', t.tile4]]} />}
-          <div className="mt-3">
-            {def ? (
-              <Chart
-                definition={def}
-                renderer={renderer}
-                height={fields.length * 30 + 50}
-                ariaLabel={`${riser?.label} rose the most, ${faller?.label} fell the most, between ${PERIODS[0]} and ${PERIODS[1]}.`}
-                onSelect={(p) => p && open((p.datum as { id: string }).id)}
-              />
-            ) : (
-              <Empty h={fields.length * 30 + 50} />
-            )}
-          </div>
-          <DataTable caption={`Share of labels by ${by}, ${PERIODS[0]} and ${PERIODS[1]}`} head={['Field', PERIODS[0], PERIODS[1]]} rows={fields.map((f) => [f.label, fmt(f.from, f.ka), fmt(f.to, f.kb)])} />
+          {def ? (
+            <Chart
+              definition={def}
+              renderer={renderer}
+              height={fields.length * 44 + 70}
+              ariaLabel={`Founding years per ${by}. ${up ? `${up.f.label} went from ${p(up.a)} to ${p(up.b)} of foundings.` : ''}`}
+              onSelect={(pt) => {
+                const d = pt?.datum as { id?: string } | undefined
+                if (d?.id) navigate({ to: '/search', search: by === 'sector' ? { sector: d.id } : { q: THEMES.find((th) => th.id === d.id)?.query } })
+              }}
+            />
+          ) : (
+            <Empty h={fields.length * 44 + 70} />
+          )}
+          <DataTable caption={`Startups founded per year, by ${by}`} head={[by === 'sector' ? 'Sector' : 'Theme', ...xs.map(bucketLabel)]} rows={fields.map((f) => [f.label, ...f.per])} />
         </>
       }
-      caption={`Dot: share of ${by === 'theme' ? 'described startups' : 'labels'} in ${PERIODS[0]} (${a.length}). Arrowhead: share in ${PERIODS[1]} (${b.length}). The numbers read then → now, as share · count. Click a row to open it in the Archive.${by === 'theme' ? ' Themes are read from description keywords, so an estimate.' : ''}`}
+      caption={`Green: this ${by === 'sector' ? 'sector' : 'theme'}. Grey: all ${base.length} ${by === 'theme' ? 'described ' : ''}startups, same years. Each row is scaled to its own peak, printed at the right. Hover for a year's count; click a row to open it in the Archive.${by === 'theme' ? ' Themes come from description keywords: an estimate.' : ''}`}
       findings={[
-        { figure: `+${Math.round((riser?.change ?? 0) * 100)} pts`, text: `${riser?.label} rose the most, from ${fmt(riser.from, riser.ka)} to ${fmt(riser.to, riser.kb)}.` },
-        { figure: `${Math.round((faller?.change ?? 0) * 100)} pts`, text: `${faller?.label} fell the most, from ${fmt(faller.from, faller.ka)} to ${fmt(faller.to, faller.kb)}.` },
-        { figure: `${Math.round((largest?.to ?? 0) * 100)}%`, text: `of ${by === 'theme' ? 'recent descriptions mention' : 'recent labels go to'} ${largest?.label}, the largest today.` },
+        up ? { figure: `${p(up.a)} → ${p(up.b)}`, text: `of startups founded in ${FIRST + from} and in ${FIRST + recent} were ${up.f.label}.` } : { figure: '—', text: '' },
+        down ? { figure: `${p(down.a)} → ${p(down.b)}`, text: `for ${down.f.label}, the biggest drop between the same years.` } : { figure: '—', text: '' },
+        late ? { figure: bucketLabel(late.peakAt), text: `${late.label} peaked latest, with ${late.peak} founded that year.` } : { figure: '—', text: '' },
       ]}
     />
   )
@@ -389,93 +404,99 @@ function Fields({ all, t, renderer, by, onBy, sector }: { all: LandscapeRow[]; t
 
 /* ───────────────────────────── Teams ───────────────────────────── */
 
-const CELL = 14
-const GAP = 2
-const ROWS = 12
+const TEAM_SIZES = ['1 founder', '2 founders', '3 founders', '4 or more'] as const
 
-/** One waffle of every startup, split into four blocks by team size; a year or sector lights its squares. */
-function Teams({
-  all,
-  years,
-  t,
-  renderer,
-  sector,
-  year,
-  onYear,
-  founders,
-}: {
-  all: LandscapeRow[]
-  years: number[]
-  t: Tokens | null
-  renderer: ReturnType<typeof motion>
-  sector?: string
-  year?: number
-  onYear: (y: number | undefined) => void
-  founders: RepeatFounder[]
-}) {
-  const navigate = useNavigate()
-  const match = (r: LandscapeRow) => (year === undefined || r.year === year) && (!sector || r.sector === sector)
-  const filtering = year !== undefined || !!sector
-  const blocks = TEAMS.map((label, i) => {
-    const list = all.filter((r) => sizeOf(r) === i).sort((x, y) => x.year - y.year || x.month - y.month || x.name.localeCompare(y.name))
-    return { label, list, on: list.filter(match).length }
+/** Share bands by founding year: each year a full column, each band one team size, bigger teams brighter. */
+function Teams({ rows, t, renderer, founders }: { rows: LandscapeRow[]; t: Tokens | null; renderer: ReturnType<typeof motion>; founders: RepeatFounder[] }) {
+  const known = rows.filter((r) => bucketOf(r) !== null)
+  const n = lastBucket(rows) + 1
+  const xs = Array.from({ length: n }, (_, i) => i)
+  const cols = xs.map((i) => {
+    const list = known.filter((r) => bucketOf(r) === i)
+    const counts = TEAM_SIZES.map((_, s) => list.filter((r) => sizeOf(r) === s).length)
+    const avg = list.length ? list.reduce((a, r) => a + r.founders, 0) / list.length : 0
+    return { i, n: list.length, counts, avg }
   })
-  const scope = all.filter(match)
-  const colours = t ? [t.glaze, t.ochre, t.terracotta, t.steel] : []
-  const avg = scope.length ? (scope.reduce((a, r) => a + r.founders, 0) / scope.length).toFixed(1) : '0'
-  const solo = (list: LandscapeRow[]) => pct(list.filter((r) => sizeOf(r) === 0).length, list.length)
+  const bands = TEAM_SIZES.flatMap((size, s) =>
+    cols.map((c) => {
+      const below = c.counts.slice(0, s).reduce((a, b) => a + b, 0)
+      const lo = c.n ? below / c.n : 0
+      const hi = c.n ? (below + c.counts[s]) / c.n : 0
+      return { x: c.i, size, lo, hi, mid: (lo + hi) / 2, count: c.counts[s], share: hi - lo, n: c.n }
+    }),
+  )
+  const ramp = t ? [`color-mix(in oklab, ${t.glaze} 28%, ${t.canvas})`, `color-mix(in oklab, ${t.glaze} 50%, ${t.canvas})`, `color-mix(in oklab, ${t.glaze} 75%, ${t.canvas})`, t.glaze] : []
+  const last = n - 1
+  const first = cols[0]
+  const firstBig = cols.find((c) => c.n >= 30) ?? first
+  const recent = [...cols].reverse().find((c) => c.n >= 60) ?? cols[last]
+  const solo = (c: (typeof cols)[number]) => (c.n ? Math.round((c.counts[0] / c.n) * 100) : 0)
+  const two = known.filter((r) => sizeOf(r) === 1).length
   const [more, setMore] = useState(false)
   const shown = more ? founders : founders.slice(0, 9)
+  const def = useMemo(() => {
+    if (!t) return null
+    // Labels at the band middles, pushed apart so thin bands never stack their names, and kept inside 0–100%.
+    const ends = (x: number) => {
+      const list = bands.filter((b) => b.x === x && b.share > 0).map((b) => ({ ...b, at: b.mid }))
+      const gap = 0.075
+      for (let i = 1; i < list.length; i++) list[i].at = Math.max(list[i].at, list[i - 1].at + gap)
+      if (list.length) list[list.length - 1].at = Math.min(list[list.length - 1].at, 0.97)
+      for (let i = list.length - 2; i >= 0; i--) list[i].at = Math.min(list[i].at, list[i + 1].at - gap)
+      return list
+    }
+    return defineChart({
+      marks: [
+        ...TEAM_SIZES.map((size, s) => areaY(bands.filter((b) => b.size === size), { id: `band-${s}`, x: 'x', y1: 'lo', y2: 'hi', key: 'x', fill: ramp[s], fillOpacity: 1, stroke: t.canvas, strokeWidth: 1 })),
+        ruleY([0.25, 0.5, 0.75], { stroke: t.hairline, strokeWidth: 1 }),
+        // Band names at both ends, ink on canvas outside the plot.
+        text(ends(0), { x: 'x', y: 'at', text: (b) => `${b.size} ${Math.round(b.share * 100)}%`, anchor: 'end', dx: -12, fontSize: 14, fill: t.ink }),
+        text(ends(last), { x: 'x', y: 'at', text: (b) => `${b.size} ${Math.round(b.share * 100)}%`, anchor: 'start', dx: 12, fontSize: 14, fill: t.ink }),
+        // Average founders above each column, count below.
+        text(cols, { x: 'i', y: () => 1.06, text: (c) => c.avg.toFixed(1), fontSize: 13, fill: t.ink }),
+        text(cols, { x: 'i', y: () => -0.07, text: (c) => String(c.n), fontSize: 13, fill: t.ink2 }),
+        crosshair({ x: { stroke: t.ink, strokeWidth: 1 }, y: false }),
+      ],
+      scales: {
+        x: { scale: scaleLinear().domain([0, last]), axis: { tickLabels: { fontSize: 13 }, ticks: { values: xs, format: (v: number) => bucketShort(v) } } },
+        y: { scale: scaleLinear().domain([-0.12, 1.12]), axis: false },
+      },
+      focus: 'group-x',
+      maxFocusDistance: Number.POSITIVE_INFINITY,
+      tooltip: {
+        use: tooltip,
+        formatGroup: (points: readonly { datum: { x?: number; i?: number } }[]) => {
+          const x = points.find((pt) => pt.datum.x !== undefined)?.datum.x ?? points[0]?.datum.i
+          const c = cols.find((cc) => cc.i === x)
+          if (!c) return ''
+          return [`Founded ${bucketLabel(c.i)} · ${c.n}`, ...TEAM_SIZES.map((size, s) => `${size} · ${c.counts[s]} · ${c.n ? Math.round((c.counts[s] / c.n) * 100) : 0}%`).reverse(), `Average ${c.avg.toFixed(1)} founders`].join('\n')
+        },
+      },
+      theme: theme(t, ramp),
+      margin: { left: 170, right: 170, top: 8, bottom: 28 },
+    })
+  }, [t, JSON.stringify(cols)]) // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <Section
-      question="How many founders start a startup?"
-      controls={
-        <div className="flex flex-wrap items-center gap-2.5">
-          <span className="text-[0.9375rem] text-ink-2">Labelled in</span>
-          <div role="radiogroup" aria-label="Label year" className="flex flex-wrap gap-1.5">
-            {[undefined, ...years].map((y) => (
-              <button
-                key={y ?? 'all'}
-                type="button"
-                role="radio"
-                aria-checked={year === y}
-                onClick={() => onYear(y)}
-                className={cn('h-8 rounded-md border px-3 text-sm', year === y ? 'border-ink bg-ink text-canvas' : 'border-edge text-ink hover:bg-surface')}
-              >
-                {y ?? 'All years'}
-              </button>
-            ))}
-          </div>
-        </div>
-      }
+      question="Do founders start alone or together, and has that changed?"
       chart={
-        <div className="flex flex-wrap items-end gap-x-8 gap-y-8">
-          {blocks.map((bl, i) => (
-            <TeamBlock
-              key={bl.label}
-              label={bl.label}
-              list={bl.list}
-              on={bl.on}
-              filtering={filtering}
-              total={filtering ? scope.length : all.length}
-              colour={colours[i]}
-              t={t}
-              renderer={renderer}
-              match={match}
-              onOpen={(id) => navigate({ to: '/startups/$id', params: { id } })}
-            />
-          ))}
-        </div>
+        <>
+          <div className="flex justify-between text-[0.8125rem] text-ink-2" style={{ paddingInline: 170 }}>
+            <span>Average founders, by founding year</span>
+          </div>
+          {def ? <Chart definition={def} renderer={renderer} height={440} ariaLabel={`Solo founders went from ${solo(firstBig)}% of startups founded in ${bucketLabel(firstBig.i)} to ${solo(recent)}% in ${bucketLabel(recent.i)}.`} /> : <Empty h={440} />}
+          <DataTable caption="Team size by founding year" head={['Founded', 'Startups', ...TEAM_SIZES, 'Average']} rows={cols.map((c) => [bucketLabel(c.i), c.n, ...c.counts, c.avg.toFixed(1)])} />
+        </>
       }
-      caption={`Each square is one startup, ordered by the month it was labelled.${filtering ? ' Filled squares match the chosen year or sector; outlined ones do not.' : ''} Hover a square for its name; click to open it.`}
+      caption={`Each column is the startups founded that year (count under the axis), split by how many founders they list. Darker green: smaller teams; brighter: bigger. Faint lines mark 25%, 50% and 75%.${cols.some((c) => c.n < 40 && c.i >= last - 1) ? ` ${cols.filter((c) => c.n < 40 && c.i >= last - 1).map((c) => `${bucketLabel(c.i)} has ${c.n}`).join(' and ')}, so read those loosely.` : ''}`}
       findings={[
-        { figure: avg, text: `founders on average${filtering ? ' in this selection' : ''}.` },
-        { figure: `${solo(scope)}%`, text: `are solo. ${solo(all.filter((r) => r.year === years[0]))}% of the ${years[0]} labels, ${solo(all.filter((r) => r.year >= 2023))}% since 2023.` },
-        { figure: founders.length, text: 'people appear on more than one startup.' },
+        { figure: `${solo(firstBig)}% → ${solo(recent)}%`, text: `started solo: founded ${bucketLabel(firstBig.i)} against founded ${bucketLabel(recent.i)}.` },
+        { figure: `${firstBig.avg.toFixed(1)} → ${recent.avg.toFixed(1)}`, text: 'average founders per startup, same years.' },
+        { figure: `${two} of ${known.length}`, text: 'have two founders, the most common team.' },
       ]}
     >
       <div className="mt-10 border-t border-edge/60 pt-6">
-        <p className="text-[0.9375rem] font-medium text-ink">People named on more than one startup</p>
+        <p className="text-[0.9375rem] font-medium text-ink">People named on more than one startup · {founders.length}</p>
         <ul className="mt-3 grid gap-x-10 gap-y-2 md:grid-cols-2 2xl:grid-cols-3">
           {shown.map((f) => (
             <li key={f.name} className="min-w-0 text-[0.9375rem]">
@@ -500,66 +521,6 @@ function Teams({
         <p className="mt-2 text-[0.8125rem] text-ink-2">Matched on the written name, so a namesake can appear here by mistake.</p>
       </div>
     </Section>
-  )
-}
-
-function TeamBlock({
-  label,
-  list,
-  on,
-  filtering,
-  total,
-  colour,
-  t,
-  renderer,
-  match,
-  onOpen,
-}: {
-  label: string
-  list: LandscapeRow[]
-  on: number
-  filtering: boolean
-  total: number
-  colour: string
-  t: Tokens | null
-  renderer: ReturnType<typeof motion>
-  match: (r: LandscapeRow) => boolean
-  onOpen: (id: string) => void
-}) {
-  const cols = Math.max(1, Math.ceil(list.length / ROWS))
-  const w = cols * (CELL + GAP)
-  const h = ROWS * (CELL + GAP)
-  const data = list.map((r) => ({ id: r.id, name: r.name, sector: r.sector, when: `${MONTHS[r.month - 1]} ${r.year}`, one: 1, lit: !filtering || match(r) }))
-  const def = useMemo(
-    () =>
-      t &&
-      defineChart({
-        marks: [waffleY(data, { y: 'one', key: 'id', unit: 1, columns: cols, gap: GAP, radius: 2, fill: (d) => (d.lit ? colour : t.canvas), stroke: (d) => (d.lit ? t.canvas : t.edge), strokeWidth: 1 })],
-        scales: { x: null, y: null },
-        tooltip: { use: tooltip, items: [{ field: 'name', label: 'Startup' }, { field: 'sector', label: 'Sector' }, { field: 'when', label: 'Labelled' }] },
-        theme: theme(t, [colour]),
-        guides: false,
-        margin: 0,
-      }),
-    [t, colour, JSON.stringify(data.map((d) => d.lit))], // eslint-disable-line react-hooks/exhaustive-deps
-  )
-  const shown = filtering ? on : list.length
-  return (
-    <figure className="m-0">
-      <figcaption className="mb-3">
-        <span className="flex items-center gap-2 text-[0.9375rem] text-ink">
-          <span aria-hidden className="size-3 rounded-[2px]" style={{ background: colour }} />
-          {label}
-        </span>
-        <span className="mt-1 block">
-          <span className="font-display text-[2rem] leading-10 text-ink">{filtering ? `${on} of ${list.length}` : list.length}</span>
-          <span className="ms-2 text-[0.9375rem] text-ink">{pct(shown, total)}%</span>
-        </span>
-      </figcaption>
-      <div style={{ width: w, height: h }}>
-        {def ? <Chart definition={def} renderer={renderer} width={w} height={h} ariaLabel={`${label}: ${list.length} startups`} onSelect={(p) => p && onOpen((p.datum as { id: string }).id)} /> : null}
-      </div>
-    </figure>
   )
 }
 

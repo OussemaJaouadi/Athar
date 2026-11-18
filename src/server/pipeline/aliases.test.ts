@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { describedAs, emailDomain, FREE_MAILBOXES, nameKey, secondDomain } from './aliases'
+import { describedAs, emailDomain, FREE_MAILBOXES, GENERIC_TERMS, nameKey, secondDomain } from './aliases'
 
 describe('nameKey', () => {
   test('lower-cases, strips accents and punctuation', () => {
@@ -87,6 +87,31 @@ describe('describedAs', () => {
   test('verb must be a whole word', () => {
     expect(describedAs('Zeta', 'Sobflous isolates payments')).toBeNull()
   })
+
+  test('generic technology terms as subject return null', () => {
+    expect(describedAs('Novel-Ti', 'IoT is a growing field ...')).toBeNull()
+    expect(describedAs('X Corp', 'AI helps companies ...')).toBeNull()
+    expect(describedAs('Agro Plus', 'Blockchain is used ...')).toBeNull()
+    expect(describedAs('Data House', 'Big Data est ...')).toBeNull()
+  })
+
+  test('a real acronym of the name still works', () => {
+    const bws = describedAs('Be Wireless Solutions', 'BWS is a ...')
+    expect(bws?.value).toBe('BWS')
+    expect(bws?.rule).toBe('alias.acronym')
+  })
+
+  test('a real product name still works', () => {
+    expect(describedAs('SF Technologies', 'Sobflous is a mobile payment app')?.value).toBe('Sobflous')
+  })
+})
+
+describe('GENERIC_TERMS', () => {
+  test('holds generic technology terms in nameKey form', () => {
+    expect(GENERIC_TERMS.has('iot')).toBe(true)
+    expect(GENERIC_TERMS.has('bigdata')).toBe(true)
+    expect(GENERIC_TERMS.has('sobflous')).toBe(false)
+  })
 })
 
 describe('emailDomain', () => {
@@ -113,6 +138,11 @@ describe('FREE_MAILBOXES', () => {
       expect(FREE_MAILBOXES.has(domain)).toBe(true)
     }
     expect(FREE_MAILBOXES.has('envast.tn')).toBe(false)
+  })
+
+  test('contains group, list and shared provider hosts', () => {
+    expect(FREE_MAILBOXES.has('googlegroups.com')).toBe(true)
+    expect(FREE_MAILBOXES.has('planet.tn')).toBe(true)
   })
 })
 
@@ -149,5 +179,18 @@ describe('secondDomain', () => {
   test('no usable email returns null', () => {
     expect(secondDomain(null, 'x.tn')).toBeNull()
     expect(secondDomain('n.a.', 'x.tn')).toBeNull()
+  })
+
+  test('group and list mail hosts return null', () => {
+    expect(secondDomain('contact@googlegroups.com', 'smartforgreen.com')).toBeNull()
+  })
+
+  test('shared Tunisian internet provider mailboxes return null', () => {
+    expect(secondDomain('a@planet.tn', 'zolfa.epizy.com')).toBeNull()
+    expect(secondDomain('a@topnet.tn', null)).toBeNull()
+  })
+
+  test('a company domain on .tn is still returned', () => {
+    expect(secondDomain('contact@envast.tn', 'classquiz.tn')?.value).toBe('envast.tn')
   })
 })

@@ -26,6 +26,14 @@ const GENERIC_OPENERS = new Set([
   'the', 'our', 'we', 'a', 'an', 'it', 'this', 'une', 'un', 'la', 'le', 'les', 'notre', 'nous', 'cette', 'ce',
   'plateforme', 'platform', 'application', 'app', 'solution', 'startup', 'société', 'company',
 ])
+/** nameKey forms of generic technology terms: when one is the subject of a description it is not a company name. */
+export const GENERIC_TERMS: Set<string> = new Set([
+  'iot', 'ai', 'ia', 'erp', 'crm', 'saas', 'paas', 'iaas', 'b2b', 'b2c', 'api', 'ml', 'vr', 'ar', 'xr', 'nlp', 'llm',
+  'gps', 'rfid', 'kyc', 'hr', 'rh', 'it', 'ict', 'tic', 'esg', 'seo', 'sms', 'qr', '3d', '5g', 'ocr', 'bi', 'cms',
+  'lms', 'pos', 'nfc', 'uav', 'uas', 'drone', 'drones', 'blockchain', 'fintech', 'edtech', 'healthtech', 'agritech',
+  'ecommerce', 'internet', 'intelligenceartificielle', 'artificialintelligence', 'internetofthings', 'bigdata',
+  'machinelearning',
+])
 const ACRONYM_STOP_WORDS = new Set(['de', 'du', 'des', 'la', 'le', 'et', 'of', 'the', 'and', 'for'])
 
 function initials(name: string): string {
@@ -53,6 +61,7 @@ export function describedAs(name: string, description: string | null): Reading<s
   if (GENERIC_OPENERS.has(firstWord.toLowerCase())) return null
 
   const subjectKey = nameKey(subject)
+  if (GENERIC_TERMS.has(subjectKey)) return null
   const nameK = nameKey(name)
   if (subjectKey === nameK || subjectKey.includes(nameK) || nameK.includes(subjectKey)) return null
 
@@ -81,6 +90,9 @@ export function emailDomain(email: string | null): string | null {
 export const FREE_MAILBOXES: Set<string> = new Set([
   'gmail.com', 'yahoo.com', 'yahoo.fr', 'hotmail.com', 'hotmail.fr', 'outlook.com', 'outlook.fr', 'live.com',
   'live.fr', 'icloud.com', 'ymail.com', 'protonmail.com', 'proton.me', 'gmx.com', 'gmx.fr',
+  // Group and list mail hosts, and Tunisian internet providers that give mailboxes to customers.
+  'googlegroups.com', 'googlemail.com', 'aol.com', 'mail.com', 'yandex.com', 'zoho.com', 'topnet.tn', 'planet.tn',
+  'gnet.tn', 'hexabyte.tn', 'orange.tn', 'ooredoo.tn', 'tunet.tn',
 ])
 
 /**

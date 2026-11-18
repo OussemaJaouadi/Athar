@@ -1,11 +1,13 @@
-import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
-import { Archive, Bookmark, CalendarCheck, Check, CircleDashed, Copy, FileText, Files, Flag, Globe, Languages, Link2, ScanText, Search, Tag, Users } from 'lucide-react'
+import { Link, createFileRoute, useNavigate, useRouter } from '@tanstack/react-router'
+import { Archive, Bookmark, CalendarCheck, Check, CircleDashed, Copy, FileText, Files, Flag, Globe, Languages, Link2, ScanText, Search, Star, Tag, Users } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { DeskSwitch } from '@/components/athar/review-desk'
 import { Desk, DeskBar, DeskEmpty, DeskItem, DeskPane, DeskSelect, JsonBlock, Kbd, PaneSection, deskBtn, deskInput, useDeskKeys } from '@/components/athar/desk'
 import { GROUP_NAME, costOf, factShort, groupFacts, isSilent } from '@/components/athar/quality-facts'
 import { Differences, HowRead, Namesakes, Observed } from '@/components/athar/ops-startup-sections'
+import { ExportMenu } from '@/components/athar/keep-export'
+import { StartupNotes } from '@/components/athar/startup-notes'
 import { Disclosure } from '@/components/athar/startup-title'
 import { TileMark } from '@/components/athar/tile-mark'
 import { day, plural } from '@/components/athar/trace-parts'
@@ -13,8 +15,10 @@ import { cn } from '@/lib/utils'
 import { getCorpus } from '#/server/api/app'
 import { getEntry, getFactRows, getFoundersOf, getLeadEntry, getQualitySummary, searchStartupsOps } from '#/server/api/ops'
 import type { FactRow, QualityFact } from '#/server/pipeline/facts'
+import { followStartup, getFollowed, getNotes, unfollowStartup } from '#/server/api/keep'
 import { getReviewSummary } from '#/server/api/review'
 import { getStartupPage } from '#/server/api/startup'
+import type { Note } from '#/server/pipeline/keep'
 import type { EntryView } from '#/server/pipeline/state'
 
 // fact: a quality fact chosen in the facts column; the list is then the startups behind it.
@@ -34,8 +38,11 @@ const NOTE: Record<string, string> = {
 }
 const DEFAULT_CODES = ['listed_more_than_once', 'other_name', 'other_sector', 'website_text_removed', 'second_website']
 
+// The fact column's own entry: the startups the person follows.
+const FOLLOWING = 'following'
+
 // `entry`: a fact row that names an entry and no startup; selecting it opens the startup that entry belongs to.
-type Item = { id: string; name: string; sector: string | null; entries: number | null; notes: string[]; withdrawn: boolean; entry?: string; value?: string | null; labelled?: string | null }
+type Item = { id: string; name: string; sector: string | null; entries: number | null; notes: string[]; withdrawn: boolean; kept?: number; entry?: string; value?: string | null; labelled?: string | null }
 
 export const Route = createFileRoute('/portal/startups')({
   validateSearch: (s: Record<string, unknown>): SearchParams => ({
@@ -46,15 +53,18 @@ export const Route = createFileRoute('/portal/startups')({
   }),
   loaderDeps: ({ search }) => ({ q: search.q ?? '', startup: search.startup, entry: search.entry, fact: search.fact }),
   loader: async ({ deps }) => {
-    const [facts, corpus, review] = await Promise.all([getQualitySummary(), getCorpus(), getReviewSummary()])
+    const [facts, corpus, review, followed] = await Promise.all([getQualitySummary(), getCorpus(), getReviewSummary(), getFollowed()])
     // The list: a search, else the startups behind the chosen fact, else the ones an operator should read first
     // (more than one entry, or a note that says the registry and Athar's reading differ).
-    const fact = !deps.q && deps.fact ? facts.find((f) => f.code === deps.fact) : undefined
+    const following = !deps.q && deps.fact === FOLLOWING
+    const fact = !deps.q && !following && deps.fact ? facts.find((f) => f.code === deps.fact) : undefined
     let factRows: FactRow[] = []
     let factTotal = 0
     let items: Item[]
     if (deps.q) {
       items = (await searchStartupsOps({ data: deps.q })).map((h) => ({ id: h.id, name: h.name, sector: h.sector, entries: h.entries, notes: h.notes, withdrawn: h.withdrawn }))
+    } else if (following) {
+      items = followed.map((f) => ({ id: f.id, name: f.name, sector: f.sector, entries: null, notes: [], withdrawn: false, kept: f.notes }))
     } else if (fact) {
       const result = await getFactRows({ data: fact.code })
       factTotal = result?.total ?? 0
@@ -76,7 +86,8 @@ export const Route = createFileRoute('/portal/startups')({
     if (!startupId && deps.entry) startupId = (await getEntry({ data: deps.entry }))?.startup?.id
     if (!startupId && items[0]) startupId = items[0].entry ? (await getEntry({ data: items[0].entry }))?.startup?.id : items[0].id.startsWith('row:') ? undefined : items[0].id
     const detail = startupId ? await loadStartup(startupId) : null
-    return { items, startupId, detail, facts, fact, factRows, factTotal, startups: corpus.startups, openQuestions: review.toAnswer }
+    const notes = startupId && detail ? await getNotes({ data: startupId }) : []
+    return { items, startupId, detail, notes, followed, following, facts, fact, factRows, factTotal, startups: corpus.startups, openQuestions: review.toAnswer }
   },
   component: StartupsPage,
 })
@@ -108,9 +119,10 @@ async function loadStartup(id: string) {
 type Detail = NonNullable<Awaited<ReturnType<typeof loadStartup>>>
 
 function StartupsPage() {
-  const { items, startupId, detail, facts, fact, factRows, factTotal, startups, openQuestions } = Route.useLoaderData()
+  const { items, startupId, detail, notes, followed, following, facts, fact, factRows, factTotal, startups, openQuestions } = Route.useLoaderData()
   const search = Route.useSearch()
   const navigate = useNavigate({ from: '/portal/startups' })
+  const router = useRouter()
   const searchRef = useRef<HTMLInputElement>(null)
   const [query, setQuery] = useState(search.q ?? '')
 
@@ -138,18 +150,26 @@ function StartupsPage() {
   const grouped = useMemo(() => groupFacts(facts), [facts])
   const isSelected = (it: Item) => it.id === startupId || (!!it.entry && it.entry === search.entry)
   const ids = useMemo(() => items.map((i) => i.id), [items])
-  useDeskKeys({ ids, current: startupId, select, search: searchRef })
+  const isFollowing = !!startupId && followed.some((f) => f.id === startupId)
+  const toggleFollow = useCallback(async () => {
+    if (!startupId || !detail) return
+    await (isFollowing ? unfollowStartup : followStartup)({ data: startupId })
+    await router.invalidate()
+  }, [startupId, detail, isFollowing, router])
+  const keys = useMemo(() => ({ f: toggleFollow }), [toggleFollow])
+  useDeskKeys({ ids, current: startupId, select, search: searchRef, keys })
 
   const list = (
     <div role="list" aria-label="Startups">
+      {following && <p className="border-b border-edge px-4 py-3 text-[0.875rem] text-ink">{plural(items.length, 'startup', 'startups')} you follow, newest first.</p>}
       {fact && !search.q && <FactHeader fact={fact} rows={factRows} total={factTotal} />}
-      {!fact && !search.q && items.length > 0 && (
+      {!fact && !following && !search.q && items.length > 0 && (
         <p className="border-b border-edge px-4 py-3 text-[0.875rem] text-ink">
           {plural(items.length, 'startup', 'startups')} to read first: the registry lists them more than once, or Athar read them differently from what was published.
         </p>
       )}
       {items.length === 0 ? (
-        <p className="px-4 py-6 text-[0.875rem] text-ink">{search.q ? `No startup matches “${search.q}”.` : fact ? 'Nothing in the data matches this today.' : 'Type a startup name, its slug, its website or the start of an entry id.'}</p>
+        <p className="px-4 py-6 text-[0.875rem] text-ink">{search.q ? `No startup matches “${search.q}”.` : following ? 'Following keeps the startups you care about in one list, with your notes on them, and lets you export just those. Press F on a startup to follow it.' : fact ? 'Nothing in the data matches this today.' : 'Type a startup name, its slug, its website or the start of an entry id.'}</p>
       ) : (
         items.map((it) => (
           <div role="listitem" key={it.id}>
@@ -160,7 +180,7 @@ function StartupsPage() {
               title={<span dir="auto">{it.name}</span>}
               qualifier={it.sector ?? (fact ? month(it.labelled ?? null) ?? undefined : undefined)}
               detailMono={!!fact && !!it.value}
-              detail={fact ? (it.value ?? undefined) : [it.entries !== null ? plural(it.entries, 'entry', 'entries') : null, ...it.notes.map((n) => NOTE[n] ?? n), it.withdrawn ? 'no longer in the registry' : null].filter(Boolean).join(' · ')}
+              detail={fact ? (it.value ?? undefined) : [it.kept !== undefined ? plural(it.kept, 'note', 'notes') : null, it.entries !== null ? plural(it.entries, 'entry', 'entries') : null, ...it.notes.map((n) => NOTE[n] ?? n), it.withdrawn ? 'no longer in the registry' : null].filter(Boolean).join(' · ')}
             />
           </div>
         ))
@@ -170,7 +190,7 @@ function StartupsPage() {
 
   return (
     <main className="flex min-h-0 flex-1 flex-col">
-      <DeskBar title="Startups" facts={search.q ? plural(items.length, 'match', 'matches') + (items.length === 30 ? ' (first 30)' : '') : `${startups.toLocaleString('en-GB')} startups`}>
+      <DeskBar title="Startups" actions={<ExportMenu total={startups} following={followed.length} />} facts={search.q ? plural(items.length, 'match', 'matches') + (items.length === 30 ? ' (first 30)' : '') : `${startups.toLocaleString('en-GB')} startups`}>
         <DeskSwitch current="startups" open={openQuestions} />
         <label className="relative flex items-center">
           <span className="sr-only">Search startups by name, slug, website or entry id</span>
@@ -194,15 +214,16 @@ function StartupsPage() {
         <div className="w-72 min-[1100px]:hidden">
           <DeskSelect
             label="Show startups by fact"
-            value={fact?.code ?? '-'}
+            value={following ? FOLLOWING : (fact?.code ?? '-')}
             onChange={(v) => pickFact(v === '-' ? undefined : v)}
-            options={[{ value: '-', label: 'To read first' }, ...grouped.flatMap((g) => g.facts.map((f) => ({ value: f.code, label: f.label, hint: f.count ? `${f.count.toLocaleString('en-GB')} · ${GROUP_NAME[g.group]}` : 'none' })))]}
+            options={[{ value: '-', label: 'To read first' }, { value: FOLLOWING, label: 'Following', hint: followed.length ? `${followed.length} you follow` : 'none' }, ...grouped.flatMap((g) => g.facts.map((f) => ({ value: f.code, label: f.label, hint: f.count ? `${f.count.toLocaleString('en-GB')} · ${GROUP_NAME[g.group]}` : 'none' })))]}
           />
         </div>
       </DeskBar>
       <div className="flex min-h-0 flex-1">
         <nav aria-label="Facts about the data" className="hidden w-[272px] shrink-0 overflow-y-auto overscroll-contain border-e border-edge min-[1100px]:block">
-          <FactRowButton selected={!fact} label="To read first" icon={Bookmark} onSelect={() => pickFact(undefined)} />
+          <FactRowButton selected={!fact && !following} label="To read first" icon={Bookmark} onSelect={() => pickFact(undefined)} />
+          <FactRowButton selected={following} label="Following" icon={Star} count={followed.length} onSelect={() => pickFact(FOLLOWING)} />
           {grouped.map((g) => {
             const silent = g.facts.filter(isSilent)
             const rest = g.facts.filter((f) => !isSilent(f))
@@ -237,7 +258,7 @@ function StartupsPage() {
         onBack={() => navigate({ search: (s) => ({ ...s, startup: undefined, entry: undefined }) })}
         backLabel="All startups"
         list={list}
-        pane={detail ? <StartupPane key={detail.page.startup.id} d={detail} openEntry={search.entry} /> : <DeskEmpty>{startupId ? 'No startup with this id.' : 'Search for a startup to see why Athar says what it says about it.'}</DeskEmpty>}
+        pane={detail ? <StartupPane key={detail.page.startup.id} d={detail} notes={notes} isFollowing={isFollowing} onToggleFollow={toggleFollow} openEntry={search.entry} /> : <DeskEmpty>{startupId ? 'No startup with this id.' : 'Search for a startup to see why Athar says what it says about it.'}</DeskEmpty>}
       />
         </div>
       </div>
@@ -350,7 +371,7 @@ const WEBSITE_KIND: Record<string, string> = { own: 'Its own site', hosted: 'A p
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 const month = (labelled: string | null) => (labelled ? `${MONTHS[Number(labelled.slice(5, 7)) - 1]} ${labelled.slice(0, 4)}` : null)
 
-function StartupPane({ d, openEntry }: { d: Detail; openEntry?: string }) {
+function StartupPane({ d, notes, isFollowing, onToggleFollow, openEntry }: { d: Detail; notes: Note[]; isFollowing: boolean; onToggleFollow: () => void; openEntry?: string }) {
   const { page, lead, others, founders } = d
   const s = page.startup
   const entries = [lead, ...others]
@@ -371,6 +392,13 @@ function StartupPane({ d, openEntry }: { d: Detail; openEntry?: string }) {
         </span>
       }
       statement={<span className="font-mono text-[0.8125rem] text-ink-2">{s.id}</span>}
+      foot={
+        <button type="button" className={deskBtn} aria-pressed={isFollowing} onClick={onToggleFollow}>
+          <Star aria-hidden strokeWidth={1.5} fill={isFollowing ? 'currentColor' : 'none'} />
+          {isFollowing ? 'Following' : 'Follow'}
+          <Kbd>F</Kbd>
+        </button>
+      }
       position={`${plural(entries.length, 'entry', 'entries')}${page.source.withdrawnSince ? ` · not in the registry since ${day(page.source.withdrawnSince)}` : ''}`}
     >
       <section className="grid max-w-[980px] gap-3">
@@ -490,6 +518,8 @@ function StartupPane({ d, openEntry }: { d: Detail; openEntry?: string }) {
       </PaneSection>
 
       {lead.downstream && <Observed d={lead.downstream} />}
+
+      <StartupNotes startupId={s.id} notes={notes} />
 
       <p>
         <Link to="/startups/$id" params={{ id: s.id }} className="text-[0.875rem] text-glaze underline">

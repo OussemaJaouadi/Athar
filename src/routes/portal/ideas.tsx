@@ -1,19 +1,23 @@
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useCallback } from 'react'
 
+import { SegmentedControl } from '@/components/interior/segmented-control'
 import { Desk, DeskBar, DeskEmpty, DeskItem, DeskPane, PaneSection, deskTd, deskTh, useDeskKeys } from '@/components/athar/desk'
 import { StartupLink } from '@/components/athar/startup-glimpse'
 import { cn } from '@/lib/utils'
 import { getIdeaCheckRow, listIdeaChecks } from '#/server/api/ops'
 import type { IdeaCheckMatch, IdeaCheckRow } from '#/server/pipeline/facts'
 
-type Filter = 'nothing' | 'saved'
-type Search = { idea?: string; show?: Filter }
+// view: the checks the visitor chose to save, or the recent ones they did not. show: only those with nothing close.
+type View = 'saved' | 'recent'
+type Search = { idea?: string; view?: View; show?: 'nothing' }
 
 export const Route = createFileRoute('/portal/ideas')({
   validateSearch: (s: Record<string, unknown>): Search => ({
     idea: typeof s.idea === 'string' && s.idea ? s.idea : undefined,
-    show: s.show === 'nothing' || s.show === 'saved' ? s.show : undefined,
+    // An older link with show=saved still opens the saved view.
+    view: s.view === 'saved' || s.view === 'recent' ? s.view : s.show === 'saved' ? 'saved' : undefined,
+    show: s.show === 'nothing' ? 'nothing' : undefined,
   }),
   loaderDeps: ({ search }) => ({ idea: search.idea }),
   // Every stored check, newest first; a check linked from elsewhere is fetched on its own when it is older than the list.
@@ -36,8 +40,14 @@ function IdeasPage() {
   const search = Route.useSearch()
   const navigate = useNavigate({ from: '/portal/ideas' })
 
-  const nothing = ideas.filter((i) => i.close.length === 0).length
-  const shown = search.show === 'nothing' ? ideas.filter((i) => i.close.length === 0) : search.show === 'saved' ? ideas.filter((i) => i.saved) : ideas
+  const savedAll = ideas.filter((i) => i.saved)
+  const recentAll = ideas.filter((i) => !i.saved)
+  // A linked check opens in the view it belongs to; otherwise Saved, or Recent when nothing was saved.
+  const linkedCheck = search.idea ? (ideas.find((i) => i.id === search.idea) ?? (linked?.id === search.idea ? linked : undefined)) : undefined
+  const view: View = search.view ?? (linkedCheck ? (linkedCheck.saved ? 'saved' : 'recent') : savedAll.length ? 'saved' : 'recent')
+  const inView = view === 'saved' ? savedAll : recentAll
+  const nothing = inView.filter((i) => i.close.length === 0).length
+  const shown = search.show === 'nothing' ? inView.filter((i) => i.close.length === 0) : inView
   const current = search.idea ?? shown[0]?.id
   const selected = shown.find((i) => i.id === current) ?? ideas.find((i) => i.id === current) ?? (linked && linked.id === current ? linked : undefined)
   const ids = shown.map((i) => i.id)
@@ -45,32 +55,33 @@ function IdeasPage() {
   const select = useCallback((id: string) => navigate({ search: (s) => ({ ...s, idea: id }), replace: true }), [navigate])
   useDeskKeys({ ids, current, select })
 
-  const chip = (value: Filter | undefined, label: string, count: number) => {
-    const on = search.show === value
-    return (
-      <button
-        type="button"
-        aria-pressed={on}
-        onClick={() => navigate({ search: (s) => ({ ...s, show: value, idea: undefined }), replace: true })}
-        className={cn(
-          'inline-flex h-7 items-center gap-1.5 rounded-[5px] border border-edge px-2.5 text-[0.8125rem] whitespace-nowrap text-ink',
-          on ? 'bg-surface-raised shadow-[inset_0_-2px_0_var(--ink)]' : 'hover:bg-surface',
-        )}
-      >
-        {label} <span className="tabular-nums">{count}</span>
-      </button>
-    )
-  }
-
+  const nothingOn = search.show === 'nothing'
   return (
     <main className="flex min-h-0 flex-1 flex-col">
-      <DeskBar title="Ideas" facts={ideas.length ? `${ideas.length} ${ideas.length === 1 ? 'idea' : 'ideas'} checked · ${nothing} found nothing close` : 'No idea checked yet'}>
+      <DeskBar title="Ideas" facts={ideas.length ? `${savedAll.length} saved · ${recentAll.length} recent · ${ideas.filter((i) => i.close.length === 0).length} found nothing close` : 'No idea checked yet'}>
         {ideas.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2">
-            {chip(undefined, 'All', ideas.length)}
-            {chip('nothing', 'Nothing close', nothing)}
-            {chip('saved', 'Saved', ideas.filter((i) => i.saved).length)}
-          </div>
+          <>
+            <SegmentedControl
+              label="Which idea checks"
+              value={view}
+              onValueChange={(v) => navigate({ search: (s) => ({ ...s, view: v as View, idea: undefined }), replace: true })}
+              options={[
+                { value: 'saved', label: `Saved ${savedAll.length}` },
+                { value: 'recent', label: `Recent ${recentAll.length}` },
+              ]}
+            />
+            <button
+              type="button"
+              aria-pressed={nothingOn}
+              onClick={() => navigate({ search: (s) => ({ ...s, show: nothingOn ? undefined : 'nothing', idea: undefined }), replace: true })}
+              className={cn(
+                'inline-flex h-8 items-center gap-1.5 rounded-[5px] border border-edge px-2.5 text-[0.875rem] whitespace-nowrap text-ink',
+                nothingOn ? 'bg-surface-raised shadow-[inset_0_-2px_0_var(--ink)]' : 'hover:bg-surface',
+              )}
+            >
+              Nothing close <span className="tabular-nums">{nothing}</span>
+            </button>
+          </>
         )}
       </DeskBar>
       {ideas.length === 0 && !linked ? (
@@ -91,6 +102,7 @@ function IdeasPage() {
           list={
             shown.length ? (
               <div role="list" aria-label="Ideas">
+                {ideas.length > 0 && savedAll.length === 0 && view === 'recent' && !search.view && <p className="border-b border-edge px-4 py-3 text-[0.875rem] text-ink">Nothing has been saved yet, so these are the recent checks. A visitor saves one from its page.</p>}
                 {shown.map((i) => (
                   <div role="listitem" key={i.id}>
                     <DeskItem
@@ -103,7 +115,7 @@ function IdeasPage() {
                 ))}
               </div>
             ) : (
-              <p className="px-4 py-3 text-[0.875rem] text-ink">{search.show === 'saved' ? 'No idea check has been saved.' : 'Every idea checked so far has something close.'}</p>
+              <p className="px-4 py-3 text-[0.875rem] text-ink">{nothingOn ? 'Every check in this view has something close.' : view === 'saved' ? 'No idea check has been saved.' : 'No recent idea check that was not saved.'}</p>
             )
           }
           pane={selected ? <IdeaPane idea={selected} position={ids.includes(selected.id) ? `${ids.indexOf(selected.id) + 1} of ${ids.length}` : undefined} /> : <DeskEmpty>Pick an idea to see what it found.</DeskEmpty>}

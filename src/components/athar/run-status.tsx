@@ -63,7 +63,7 @@ export function StepStateBadge({ state, className, bare }: { state: string; clas
   const kibo = KIBO[state]
   if (!kibo || bare) return <StatePill state={s} bare={bare} className={className} />
   return (
-    <Status status={kibo} className={cn('shrink-0 font-normal', className)}>
+    <Status status={kibo} className={cn('h-6 shrink-0 text-[0.8125rem] font-normal', className)}>
       <StatusIndicator />
       <StatusLabel className="text-ink">{s.label}</StatusLabel>
     </Status>

@@ -59,7 +59,7 @@ const AISuggestions = ({
   return (
     <div className={cn("flex w-full flex-col gap-2", className)}>
       {label ? (
-        <p className="text-muted-foreground text-xs uppercase tracking-wide">
+        <p className="text-muted-foreground text-[0.8125rem] uppercase tracking-wide">
           {label}
         </p>
       ) : null}

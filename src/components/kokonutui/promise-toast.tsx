@@ -374,7 +374,7 @@ export default function PromiseToast({ className }: PromiseToastProps) {
               </span>
               {task.label}
               {task.note ? (
-                <span className="ms-auto text-[12px] text-zinc-400 dark:text-zinc-500">
+                <span className="ms-auto text-[13px] text-zinc-400 dark:text-zinc-500">
                   {task.note}
                 </span>
               ) : null}
@@ -388,7 +388,7 @@ export default function PromiseToast({ className }: PromiseToastProps) {
           {toaster.toasts.length === 0 && (
             <motion.p
               animate={{ opacity: 1 }}
-              className="pointer-events-none absolute inset-x-0 bottom-6 text-center text-[12.5px] text-zinc-400 dark:text-zinc-500"
+              className="pointer-events-none absolute inset-x-0 bottom-6 text-center text-[13px] text-zinc-400 dark:text-zinc-500"
               exit={{ opacity: 0, transition: { duration: 0.1 } }}
               initial={{ opacity: 0 }}
               transition={{ duration: 0.3, delay: 0.2 }}
@@ -532,7 +532,7 @@ function ToastItem({
                 <p className="truncate font-medium text-[14px]">
                   {toast.title}
                 </p>
-                <p className="truncate text-[12.5px] text-zinc-500 tabular-nums dark:text-zinc-400">
+                <p className="truncate text-[13px] text-zinc-500 tabular-nums dark:text-zinc-400">
                   {counted && count ? (
                     <Counted count={count} work={work} />
                   ) : (
@@ -628,7 +628,7 @@ function ActionButton({
   return (
     <motion.button
       animate={{ opacity: 1, filter: "blur(0px)" }}
-      className="flex h-8 shrink-0 items-center gap-1.5 rounded-full bg-zinc-100 px-3 font-medium text-[12.5px] outline-hidden transition-colors duration-150 hover:bg-zinc-200 focus-visible:ring-2 focus-visible:ring-zinc-400/50 active:bg-zinc-300 dark:bg-zinc-800 dark:active:bg-zinc-600 dark:hover:bg-zinc-700"
+      className="flex h-8 shrink-0 items-center gap-1.5 rounded-full bg-zinc-100 px-3 font-medium text-[13px] outline-hidden transition-colors duration-150 hover:bg-zinc-200 focus-visible:ring-2 focus-visible:ring-zinc-400/50 active:bg-zinc-300 dark:bg-zinc-800 dark:active:bg-zinc-600 dark:hover:bg-zinc-700"
       exit={{ opacity: 0, filter: "blur(2px)", transition: { duration: 0.12 } }}
       initial={{ opacity: 0, filter: "blur(2px)" }}
       onClick={onClick}

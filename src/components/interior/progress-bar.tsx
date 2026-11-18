@@ -56,7 +56,7 @@ export function ProgressBar({
           className="grid shrink-0 justify-items-end text-stone-500 dark:text-stone-400"
         >
           <motion.span
-            className="col-start-1 row-start-1 whitespace-nowrap text-[12px] font-medium leading-5"
+            className="col-start-1 row-start-1 whitespace-nowrap text-[13px] font-medium leading-5"
             initial={false}
             animate={{ opacity: indeterminate ? 1 : 0 }}
             transition={reduced ? INSTANT : CROSSFADE}
@@ -65,7 +65,7 @@ export function ProgressBar({
           </motion.span>
 
           <motion.span
-            className="col-start-1 row-start-1 whitespace-nowrap font-mono text-[12px] font-medium leading-5 tabular-nums"
+            className="col-start-1 row-start-1 whitespace-nowrap font-mono text-[13px] font-medium leading-5 tabular-nums"
             initial={false}
             animate={{ opacity: indeterminate ? 0 : 1 }}
             transition={reduced ? INSTANT : CROSSFADE}

@@ -385,7 +385,7 @@ function AccordionRow({
                   ? { duration: 0.18, ease: EASE }
                   : { duration: 0.14, ease: EXIT_EASE }
             }
-            className="px-3.5 pb-3.5 pt-3 text-[12.5px] leading-relaxed text-stone-500 dark:text-stone-400"
+            className="px-3.5 pb-3.5 pt-3 text-[13px] leading-relaxed text-stone-500 dark:text-stone-400"
           >
             {item.content}
           </motion.div>

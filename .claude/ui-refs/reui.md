@@ -78,3 +78,16 @@ Primitives come from `https://reui.io/r/styles/radix-nova/<name>.json` into `src
 - **alert** (primitive) → `Alert` (`variant: default | destructive | info | success | warning | invert`), `AlertTitle`, `AlertDescription`. Pattern **c-alert-4** for a failed key test.
 - **c-sheet-2** (pattern): a form in a Sheet with header, `FieldGroup` body and footer actions. Followed for the AI key drawer.
 - **c-input-group-35** (pattern): password input with a visibility toggle in an `InputGroup`. Followed for the key field.
+
+## Added 2026-11-18 (operator portal)
+
+`trace`, `marker` and `empty` are shadcn primitives the ReUI patterns build on; install with `bunx --bun shadcn@latest add trace marker empty --yes --overwrite`, then `git checkout -- src/components/ui` to keep the project's existing primitives.
+
+- **trace** → `src/components/ui/trace.tsx`: `Trace`, `TraceLine` (`status?: running | error | pending`), `TraceIcon`, `TraceTitle`, `TraceDescription`, `TraceCollapsible` (+ `Trigger`, `Content`). Pattern **c-trace-9** (jobs with their durations). Used on Status for the steps a run went through.
+- **empty** → `src/components/ui/empty.tsx`: `Empty`, `EmptyHeader`, `EmptyMedia` (`variant: icon`), `EmptyTitle`, `EmptyDescription`, `EmptyContent`. Pattern **c-empty-1**. Used by `DeskEmpty` for every empty pane.
+- **marker** → installed, not used yet (candidate: c-marker-3, run status markers with a live step).
+- **data-grid** (already in `src/components/reui/data-grid/`): now also used for the rows behind a counted fact (`FactGrid` in `src/components/athar/pipeline-facts.tsx`), with sorting done in the component and passed as `manualSorting`, the way the Raw tables page drives it.
+
+Looked at and not used:
+- SmoothUI `favicon-search`: its result mark is an image URL and, without one, it asks Google's favicon service for each result's domain, which would send startup domains to a third party; its fallback letter is 10px.
+- SmoothUI `ai-sources`: on the idea page it would repeat the list of matches that is already there.

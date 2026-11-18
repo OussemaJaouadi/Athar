@@ -1,9 +1,10 @@
 import { Link } from '@tanstack/react-router'
-import { ChevronLeft } from 'lucide-react'
+import { ChevronLeft, Inbox } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { CodeBlock, CodeBlockCopyButton, CodeBlockHeader, CodeBlockTitle } from '@/components/reui/code-block/code-block'
 import type { CodeBlockTransformer } from '@/components/reui/code-block/code-block'
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 
@@ -262,8 +263,19 @@ export function DeskPane({
   )
 }
 
-export function DeskEmpty({ children }: { children: React.ReactNode }) {
-  return <div className="grid flex-1 place-items-center p-10 text-center text-[0.875rem] text-ink">{children}</div>
+/** Nothing to show in a pane: the Empty primitive (ReUI pattern c-empty-1), an icon tile over one sentence. */
+export function DeskEmpty({ children, title }: { children: React.ReactNode; title?: string }) {
+  return (
+    <Empty className="flex-1">
+      <EmptyHeader>
+        <EmptyMedia variant="icon">
+          <Inbox aria-hidden />
+        </EmptyMedia>
+        {title && <EmptyTitle>{title}</EmptyTitle>}
+        <EmptyDescription className="text-[0.875rem] text-ink">{children}</EmptyDescription>
+      </EmptyHeader>
+    </Empty>
+  )
 }
 
 /** A section inside the pane: a 13px ink-2 heading, then the content. No card. */

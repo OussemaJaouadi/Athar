@@ -1,5 +1,5 @@
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Blocks, Check, CircleAlert, CircleDashed, CircleX, Download, Gauge, Globe, History, KeyRound, Sparkles, TriangleAlert, Waypoints } from "lucide-react";
+import { Blocks, Check, CircleAlert, CircleCheck, CircleDashed, CircleX, LoaderCircle, Download, Gauge, Globe, History, KeyRound, Sparkles, TriangleAlert, Waypoints } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
@@ -21,6 +21,7 @@ import { ProgressBar } from "@/components/interior/progress-bar";
 import { Tabs } from "@/components/interior/tabs";
 import { Frame, FramePanel } from "@/components/reui/frame";
 import { Stepper, StepperIndicator, StepperItem, StepperNav, StepperTitle, StepperTrigger } from "@/components/reui/stepper";
+import { Trace, TraceDescription, TraceIcon, TraceLine, TraceTitle } from "@/components/ui/trace";
 import { labTime, operationName } from "@/components/athar/lab";
 import { RunStatus, StepStateBadge } from "@/components/athar/run-status";
 import { DownloadChanges, DownloadList } from "@/components/athar/pipeline-downloads";
@@ -579,23 +580,31 @@ function StepPane({
                   </p>
                 )}
               {detail.steps.length > 0 && (
-                <p className="mb-2 text-[0.875rem] text-ink tabular-nums">
-                  <span className="text-[0.8125rem] text-ink-2">Steps of this run: </span>
-                  {detail.steps.map((st, i) => (
-                    <span key={st.position}>
-                      {i > 0 && <span className="text-ink-2"> → </span>}
-                      {operationName(st.step)}
-                      <span className="text-ink-2">
-                        {" "}
-                        {st.status === "done"
-                          ? (duration(st.started_at, st.finished_at) ?? "")
-                          : st.status === "running"
-                            ? "running"
-                            : st.status}
-                      </span>
-                    </span>
+                // ReUI's Trace (pattern c-trace-9, jobs and their durations): the steps this run went through.
+                <Trace className="mb-3" aria-label="Steps of this run">
+                  {detail.steps.map((st) => (
+                    <TraceLine
+                      key={st.position}
+                      status={st.status === "running" ? "running" : st.status === "failed" || st.status === "interrupted" ? "error" : st.status === "done" ? undefined : "pending"}
+                    >
+                      <TraceIcon>
+                        {st.status === "done" ? (
+                          <CircleCheck className="text-ok" />
+                        ) : st.status === "running" ? (
+                          <LoaderCircle className="motion-safe:animate-spin" />
+                        ) : st.status === "failed" || st.status === "interrupted" ? (
+                          <CircleX className="text-bad" />
+                        ) : (
+                          <CircleDashed />
+                        )}
+                      </TraceIcon>
+                      <TraceTitle className="text-ink">{operationName(st.step)}</TraceTitle>
+                      <TraceDescription className="tabular-nums">
+                        {st.status === "done" ? (duration(st.started_at, st.finished_at) ?? "") : st.status === "running" ? "running" : st.status === "failed" ? "failed" : st.status === "interrupted" ? "interrupted" : "not run"}
+                      </TraceDescription>
+                    </TraceLine>
                   ))}
-                </p>
+                </Trace>
               )}
               {facts.length ? (
                 <ul className="grid max-w-[880px] gap-x-10 md:grid-cols-2">

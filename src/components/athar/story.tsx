@@ -98,7 +98,8 @@ export function websiteSentence(site: NonNullable<StartupStory['website']>, reas
 
 /** The site's own title and summary, quoted and attributed: first-hand evidence, set apart from the registry's description. */
 export function InItsOwnWords({ site }: { site: NonNullable<StartupStory['website']> }) {
-  if (site.state === 'silent' || (!site.title && !site.summary)) return null
+  // Only a site that is still the startup's own speaks for it: a parked, for-sale or unrelated page does not.
+  if ((site.state !== 'answers' && site.state !== 'moved') || (!site.title && !site.summary)) return null
   return (
     <figure className="grid max-w-[44ch] gap-1.5 border-s-2 border-edge ps-4">
       <figcaption className="text-sm text-ink-2">

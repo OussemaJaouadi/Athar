@@ -1,13 +1,36 @@
 import type { Database } from 'bun:sqlite'
 import type { Lane } from './lanes'
 import { derive, type DeriveFounder, type DeriveStartup } from './derive'
-import type { StoredReading } from './readings'
+import { basisOf, readingId, type StoredReading } from './readings'
+import { looksParked } from './page-facts'
 import type { RunNote } from './types'
+import { websiteState, type WebsiteState } from './website-state'
+import type { Reading } from './lanes'
 
 // Build's last step for lanes: derives the readings from the stored startups and founders, replaces the `readings`
 // table, and writes the standard display names onto startups and founders. Decisions are never touched here.
+// It also classifies each website check, stores that state on the check, and writes a reading for the uncertain ones.
 
-export type StoreResult = { total: number; rule: number; inferred: number; review: number; displayNames: number; founderNames: number }
+export type StoreResult = {
+  total: number
+  rule: number
+  inferred: number
+  review: number
+  displayNames: number
+  founderNames: number
+  websites: number
+}
+
+type WebsiteRow = {
+  startup_id: string
+  url: string
+  status: string
+  detail: string
+  final_host: string | null
+  title: string | null
+  summary: string | null
+  domain: string | null
+}
 
 type StartupRow = {
   id: string
@@ -64,7 +87,7 @@ function loadVectors(db: Database): Map<string, Float32Array> {
 }
 
 export function storeReadings(db: Database): StoreResult {
-  let result: StoreResult = { total: 0, rule: 0, inferred: 0, review: 0, displayNames: 0, founderNames: 0 }
+  let result: StoreResult = { total: 0, rule: 0, inferred: 0, review: 0, displayNames: 0, founderNames: 0, websites: 0 }
 
   db.transaction(() => {
     const startups: DeriveStartup[] = db
@@ -95,6 +118,40 @@ export function storeReadings(db: Database): StoreResult {
     const insert = db.query('INSERT INTO readings (id, kind, subject, value, lane, rule, why, basis) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
     for (const r of readings) insert.run(r.id, r.kind, r.subject, JSON.stringify(r.value), r.lane, r.rule, r.why, r.basis)
 
+    // Website checks: what each answer means. Only the uncertain or wrong ones get a reading.
+    const setCheckState = db.query('UPDATE website_checks SET state = ?, state_lane = ?, state_why = ? WHERE startup_id = ?')
+    const websites: StoredReading[] = []
+    const checks = db
+      .query<WebsiteRow, []>(
+        `SELECT w.startup_id, w.url, w.status, w.detail, w.final_host, w.title, w.summary, s.domain
+         FROM website_checks w JOIN startups s ON s.id = w.startup_id ORDER BY w.startup_id`,
+      )
+      .all()
+    for (const w of checks) {
+      let st: Reading<WebsiteState> = websiteState({ status: w.status, detail: w.detail, finalHost: w.final_host }, w.domain)
+      if (st.value === 'answers' && looksParked({ title: w.title, summary: w.summary })) {
+        st = {
+          value: 'parked',
+          lane: 'inferred',
+          rule: 'website.page-says-gone',
+          why: `The page says the domain is for sale or the site is gone: "${w.title ?? w.summary}"`,
+        }
+      }
+      setCheckState.run(st.value, st.lane, st.why, w.startup_id)
+      if (st.value === 'answers' || st.value === 'silent') continue
+      websites.push({
+        id: readingId('website', w.startup_id),
+        kind: 'website',
+        subject: w.startup_id,
+        value: { state: st.value, url: w.url, finalHost: w.final_host, title: w.title },
+        lane: st.lane,
+        rule: st.rule,
+        why: st.why,
+        basis: basisOf(w.url, w.status, w.detail, w.final_host, w.title),
+      })
+    }
+    for (const r of websites) insert.run(r.id, r.kind, r.subject, JSON.stringify(r.value), r.lane, r.rule, r.why, r.basis)
+
     db.run('UPDATE startups SET display_name = NULL, legal_form = NULL')
     db.run('UPDATE founders SET display_name = NULL')
     const setStartup = db.query('UPDATE startups SET display_name = ?, legal_form = ? WHERE id = ?')
@@ -113,17 +170,19 @@ export function storeReadings(db: Database): StoreResult {
       }
     }
 
+    const all = [...readings, ...websites]
     const counts: Record<Lane, number> = { rule: 0, inferred: 0, review: 0 }
-    for (const r of readings) counts[r.lane] += 1
+    for (const r of all) counts[r.lane] += 1
     const countOf = (sql: string) => db.query<{ n: number }, []>(sql).get()?.n ?? 0
 
     result = {
-      total: readings.length,
+      total: all.length,
       rule: counts.rule,
       inferred: counts.inferred,
       review: counts.review,
       displayNames: countOf('SELECT COUNT(*) AS n FROM startups WHERE display_name IS NOT NULL'),
       founderNames: countOf('SELECT COUNT(*) AS n FROM founders WHERE display_name IS NOT NULL'),
+      websites: websites.length,
     }
   })()
 

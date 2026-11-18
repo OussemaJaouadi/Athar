@@ -6,6 +6,8 @@ import { bareAddress, websiteAnswers, websiteReason, type WebsiteCheck } from '#
 import { StartupTitle } from '@/components/athar/startup-title'
 import { TileMark } from '@/components/athar/tile-mark'
 import { StartupLink } from '@/components/athar/startup-glimpse'
+import { Block, InItsOwnWords, Notes, OtherNames, Ventures, Why, websiteSentence } from '@/components/athar/story'
+import type { StartupStory } from '#/server/pipeline/story'
 
 // The startup page (direction C, picked by the owner on 17 Nov 2026): the record stays on the left,
 // everything the data connects to it stands on the right. Every list is a relation in the data model.
@@ -33,18 +35,6 @@ function SiteState({ check, none = 'No website to ask.' }: { check: WebsiteCheck
         {up ? check.finalHost && `, from ${check.finalHost}` : `: ${websiteReason(check.detail)}`}
       </span>
     </span>
-  )
-}
-
-function Block({ title, count, children }: { title: string; count?: React.ReactNode; children: React.ReactNode }) {
-  return (
-    <section className="grid min-w-0 gap-3">
-      <h2 className="font-sans text-sm font-medium tracking-[0.05em] uppercase">
-        {title}
-        {count !== undefined && <span className="ms-2 font-mono text-[0.8125rem] tracking-normal normal-case">{count}</span>}
-      </h2>
-      {children}
-    </section>
   )
 }
 
@@ -89,9 +79,15 @@ function NeighbourRow({ s }: { s: Neighbour }) {
   )
 }
 
-export function StartupRecord({ data, operator }: { data: StartupPage; operator?: boolean }) {
+export function StartupRecord({ data, story, operator }: { data: StartupPage; story: StartupStory; operator?: boolean }) {
   const { startup, source, notes, changes, check, people, sameIdea, sectorYear } = data
-  const repeat = people.filter((p) => p.others.length > 0)
+  // A founder's other startups already told in "Same founders, other ventures" are not told a second way.
+  const told = new Set(story.ventures.map((v) => v.startup.id))
+  const repeat = people
+    .map((p) => ({ ...p, others: p.others.filter((o) => !told.has(o.id)) }))
+    .filter((p) => p.others.length > 0)
+  const everyoneElseTold = people.some((p) => p.others.length > 0) && repeat.length === 0
+  const site = story.website
   const websiteChange = changes.find((c) => c.field === 'website')
   const year = sectorYear.year ? Number(sectorYear.year) : undefined
   const shownOthers = sectorYear.others.slice(0, 14)
@@ -122,6 +118,14 @@ export function StartupRecord({ data, operator }: { data: StartupPage; operator?
           </a>
           {startup.websiteKind === 'social' ? (
             <span>A page on a social network. Not asked: such pages answer whether or not they still exist.</span>
+          ) : check && site ? (
+            <>
+              <span>
+                {websiteSentence(site, websiteAnswers(check) ? null : websiteReason(check.detail))}
+                <Why said={site.said} />
+              </span>
+              <span>Asked on {day(check.checkedAt)}.</span>
+            </>
           ) : check ? (
             <>
               <SiteState check={check} />
@@ -146,9 +150,22 @@ export function StartupRecord({ data, operator }: { data: StartupPage; operator?
           <div className="flex items-start gap-4">
             <TileMark id={startup.id} sector={startup.sector} size={48} className="mt-1.5 shrink-0" title={startup.sector ?? undefined} />
             <h1 className="font-display text-[2.125rem] leading-[1.1] font-bold text-balance sm:text-[2.75rem]" dir="auto">
-              {startup.name}
+              {story.name}
             </h1>
           </div>
+          {(story.published !== story.name || story.legalForm) && (
+            <p className="text-sm">
+              {story.published !== story.name && (
+                <>
+                  Published as <span className="font-normal" dir="auto">{story.published}</span>
+                  {story.nameSaid && <Why said={story.nameSaid} />}
+                </>
+              )}
+              {story.published !== story.name && story.legalForm && ' · '}
+              {story.legalForm && <>Legal form {story.legalForm}</>}
+            </p>
+          )}
+          <OtherNames names={story.otherNames} />
           <p className="text-sm">
             From entry{' '}
             {operator ? (
@@ -172,6 +189,8 @@ export function StartupRecord({ data, operator }: { data: StartupPage; operator?
           <p className="max-w-[40ch] border border-dashed border-edge px-4 py-3 text-[0.9375rem]">The registry publishes no description for this startup.</p>
         )}
 
+        {site && <InItsOwnWords site={site} />}
+
         <dl className="grid grid-cols-[max-content_minmax(0,1fr)] border-t border-edge">
           {facts
             .filter(([, value]) => value !== null && value !== undefined && value !== '')
@@ -185,6 +204,8 @@ export function StartupRecord({ data, operator }: { data: StartupPage; operator?
       </div>
 
       <div className="grid min-w-0 gap-9">
+        <Ventures ventures={story.ventures} />
+
         <Block title="Same idea" count={sameIdea.length || undefined}>
           <Sentence>{ideaSentence(data)}</Sentence>
           {sameIdea.length > 0 && (
@@ -196,6 +217,7 @@ export function StartupRecord({ data, operator }: { data: StartupPage; operator?
           )}
         </Block>
 
+        {!everyoneElseTold && (
         <Block title="Same people" count={repeat.length || undefined}>
           {repeat.length ? (
             <ul className="border-t border-edge">
@@ -225,6 +247,7 @@ export function StartupRecord({ data, operator }: { data: StartupPage; operator?
             <Sentence>{people.length ? 'None of its founders appears on another startup in the registry.' : 'The registry names no founder.'}</Sentence>
           )}
         </Block>
+        )}
 
         {sectorYear.sector && sectorYear.year && (
           <Block title="Same sector, same year" count={`${sectorYear.sector} · ${sectorYear.year}`}>
@@ -256,6 +279,8 @@ export function StartupRecord({ data, operator }: { data: StartupPage; operator?
             )}
           </Block>
         )}
+
+        <Notes notes={story.notes} />
       </div>
     </article>
   )

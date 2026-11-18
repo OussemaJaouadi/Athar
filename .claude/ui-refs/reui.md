@@ -91,3 +91,11 @@ Primitives come from `https://reui.io/r/styles/radix-nova/<name>.json` into `src
 Looked at and not used:
 - SmoothUI `favicon-search`: its result mark is an image URL and, without one, it asks Google's favicon service for each result's domain, which would send startup domains to a third party; its fallback letter is 10px.
 - SmoothUI `ai-sources`: on the idea page it would repeat the list of matches that is already there.
+
+## Timeline (added 2026-11-18, story pages)
+
+- URL: https://reui.io/components/timeline (Markdown: https://reui.io/components/timeline.md)
+- Install: `npx shadcn@latest add @reui/timeline` (writes `src/components/reui/timeline.tsx`; the file imports `cn` from `"cn"`, change it to `@/lib/utils`).
+- Parts: Timeline (`orientation`, `value`, `defaultValue` = 1), TimelineItem (`step`, must be a direct child), TimelineIndicator, TimelineSeparator, TimelineHeader, TimelineDate (a `<time>`), TimelineTitle (an h3), TimelineContent.
+- `data-completed` fills the node when `step <= value`; pass `value={0}` for hollow nodes. Nothing is clickable.
+- Example used: Roadmap (c-timeline-2), dates in a right-aligned column left of the line from sm up, folded above the title on phones.

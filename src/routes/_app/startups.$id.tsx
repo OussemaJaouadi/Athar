@@ -3,22 +3,23 @@ import { ArrowLeft } from 'lucide-react'
 
 import { StartupRecord } from '@/components/athar/startup-record'
 import { getStartupPage } from '#/server/api/startup'
+import { getStartupStory } from '#/server/api/story'
 
 const shell = getRouteApi('/_app')
 
 export const Route = createFileRoute('/_app/startups/$id')({
   loader: async ({ params }) => {
-    const data = await getStartupPage({ data: params.id })
-    if (!data) throw notFound()
-    return data
+    const [data, story] = await Promise.all([getStartupPage({ data: params.id }), getStartupStory({ data: params.id })])
+    if (!data || !story) throw notFound()
+    return { ...data, story }
   },
-  head: ({ loaderData }) => ({ meta: loaderData ? [{ title: `${loaderData.startup.name} · Athar` }] : [] }),
+  head: ({ loaderData }) => ({ meta: loaderData ? [{ title: `${loaderData.story.name} · Athar` }] : [] }),
   component: StartupPage,
 })
 
 // One startup: its record on the left, everything the data connects to it on the right.
 function StartupPage() {
-  const data = Route.useLoaderData()
+  const { story, ...data } = Route.useLoaderData()
   const { viewer } = shell.useLoaderData()
   return (
     <main className="mx-auto w-full max-w-[84rem] px-4 pb-20 sm:px-8">
@@ -27,7 +28,7 @@ function StartupPage() {
           <ArrowLeft className="size-4" aria-hidden /> Back to search
         </Link>
       </div>
-      <StartupRecord data={data} operator={viewer.role === 'operator'} />
+      <StartupRecord data={data} story={story} operator={viewer.role === 'operator'} />
     </main>
   )
 }

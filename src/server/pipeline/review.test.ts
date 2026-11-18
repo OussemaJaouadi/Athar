@@ -5,7 +5,18 @@ import { join } from 'node:path'
 import * as sqliteVec from 'sqlite-vec'
 
 import type { Lane } from './lanes'
-import { decideReading, effective, forgetStale, loadDecisions, loadReadings, reviewQueue, reviewSummary, undoDecision } from './review'
+import {
+  decideReading,
+  effective,
+  followOf,
+  forgetStale,
+  loadDecisions,
+  loadReadings,
+  reviewQueue,
+  reviewSummary,
+  sharedPersonKeys,
+  undoDecision,
+} from './review'
 
 // The operator's review of readings. Run with: bun test
 
@@ -18,16 +29,24 @@ function database() {
   return db
 }
 
-type Put = { id: string; kind: 'name' | 'alias' | 'founder' | 'person' | 'person_pair' | 'relation' | 'website'; subject: string; lane: Lane; basis?: string; value?: unknown }
+type Put = {
+  id: string
+  kind: 'name' | 'alias' | 'founder' | 'person' | 'person_pair' | 'relation' | 'website'
+  subject: string
+  lane: Lane
+  basis?: string
+  value?: unknown
+  rule?: string
+}
 
-function put(db: Database, { id, kind, subject, lane, basis = 'b1', value = { v: id } }: Put) {
+function put(db: Database, { id, kind, subject, lane, basis = 'b1', value = { v: id }, rule = `${kind}.rule` }: Put) {
   db.run('INSERT INTO readings (id, kind, subject, value, lane, rule, why, basis) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [
     id,
     kind,
     subject,
     JSON.stringify(value),
     lane,
-    `${kind}.rule`,
+    rule,
     `because ${id}`,
     basis,
   ])
@@ -266,5 +285,187 @@ describe('summary', () => {
     put(db, { id: 'relation:a|b', kind: 'relation', subject: 'a|b', lane: 'inferred' })
     decideReading(db, { id: 'relation:a|b', value: 'linked' })
     expect(reviewSummary(db).byKind).toEqual([{ kind: 'relation', open: 0, decided: 1 }])
+  })
+})
+
+describe('following person readings', () => {
+  const ONE = 'relation.one-founder-only'
+
+  // A startup with founders in published order. Person keys are the trimmed, lower-cased names.
+  function startup(db: Database, id: string, names: string[]) {
+    const at = '2026-11-01T00:00:00.000Z'
+    db.run("INSERT OR IGNORE INTO downloads (id, url, fetched_at, last_checked_at, content_hash, byte_size, row_count) VALUES (1, 'registry', 'x', 'x', 'x', 1, 1)")
+    db.run('INSERT INTO entries (id, raw_json, first_download, last_download) VALUES (?, ?, 1, 1)', [`entry-${id}`, '{}'])
+    db.run('INSERT INTO startups (id, entry_id, name, first_download, last_download, created_at, updated_at) VALUES (?, ?, ?, 1, 1, ?, ?)', [
+      id,
+      `entry-${id}`,
+      id,
+      at,
+      at,
+    ])
+    names.forEach((name, position) => {
+      db.run('INSERT INTO founders (startup_id, position, name, person_key) VALUES (?, ?, ?, ?)', [id, position, name, name.trim().toLowerCase()])
+    })
+  }
+
+  const relation = (db: Database, subject: string, rule = ONE) =>
+    put(db, { id: `relation:${subject}`, kind: 'relation', subject, lane: 'review', rule, value: { relation: 'unrelated', shared: 1, similarity: 0.5 } })
+
+  const person = (db: Database, key: string, value: unknown = { same: true, startups: [] }) =>
+    put(db, { id: `person:${key}`, kind: 'person', subject: key, lane: 'review', value })
+
+  // s1, s2 share one name; s3, s4 share one name; s5, s6 share two names; s7, s8 share 'zed' (plus an empty key).
+  function setup() {
+    const db = database()
+    startup(db, 's1', ['Boudhraa Mehdi', 'Alice'])
+    startup(db, 's2', ['Boudhraa Mehdi', 'Bob'])
+    startup(db, 's3', ['Abid Khouloud', 'Carol'])
+    startup(db, 's4', ['Abid Khouloud', 'Dan'])
+    startup(db, 's5', ['Eve Adam', 'Frank Ben', 'Gina'])
+    startup(db, 's6', ['Eve Adam', 'Frank Ben', 'Hal'])
+    startup(db, 's7', ['Zed', ''])
+    startup(db, 's8', ['', 'Zed'])
+    startup(db, 's9', ['Unrelated Person'])
+    person(db, 'boudhraa mehdi')
+    person(db, 'abid khouloud')
+    relation(db, 's1|s2')
+    relation(db, 's3|s4')
+    relation(db, 's5|s6')
+    return db
+  }
+
+  test('sharedPersonKeys lists the shared keys of two startups, sorted, and nothing for unrelated ones', () => {
+    const db = setup()
+    expect(sharedPersonKeys(db, 's1', 's2')).toEqual(['boudhraa mehdi'])
+    expect(sharedPersonKeys(db, 's2', 's1')).toEqual(['boudhraa mehdi'])
+    expect(sharedPersonKeys(db, 's3', 's4')).toEqual(['abid khouloud'])
+    expect(sharedPersonKeys(db, 's5', 's6')).toEqual(['eve adam', 'frank ben'])
+    expect(sharedPersonKeys(db, 's1', 's3')).toEqual([])
+    expect(sharedPersonKeys(db, 's1', 's9')).toEqual([])
+    expect(sharedPersonKeys(db, 's7', 's8')).toEqual(['zed'])
+  })
+
+  test('with nothing decided, the open queue leaves out the relations that wait on a person', () => {
+    const db = setup()
+    expect(ids(reviewQueue(db))).toEqual(['person:abid khouloud', 'person:boudhraa mehdi', 'relation:s5|s6'])
+    expect(reviewQueue(db).find((i) => i.id === 'relation:s5|s6')?.follows).toBeUndefined()
+
+    const following = reviewQueue(db, { include: 'following' })
+    expect(ids(following)).toEqual(['relation:s1|s2', 'relation:s3|s4'])
+    expect(following[0].follows).toEqual({ personId: 'person:boudhraa mehdi', key: 'boudhraa mehdi', state: 'waiting' })
+    expect(following[1].follows?.state).toBe('waiting')
+
+    expect(reviewSummary(db)).toMatchObject({ toAnswer: 3, waitingOnPerson: 2, followed: 0 })
+    expect(reviewSummary(db).byKind).toEqual([
+      { kind: 'person', open: 2, decided: 0 },
+      { kind: 'relation', open: 1, decided: 0 },
+    ])
+  })
+
+  test('deciding a person "different" marks its relation as different and keeps it out of the queue', () => {
+    const db = setup()
+    decideReading(db, { id: 'person:boudhraa mehdi', value: { same: false, startups: [] } })
+    expect(ids(reviewQueue(db))).toEqual(['person:abid khouloud', 'relation:s5|s6'])
+    const following = reviewQueue(db, { include: 'following' })
+    expect(ids(following)).toEqual(['relation:s1|s2', 'relation:s3|s4'])
+    expect(following.map((i) => i.follows?.state)).toEqual(['different', 'waiting'])
+    expect(reviewSummary(db)).toMatchObject({ toAnswer: 2, waitingOnPerson: 1, followed: 1 })
+  })
+
+  test('deciding a person "same" brings its relation back into the queue with state same', () => {
+    const db = setup()
+    decideReading(db, { id: 'person:boudhraa mehdi', value: { same: false, startups: [] } })
+    decideReading(db, { id: 'person:abid khouloud', value: { same: true, startups: [] } })
+    const open = reviewQueue(db)
+    expect(ids(open)).toEqual(['relation:s3|s4', 'relation:s5|s6'])
+    expect(open[0].follows?.state).toBe('same')
+    expect(ids(reviewQueue(db, { include: 'following' }))).toEqual(['relation:s1|s2'])
+    expect(reviewSummary(db)).toMatchObject({ toAnswer: 2, waitingOnPerson: 0, followed: 1 })
+    expect(reviewSummary(db).byKind).toEqual([
+      { kind: 'person', open: 0, decided: 2 },
+      { kind: 'relation', open: 2, decided: 0 },
+    ])
+  })
+
+  test('undoing the person decision takes its relation out of the queue again', () => {
+    const db = setup()
+    decideReading(db, { id: 'person:abid khouloud', value: { same: true, startups: [] } })
+    expect(ids(reviewQueue(db))).toContain('relation:s3|s4')
+    expect(undoDecision(db, 'person:abid khouloud')).toBe(true)
+    expect(ids(reviewQueue(db))).toEqual(['person:abid khouloud', 'person:boudhraa mehdi', 'relation:s5|s6'])
+    expect(reviewQueue(db, { include: 'following' })[1].follows?.state).toBe('waiting')
+    expect(reviewSummary(db)).toMatchObject({ toAnswer: 3, waitingOnPerson: 2, followed: 0 })
+  })
+
+  test('a relation with its own decision is listed as decided whatever the person says', () => {
+    const db = setup()
+    decideReading(db, { id: 'person:boudhraa mehdi', value: { same: false, startups: [] } })
+    decideReading(db, { id: 'relation:s1|s2', value: { relation: 'linked' } })
+    const decided = reviewQueue(db, { include: 'decided' })
+    expect(ids(decided)).toEqual(['person:boudhraa mehdi', 'relation:s1|s2'])
+    expect(decided[1].follows).toBeUndefined()
+    expect(ids(reviewQueue(db, { include: 'following' }))).toEqual(['relation:s3|s4'])
+    expect(ids(reviewQueue(db, { include: 'all' }))).toContain('relation:s1|s2')
+    expect(reviewSummary(db)).toMatchObject({ toAnswer: 2, waitingOnPerson: 1, followed: 0 })
+
+    decideReading(db, { id: 'person:boudhraa mehdi', value: { same: true, startups: [] } })
+    expect(ids(reviewQueue(db, { include: 'decided' }))).toEqual(['person:boudhraa mehdi', 'relation:s1|s2'])
+    expect(reviewQueue(db, { include: 'decided' })[1].decided?.value).toEqual({ relation: 'linked' })
+  })
+
+  test('a relation with another rule is never followed', () => {
+    const db = setup()
+    startup(db, 's10', ['Kim Lee'])
+    startup(db, 's11', ['Kim Lee'])
+    person(db, 'kim lee')
+    relation(db, 's10|s11', 'relation.same-team')
+    expect(ids(reviewQueue(db))).toContain('relation:s10|s11')
+    expect(reviewQueue(db).find((i) => i.id === 'relation:s10|s11')?.follows).toBeUndefined()
+    expect(ids(reviewQueue(db, { include: 'following' }))).not.toContain('relation:s10|s11')
+    decideReading(db, { id: 'person:kim lee', value: { same: false, startups: [] } })
+    expect(ids(reviewQueue(db))).toContain('relation:s10|s11')
+    expect(reviewSummary(db).followed).toBe(0)
+  })
+
+  test('a settled person reading with same false also makes its relation different', () => {
+    const db = setup()
+    startup(db, 's12', ['Zed', 'Other'])
+    startup(db, 's13', ['Zed', 'Third'])
+    put(db, { id: 'person:zed', kind: 'person', subject: 'zed', lane: 'rule', value: { same: false, startups: [] } })
+    relation(db, 's12|s13')
+    expect(reviewQueue(db, { include: 'following' }).find((i) => i.id === 'relation:s12|s13')?.follows?.state).toBe('different')
+    expect(ids(reviewQueue(db))).not.toContain('relation:s12|s13')
+  })
+
+  test('a relation with two shared names, or no person reading, is never followed', () => {
+    const db = setup()
+    const two = followOf(db, effective(db).find((e) => e.id === 'relation:s5|s6')!, effective(db))
+    expect(two).toBeNull()
+    expect(sharedPersonKeys(db, 's5', 's6')).toHaveLength(2)
+
+    startup(db, 's14', ['Lonely Name'])
+    startup(db, 's15', ['Lonely Name'])
+    relation(db, 's14|s15')
+    expect(followOf(db, effective(db).find((e) => e.id === 'relation:s14|s15')!, effective(db))).toBeNull()
+    expect(ids(reviewQueue(db))).toContain('relation:s14|s15')
+  })
+
+  test('followOf ignores non-relation kinds and relations that already have a decision', () => {
+    const db = setup()
+    const all = effective(db)
+    expect(followOf(db, all.find((e) => e.id === 'person:boudhraa mehdi')!, all)).toBeNull()
+    expect(followOf(db, all.find((e) => e.id === 'relation:s1|s2')!, all)).toMatchObject({ key: 'boudhraa mehdi', state: 'waiting' })
+    decideReading(db, { id: 'relation:s1|s2', value: { relation: 'linked' } })
+    const decided = effective(db)
+    expect(followOf(db, decided.find((e) => e.id === 'relation:s1|s2')!, decided)).toBeNull()
+  })
+
+  test('non-relation readings never carry follows and keep their place in the queue', () => {
+    const db = setup()
+    put(db, { id: 'name:a', kind: 'name', subject: 'a', lane: 'review' })
+    const queue = reviewQueue(db)
+    expect(ids(queue)).toEqual(['person:abid khouloud', 'person:boudhraa mehdi', 'relation:s5|s6', 'name:a'])
+    expect(queue[3].follows).toBeUndefined()
+    expect(reviewSummary(db).byKind.map((k) => k.kind)).toEqual(['person', 'relation', 'name'])
   })
 })

@@ -1,3 +1,4 @@
+import { readFounders as readFounderField } from './founder-field'
 import type { RegistryRow } from './registry'
 
 // Clean reads one raw registry row into typed fields. It is a pure function and nothing it returns
@@ -8,7 +9,7 @@ import type { RegistryRow } from './registry'
  * The version of the reading rules in this file and of the grouping rule in build.ts.
  * Raise it whenever a rule changes what a startup looks like; the portal then says a rebuild is due.
  */
-export const RULES = 'rules-3'
+export const RULES = 'rules-4'
 
 /** A visible edit to what the registry published. Trimming spaces and typing a year are not listed. */
 export type Change = { field: string; from: unknown; to: unknown; why: string }
@@ -149,16 +150,17 @@ export function parseWebsite(value: string | null) {
 export const personKey = (name: string) => plain(name).split(/[^\p{L}\p{N}]+/u).filter(Boolean).sort().join(' ')
 
 function readFounders(value: string[] | null) {
+  const { names, readings } = readFounderField((value ?? []).map(String))
   const seen = new Set<string>()
   const founders: Founder[] = []
-  for (const published of value ?? []) {
-    const name = collapse(String(published))
+  for (const published of names) {
+    const name = collapse(published)
     const key = personKey(name)
     if (!key || seen.has(key)) continue
     seen.add(key)
     founders.push({ name, personKey: key })
   }
-  return founders
+  return { founders, readings }
 }
 
 // ── the row ─────────────────────────────────────────────────────────────────────────────────────
@@ -190,9 +192,19 @@ export function cleanEntry(row: RegistryRow): { cleaned: Cleaned; changes: Chang
   if (site.repaired && !site.extraText && !site.others.length)
     changes.push({ field: 'website', from: row.website, to: site.website, why: 'Typing error repaired' })
 
-  const founders = readFounders(row.founders)
-  if (founders.length !== (row.founders ?? []).length)
-    changes.push({ field: 'founders', from: row.founders, to: founders.map((f) => f.name), why: 'Blank and repeated names removed' })
+  const { founders, readings } = readFounders(row.founders)
+  const published = (row.founders ?? []).map(String)
+  const listed = founders.map((f) => f.name)
+  if (listed.length !== published.length || listed.some((name, i) => name !== published[i])) {
+    const why = readings.some((r) => r.rule === 'founder.split')
+      ? 'One item held several names; they are listed separately'
+      : readings.some((r) => r.rule === 'founder.unglued')
+        ? 'Two words were joined; a space was added'
+        : 'Blank and repeated names removed'
+    changes.push({ field: 'founders', from: row.founders, to: listed, why })
+  }
+  const unclear = readings.filter((r) => r.lane === 'review').map((r) => r.why)
+  if (unclear.length) notes.push({ code: 'founder_unclear', text: unclear.join('; ') })
 
   const label = /^(\d{2})\/(\d{4})$/.exec(row.label?.trim() ?? '')
   const labelled = label && Number(label[1]) >= 1 && Number(label[1]) <= 12 ? `${label[2]}-${label[1]}` : null

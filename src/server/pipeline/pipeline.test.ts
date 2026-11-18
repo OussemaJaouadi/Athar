@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import * as sqliteVec from 'sqlite-vec'
 
 import { build, slug } from './build'
-import { cleanEntry, detectLanguage, displayRow, nameKey, parseWebsite, personKey } from './clean'
+import { RULES, cleanEntry, detectLanguage, displayRow, nameKey, parseWebsite, personKey } from './clean'
 import { entryId, ingest } from './collect'
 import type { RegistryRow } from './registry'
 
@@ -111,6 +111,39 @@ describe('one entry', () => {
     const repeated = cleanEntry(row({ founders: ['Rayen Cherni', ' ', 'Rayen CHERNI'] }))
     expect(repeated.cleaned.founders.map((f) => f.name)).toEqual(['Rayen Cherni'])
     expect(repeated.changes.map((c) => c.field)).toEqual(['founders'])
+  })
+  test('an item that holds several names is split, and a glued pair is unglued', () => {
+    const split = cleanEntry(row({ founders: ['Omar Kennou-Ali Frad-Mohamed Guirat-Nada Hadrich'] }))
+    expect(split.cleaned.founders.map((f) => f.name)).toEqual(['Omar Kennou', 'Ali Frad', 'Mohamed Guirat', 'Nada Hadrich'])
+    expect(split.cleaned.founders.every((f) => f.personKey.length > 0)).toBe(true)
+    expect(split.changes.map((c) => c.field)).toEqual(['founders'])
+    expect(split.changes[0]!.why).toContain('several names')
+    expect(split.notes).toEqual([])
+
+    const glued = cleanEntry(row({ founders: ['HoucineJhimi'] }))
+    expect(glued.cleaned.founders.map((f) => f.name)).toEqual(['Houcine Jhimi'])
+    expect(glued.changes.map((c) => c.field)).toEqual(['founders'])
+    expect(glued.changes[0]!.why).toContain('joined')
+  })
+  test('a plain name is left alone; a one-word name is noted for an operator; a placeholder names nobody', () => {
+    const plain = cleanEntry(row({ founders: ['Jean-Pierre Dupont'] }))
+    expect(plain.cleaned.founders.map((f) => f.name)).toEqual(['Jean-Pierre Dupont'])
+    expect(plain.changes).toEqual([])
+    expect(plain.notes).toEqual([])
+
+    const one = cleanEntry(row({ founders: ['Jacques'] }))
+    expect(one.cleaned.founders.map((f) => f.name)).toEqual(['Jacques'])
+    expect(one.notes.map((n) => n.code)).toEqual(['founder_unclear'])
+
+    expect(cleanEntry(row({ founders: ['n.a.'] })).cleaned.founders).toEqual([])
+  })
+  test('repeated and blank founders collapse to one, with the existing reason', () => {
+    const repeats = cleanEntry(row({ founders: ['Mehdi BOUDHRAA', 'Mehdi Boudhraa', ''] }))
+    expect(repeats.cleaned.founders.map((f) => f.name)).toEqual(['Mehdi BOUDHRAA'])
+    expect(repeats.changes).toEqual([{ field: 'founders', from: ['Mehdi BOUDHRAA', 'Mehdi Boudhraa', ''], to: ['Mehdi BOUDHRAA'], why: 'Blank and repeated names removed' }])
+  })
+  test('the reading rules are at rules-4', () => {
+    expect(RULES).toBe('rules-4')
   })
   test('records what is missing or unreadable as a note, never as a decision', () => {
     expect(cleanEntry(row({ desc: null })).notes.map((n) => n.code)).toEqual(['no_description'])

@@ -1,6 +1,7 @@
 import { now } from '../ids'
 import { RULES, cleanEntry, nameKey, type Cleaned, type Founder, type Note } from './clean'
 import type { RegistryRow } from './registry'
+import { laneNotes, storeReadings } from './store-readings'
 import type { RunNote, Step } from './types'
 
 type EntryRow = { id: string; raw_json: string; copies: number; first_download: number; last_download: number; startup_id: string | null }
@@ -224,6 +225,7 @@ export const build: Step = {
       db.run('DELETE FROM startups_fts')
       db.run('INSERT INTO startups_fts (startup_id, name, description, sector) SELECT id, name, description, sector FROM startups')
     })()
+    const lanes = storeReadings(db)
 
     const total = groups.length
     const gone = db.query<{ n: number }, [number]>('SELECT COUNT(*) AS n FROM startups WHERE last_download < ?').get(latest)?.n ?? 0
@@ -235,6 +237,7 @@ export const build: Step = {
       { code: 'startups_changed', count: tally.changed, text: 'startups whose published content changed' },
       { code: 'startups_unchanged', count: tally.unchanged, text: 'startups left as they were' },
     )
+    notes.push(...laneNotes(lanes))
     return {
       itemsIn: items.length,
       itemsOut: total,

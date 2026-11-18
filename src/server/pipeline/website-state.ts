@@ -237,7 +237,7 @@ export function websiteState(check: CheckInput, domain: string | null): Reading<
       'moved',
       'review',
       'website.moved-similar',
-      `Answers from ${finalHost}, a similar name to ${asked}; an operator should confirm it is the same startup.`,
+      `Answers from ${finalHost}, a name close to ${asked}; whether it is the same startup is not confirmed.`,
     )
   }
 

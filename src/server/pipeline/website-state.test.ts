@@ -111,6 +111,7 @@ describe('websiteState: moved', () => {
     expect(r.value).toBe('moved')
     expect(r.lane).toBe('review')
     expect(r.rule).toBe('website.moved-similar')
+    expect(r.why).toBe('Answers from tuniq.co.uk, a name close to tuniqoasis.com; whether it is the same startup is not confirmed.')
   })
 
   test('contained name shorter than 4 characters is not similar', () => {

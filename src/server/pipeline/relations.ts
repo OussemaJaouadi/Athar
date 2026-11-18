@@ -116,7 +116,7 @@ export function relate(a: StartupFacts, b: StartupFacts, similarity: number | nu
       'sibling',
       'review',
       'relation.one-founder-same-field',
-      `${evidence}. One founder overlaps in the same field; an operator should decide if it is a sibling.`,
+      `${evidence}. One founder name is on both, in the same field; whether it is a second venture by the same person is not confirmed.`,
     )
   }
 

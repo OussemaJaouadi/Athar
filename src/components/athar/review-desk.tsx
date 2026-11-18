@@ -39,21 +39,8 @@ export const KIND_NAME: Record<string, string> = {
   name: 'Startup names',
 }
 
-// The words of each answer the pipeline offers, so a list row can say what was answered without a request per row.
-const ANSWER_WORDS: Record<string, string> = {
-  '{"same":true}': 'Same person',
-  '{"same":false}': 'Different people',
-  '{"accept":true}': 'Yes',
-  '{"accept":false}': 'Kept as published',
-  '{"relation":"renamed"}': 'Same venture, renamed',
-  '{"relation":"successor"}': 'A later venture by the same people',
-  '{"relation":"sibling"}': 'A second venture alongside',
-  '{"relation":"unrelated"}': 'Not related',
-  '{"state":"moved"}': 'It moved here',
-  '{"state":"parked"}': 'The site is gone',
-  '{"state":"answers"}': 'It still answers',
-}
-export const answerWords = (value: unknown) => ANSWER_WORDS[JSON.stringify(value)] ?? 'Answered'
+/** The words of a decision: the label the server gave its answer, or "Answered" when none is known. */
+export const answerWords = (decided: { value: unknown; label?: string | null } | null | undefined): string => decided?.label ?? 'Answered'
 
 const titleCase = (s: string) => s.replace(/(^|[\s'’-])(\p{L})/gu, (_, a: string, b: string) => a + b.toUpperCase())
 
@@ -210,7 +197,7 @@ export function ReviewPane({
         decided ? (
           <>
             <p className="min-w-0 flex-1 text-[0.875rem] text-ink">
-              <span className="font-medium">{answerWords(decided.value)}</span>
+              <span className="font-medium">{answerWords(decided)}</span>
               <span className="text-ink-2"> · answered {day(decided.decidedAt)}</span>
               {decided.note && <span dir="auto"> · {decided.note}</span>}
             </p>

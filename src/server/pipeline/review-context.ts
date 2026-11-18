@@ -119,28 +119,47 @@ const splitPair = (subject: string): [string, string] => {
 
 const keysOf = (card: StartupCard) => card.founders.map((f) => f.key)
 
-const sameAnswers = () => [
-  { label: 'Same person', value: { same: true } },
-  { label: 'Different people', value: { same: false } },
-]
+/** The end of the person question, by how many startups the name appears on. */
+const personPhrase = (startups: number) =>
+  startups === 0 ? 'one person' : startups === 1 ? 'on this startup one person' : `the same person on these ${startups} startups`
 
-const acceptAnswers = () => [
-  { label: 'Yes', value: { accept: true } },
-  { label: 'No, keep the published name', value: { accept: false } },
-]
+/** The answers each kind offers, in order; the first keeps Athar's reading. */
+export function answersFor(kind: ReadingKind): { label: string; value: unknown }[] {
+  switch (kind) {
+    case 'person':
+    case 'person_pair':
+      return [
+        { label: 'Same person', value: { same: true } },
+        { label: 'Different people', value: { same: false } },
+      ]
+    case 'relation':
+      return [
+        { label: 'Same venture, renamed', value: { relation: 'renamed' } },
+        { label: 'A later venture by the same people', value: { relation: 'successor' } },
+        { label: 'A second venture alongside', value: { relation: 'sibling' } },
+        { label: 'Not related', value: { relation: 'unrelated' } },
+      ]
+    case 'website':
+      return [
+        { label: 'It moved here', value: { state: 'moved' } },
+        { label: 'The site is gone', value: { state: 'parked' } },
+        { label: 'It still answers', value: { state: 'answers' } },
+      ]
+    case 'name':
+    case 'alias':
+    case 'founder':
+      return [
+        { label: 'Yes', value: { accept: true } },
+        { label: 'No, keep the published name', value: { accept: false } },
+      ]
+  }
+}
 
-const relationAnswers = () => [
-  { label: 'Same venture, renamed', value: { relation: 'renamed' } },
-  { label: 'A later venture by the same people', value: { relation: 'successor' } },
-  { label: 'A second venture alongside', value: { relation: 'sibling' } },
-  { label: 'Not related', value: { relation: 'unrelated' } },
-]
-
-const websiteAnswers = () => [
-  { label: 'It moved here', value: { state: 'moved' } },
-  { label: 'The site is gone', value: { state: 'parked' } },
-  { label: 'It still answers', value: { state: 'answers' } },
-]
+/** The label of the answer whose value equals `value` (compared as JSON), or null when no answer offers it. */
+export function answerLabel(kind: ReadingKind, value: unknown): string | null {
+  const key = JSON.stringify(value)
+  return answersFor(kind).find((a) => JSON.stringify(a.value) === key)?.label ?? null
+}
 
 /** The question, answers and evidence for one stored reading; null when the reading does not exist. */
 export function reviewContext(db: Database, id: string): ReviewContext | null {
@@ -154,8 +173,8 @@ export function reviewContext(db: Database, id: string): ReviewContext | null {
       const person = personCard(db, subject)
       return {
         ...base,
-        question: `Is "${person.names[0] ?? subject}" the same person on these ${person.startups.length} startups?`,
-        answers: sameAnswers(),
+        question: `Is "${person.names[0] ?? subject}" ${personPhrase(person.startups.length)}?`,
+        answers: answersFor(kind),
         startups: person.startups,
         people: [person],
         sharedKeys: [subject],
@@ -168,7 +187,7 @@ export function reviewContext(db: Database, id: string): ReviewContext | null {
       return {
         ...base,
         question: `Are "${first.names[0] ?? a}" and "${second.names[0] ?? b}" the same person?`,
-        answers: sameAnswers(),
+        answers: answersFor('person_pair'),
         startups: sortCards(uniqueCards([...first.startups, ...second.startups])),
         people: [first, second],
         sharedKeys: [],
@@ -182,7 +201,7 @@ export function reviewContext(db: Database, id: string): ReviewContext | null {
       return {
         ...base,
         question: `How are ${a?.name ?? idA} and ${b?.name ?? idB} related?`,
-        answers: relationAnswers(),
+        answers: answersFor('relation'),
         startups: [a, b].filter(notNull),
         people: [],
         sharedKeys: shared,
@@ -193,7 +212,7 @@ export function reviewContext(db: Database, id: string): ReviewContext | null {
       return {
         ...base,
         question: `What does ${card?.name ?? subject}'s website show today?`,
-        answers: websiteAnswers(),
+        answers: answersFor('website'),
         startups: card ? [card] : [],
         people: [],
         sharedKeys: [],
@@ -205,7 +224,7 @@ export function reviewContext(db: Database, id: string): ReviewContext | null {
       return {
         ...base,
         question: `Is this the right name for ${card?.published ?? subject}?`,
-        answers: acceptAnswers(),
+        answers: answersFor(kind),
         startups: card ? [card] : [],
         people: [],
         sharedKeys: [],
@@ -217,7 +236,7 @@ export function reviewContext(db: Database, id: string): ReviewContext | null {
       return {
         ...base,
         question: "Is this founder's name read correctly?",
-        answers: acceptAnswers(),
+        answers: answersFor(kind),
         startups: card ? [card] : [],
         people: [],
         sharedKeys: [],

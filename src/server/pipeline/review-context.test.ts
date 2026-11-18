@@ -4,7 +4,8 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import * as sqliteVec from 'sqlite-vec'
 
-import { personCard, reviewContext, startupCard } from './review-context'
+import { answerLabel, answersFor, personCard, reviewContext, startupCard } from './review-context'
+import type { ReadingKind } from './readings'
 
 // The evidence beside each review question, on a small hand-made registry. Run with: bun test
 
@@ -137,6 +138,27 @@ describe('reviewContext', () => {
     expect(ctx?.people.map((p) => p.key)).toEqual(['ahmed ben said'])
     expect(ctx?.people[0]?.names).toEqual(['Ahmed Ben Said', 'ahmed ben said'])
     expect(ctx?.sharedKeys).toEqual(['ahmed ben said'])
+  })
+
+  test('person question says one startup or none in the plain form', () => {
+    const db = database()
+    seed(db)
+    db.run(`INSERT INTO readings (id, kind, subject, value, lane, rule, why, basis) VALUES ('person:sara trabelsi', 'person', 'sara trabelsi', '{"same":true}', 'review', 'test', 'test', 'basis')`)
+    db.run(`INSERT INTO readings (id, kind, subject, value, lane, rule, why, basis) VALUES ('person:nobody here', 'person', 'nobody here', '{"same":true}', 'review', 'test', 'test', 'basis')`)
+    expect(reviewContext(db, 'person:sara trabelsi')?.question).toBe('Is "Sara Trabelsi" on this startup one person?')
+    expect(reviewContext(db, 'person:nobody here')?.question).toBe('Is "nobody here" one person?')
+  })
+
+  test('answersFor gives a non-empty list for every kind', () => {
+    const kinds: ReadingKind[] = ['name', 'alias', 'founder', 'person', 'person_pair', 'relation', 'website']
+    for (const kind of kinds) expect(answersFor(kind).length).toBeGreaterThan(0)
+  })
+
+  test('answerLabel finds the label of an offered value and returns null for an unknown one', () => {
+    expect(answerLabel('person', { same: false })).toBe('Different people')
+    expect(answerLabel('website', { state: 'parked' })).toBe('The site is gone')
+    expect(answerLabel('person', { same: 'maybe' })).toBeNull()
+    expect(answerLabel('name', { accept: true })).toBe('Yes')
   })
 
   test('person_pair', () => {

@@ -3,6 +3,7 @@ import type { Database } from 'bun:sqlite'
 import { now } from '../ids'
 import { applyDecisions, decide, type Effective, laneTotals, lanePercent, type LaneTotals, staleDecisions } from './decisions'
 import { type Decision, readingId, type ReadingKind, type StoredReading } from './readings'
+import { answerLabel } from './review-context'
 
 // The operator's review of derived readings: load them, apply the decisions, list what waits, record an answer.
 // Storage lives in migration 009 (tables `readings` and `decisions`); the rules live in decisions.ts.
@@ -33,7 +34,8 @@ export type ReviewItem = {
   why: string
   lane: 'rule' | 'inferred' | 'review'
   /** The operator's answer that applies now, or null. */
-  decided: { value: unknown; note: string | null; decidedAt: string } | null
+  /** `label` is the words of the answer the value matches, or null when no answer offers it. */
+  decided: { value: unknown; note: string | null; decidedAt: string; label?: string | null } | null
   /** Set on relations that follow a person reading. */
   follows?: Follow | null
   /** The subject in the registry's words: startup and founder names in place of ids and keys. */
@@ -135,7 +137,7 @@ function toItem(e: Effective, follow: Follow | null | undefined): ReviewItem {
     rule: e.rule,
     why: e.why,
     lane: e.lane,
-    decided: e.decided ? { value: e.decided.value, note: e.decided.note, decidedAt: e.decided.decidedAt } : null,
+    decided: e.decided ? { value: e.decided.value, note: e.decided.note, decidedAt: e.decided.decidedAt, label: answerLabel(e.kind, e.decided.value) } : null,
   }
   if (follow) item.follows = follow
   return item

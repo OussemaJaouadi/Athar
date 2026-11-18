@@ -146,6 +146,17 @@ describe('deciding', () => {
     expect(loadDecisions(db)).toHaveLength(1)
   })
 
+  test('a decided item carries the label of its answer, and null when no answer offers the value', () => {
+    const db = database()
+    put(db, { id: 'person:p', kind: 'person', subject: 'p', lane: 'review' })
+    put(db, { id: 'name:a', kind: 'name', subject: 'a', lane: 'review' })
+    expect(decideReading(db, { id: 'person:p', value: { same: false } }).decided?.label).toBe('Different people')
+    expect(decideReading(db, { id: 'name:a', value: 'Alpha' }).decided?.label).toBeNull()
+    const [decided] = reviewQueue(db, { include: 'decided' }).filter((i) => i.id === 'name:a')
+    expect(decided.decided?.label).toBeNull()
+    expect(reviewQueue(db, { include: 'decided' }).find((i) => i.id === 'person:p')?.decided?.label).toBe('Different people')
+  })
+
   test('a blank or missing note is stored as null', () => {
     const db = database()
     put(db, { id: 'name:a', kind: 'name', subject: 'a', lane: 'review' })

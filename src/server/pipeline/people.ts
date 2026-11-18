@@ -150,6 +150,6 @@ export function maybeSamePerson(
     false,
     'review',
     distance === 'contained' ? 'person.name-contained' : 'person.one-letter-apart',
-    `"${k1}" and "${k2}" are ${how} with no shared co-founder or website, so an operator decides`,
+    `"${k1}" and "${k2}" are ${how} with no shared co-founder or website; whether they are one person is not confirmed`,
   )
 }

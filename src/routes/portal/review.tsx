@@ -126,7 +126,7 @@ function ReviewPage() {
                 selected={it.id === readingId}
                 onSelect={() => select(it.id)}
                 title={<span dir="auto">{subjectWords(it)}</span>}
-                qualifier={it.decided ? answerWords(it.decided.value) : undefined}
+                qualifier={it.decided ? answerWords(it.decided) : undefined}
                 detail={it.why}
               />
             </div>

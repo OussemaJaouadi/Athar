@@ -13,6 +13,7 @@ import { SectorSwatch } from '@/components/athar/tile-mark'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
 import { getLandscapeRows, type LandscapeRow, type RepeatFounder } from '#/server/api/app'
+import { getStoryCounts } from '#/server/api/story'
 import { THEMES } from '#/shared/themes'
 
 const TABS = [
@@ -29,7 +30,7 @@ export const Route = createFileRoute('/_app/landscape')({
     sector: typeof s.sector === 'string' && s.sector ? s.sector : Array.isArray(s.sector) && typeof s.sector[0] === 'string' ? s.sector[0] : undefined,
     by: s.by === 'theme' ? 'theme' : undefined,
   }),
-  loader: () => getLandscapeRows(),
+  loader: async () => ({ ...(await getLandscapeRows()), story: await getStoryCounts() }),
   component: LandscapePage,
 })
 
@@ -78,7 +79,7 @@ const Empty = ({ h }: { h: number }) => <div style={{ height: h }} />
 
 // Landscape: one question per tab. Question, controls, the chart full width, a caption, then three findings.
 function LandscapePage() {
-  const { rows: all, founders } = Route.useLoaderData()
+  const { rows: all, founders, story } = Route.useLoaderData()
   const search = Route.useSearch()
   const navigate = useNavigate({ from: '/landscape' })
   const t = useTokens()
@@ -125,7 +126,7 @@ function LandscapePage() {
       <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} className="pt-8">
         {tab === 'growth' && <Growth rows={rows} labelYears={labelYears} t={t} renderer={renderer} sector={sector} />}
         {tab === 'fields' && <Fields all={all} t={t} renderer={renderer} by={search.by ?? 'sector'} onBy={(b) => setSearch({ by: b === 'theme' ? 'theme' : undefined })} />}
-        {tab === 'teams' && <Teams rows={rows} t={t} renderer={renderer} founders={sector ? founders.filter((f) => f.startups.some((s) => rows.some((r) => r.id === s.id))) : founders} />}
+        {tab === 'teams' && <Teams story={story} rows={rows} t={t} renderer={renderer} founders={sector ? founders.filter((f) => f.startups.some((s) => rows.some((r) => r.id === s.id))) : founders} />}
       </div>
 
       <p className="mt-14 max-w-[60rem] border-t border-edge/60 pt-4 text-sm leading-6 text-ink-2">
@@ -296,7 +297,12 @@ function Growth({ rows, labelYears, t, renderer, sector }: { rows: LandscapeRow[
           <DataTable caption="Startups founded and labelled, so far and that year" head={['Year', 'Founded so far', 'Founded that year', 'Labelled so far', 'Labelled that year']} rows={cum.map((p) => [p.year, p.foundedSoFar, p.founded, p.labelledSoFar, p.labelled])} />
         </>
       }
-      caption="The gap between the bars and the line is startups that already existed and did not carry the label yet. It closes as the label catches up."
+      caption={
+        <>
+          The gap between the bars and the line is startups that already existed and did not carry the label yet. It closes as the label catches up.
+          <span className="mt-1.5 block">Fewer labels in the latest years may reflect a change in how the label is granted as well as fewer startups, and the latest year is incomplete.</span>
+        </>
+      }
       findings={[
         { figure: rows.length, text: `labelled startups${sector ? ` in ${sector}` : ''} in the registry.` },
         { figure: pf?.founded, text: `founded in ${pf?.year}, the peak founding year. ${last?.labelled} were labelled in ${last?.year}.` },
@@ -463,7 +469,7 @@ function Fields({ all, t, renderer, by, onBy }: { all: LandscapeRow[]; t: Tokens
 const TEAM_SIZES = ['1 founder', '2 founders', '3 founders', '4 or more'] as const
 
 /** Share bands by founding year: each year a full column, each band one team size, bigger teams brighter. */
-function Teams({ rows, t, renderer, founders }: { rows: LandscapeRow[]; t: Tokens | null; renderer: ReturnType<typeof motion>; founders: RepeatFounder[] }) {
+function Teams({ story, rows, t, renderer, founders }: { story: Awaited<ReturnType<typeof getStoryCounts>>; rows: LandscapeRow[]; t: Tokens | null; renderer: ReturnType<typeof motion>; founders: RepeatFounder[] }) {
   const known = rows.filter((r) => bucketOf(r) !== null)
   const n = lastBucket(rows) + 1
   const xs = Array.from({ length: n }, (_, i) => i)
@@ -514,6 +520,7 @@ function Teams({ rows, t, renderer, founders }: { rows: LandscapeRow[]; t: Token
   const two = known.filter((r) => sizeOf(r) === 1).length
   const [more, setMore] = useState(false)
   const shown = more ? founders : founders.slice(0, 9)
+  const ventures = story.renamed + story.successors + story.siblings
   const def = useMemo(() => {
     if (!t) return null
     // Band names at the left, on the first column's segments, pushed apart where segments are thin.
@@ -602,6 +609,17 @@ function Teams({ rows, t, renderer, founders }: { rows: LandscapeRow[]; t: Token
           </button>
         )}
         <p className="mt-2 text-[0.8125rem] text-ink-2">Matched on the written name, so a namesake can appear here by mistake.</p>
+        <p className="mt-4 max-w-[60rem] text-[0.9375rem] leading-6 text-ink">
+          Founders of {ventures} pairs of startups went on to another venture (a renamed, successor or sibling startup);{' '}
+          <Link to="/search" search={{ ventures: 'founders' }}>
+            see them in the Archive
+          </Link>
+          . {story.nameOnly} more pairs share a founder name that is not confirmed as the same person.{' '}
+          <Link to="/search" search={{ ventures: 'names' }}>
+            {story.otherNames} other names
+          </Link>{' '}
+          are on file for startups.
+        </p>
       </div>
     </Section>
   )
@@ -611,7 +629,8 @@ function Teams({ rows, t, renderer, founders }: { rows: LandscapeRow[]; t: Token
 
 function DataTable({ caption, head, rows }: { caption: string; head: string[]; rows: (string | number)[][] }) {
   return (
-    <table className="sr-only">
+    <div className="sr-only">
+    <table>
       <caption>{caption}</caption>
       <thead>
         <tr>
@@ -630,6 +649,7 @@ function DataTable({ caption, head, rows }: { caption: string; head: string[]; r
         ))}
       </tbody>
     </table>
+    </div>
   )
 }
 

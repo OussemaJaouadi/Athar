@@ -87,7 +87,7 @@ export const getIdea = createServerFn()
         status: 'reachable' | 'unreachable' | null; detail: string | null; final_host: string | null; checked_at: string | null; since: string | null },
       [string]
     >(
-      `SELECT s.id, s.name, s.sector, s.labelled, s.description, w.status, w.detail, w.final_host, w.checked_at, w.since
+      `SELECT s.id, COALESCE(s.display_name, s.name) AS name, s.sector, s.labelled, s.description, w.status, w.detail, w.final_host, w.checked_at, w.since
        FROM startups s LEFT JOIN website_checks w ON w.startup_id = s.id WHERE s.id = ?`,
     )
     const matches: IdeaMatch[] = (JSON.parse(c.matches_json) as StoredMatch[]).flatMap((m) => {

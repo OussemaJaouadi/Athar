@@ -2,18 +2,21 @@ import { Link, createFileRoute, getRouteApi } from '@tanstack/react-router'
 import { ArrowRight } from 'lucide-react'
 
 import { AskForm } from '@/components/athar/ask-form'
+import { SavedChecks } from '@/components/athar/saved-checks'
 import { TileMark } from '@/components/athar/tile-mark'
 import { cn } from '@/lib/utils'
 import { getWallCards, type RegistryCard } from '#/server/api/app'
+import { listIdeas } from '#/server/api/ideas'
 
-type Search = { draft?: string }
+type Search = { draft?: string; q?: string }
 const shell = getRouteApi('/_app')
 
 export const Route = createFileRoute('/_app/')({
   validateSearch: (s: Record<string, unknown>): Search => ({
     draft: typeof s.draft === 'string' ? s.draft : undefined,
+    q: typeof s.q === 'string' ? s.q : undefined,
   }),
-  loader: async () => ({ cards: await getWallCards({ data: { perSector: 3 } }) }),
+  loader: async () => ({ cards: await getWallCards({ data: { perSector: 3 } }), saved: await listIdeas() }),
   component: Home,
 })
 
@@ -22,12 +25,12 @@ const longDate = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { da
 
 // Home: ask the registry. The check opens on its own page (/ideas/<id>); before asking, the wall of startups.
 function Home() {
-  const { cards } = Route.useLoaderData()
-  const { draft } = Route.useSearch()
-  return <Ask cards={cards} draft={draft} />
+  const { cards, saved } = Route.useLoaderData()
+  const { draft, q } = Route.useSearch()
+  return <Ask cards={cards} saved={saved} draft={q ?? draft} />
 }
 
-function Ask({ cards, draft }: { cards: RegistryCard[]; draft?: string }) {
+function Ask({ cards, saved, draft }: { cards: RegistryCard[]; saved: Awaited<ReturnType<typeof listIdeas>>; draft?: string }) {
   const { corpus } = shell.useLoaderData()
   return (
     <main className="flex-1">
@@ -39,12 +42,13 @@ function Ask({ cards, draft }: { cards: RegistryCard[]; draft?: string }) {
         <div className="mt-12 max-w-[64rem]">
           <AskForm initial={draft} />
         </div>
+        {saved.length > 0 && <SavedChecks saved={saved} />}
       </section>
 
       <section aria-label="The registry" className="mx-auto w-full max-w-[90rem] px-4 pb-20 sm:px-8">
         <div className="mb-6 flex flex-wrap items-baseline justify-between gap-x-8 gap-y-2 border-t border-hairline pt-5 text-sm text-ink-2">
           <p className="max-w-[44rem] text-lg leading-8 text-ink">
-            Athar reads all {corpus.startups} startups in the Startup Tunisia registry and answers with the registry entry each one comes from.
+            Describe an idea in Arabic, French or English. Athar places it among all {corpus.startups} startups in the Startup Tunisia registry by meaning and shows the closest ones, each with the registry entry it rests on.
           </p>
           <span>
             {corpus.startups} startups{corpus.fetchedAt && ` · downloaded ${longDate(corpus.fetchedAt)}`}

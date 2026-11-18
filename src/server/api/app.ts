@@ -3,6 +3,7 @@ import { createServerFn } from '@tanstack/react-start'
 import { getDatabase } from '../db'
 import { cleanEntry, displayRow } from '../pipeline/clean'
 import type { RegistryRow } from '../pipeline/registry'
+import { derivedSets, namesMatch, type VentureFilter, type WebsiteFilter } from './archive-sets'
 import { readAsk } from './ask'
 import { themesOf } from '../../shared/themes'
 
@@ -25,7 +26,10 @@ export type SearchInput = {
   to?: number
   /** Year founded (creation_year). */
   founded?: number
-  website?: 'yes' | 'no'
+  /** `yes`/`no`: listed or not. Otherwise what our last check of the website found. */
+  website?: WebsiteFilter
+  /** `founders`: the founders have another venture. `names`: the startup has another name. */
+  ventures?: VentureFilter
   described?: 'yes' | 'no'
   /** 1-based page of PAGE_SIZE rows. Out of range is clamped to the last page. */
   page?: number
@@ -35,7 +39,7 @@ export type SearchInput = {
 
 export const PAGE_SIZE = 20
 
-const COLUMNS = 's.id, s.name, s.description, s.sector, s.labelled, s.creation_year, s.website'
+const COLUMNS = 's.id, COALESCE(s.display_name, s.name) AS name, s.description, s.sector, s.labelled, s.creation_year, s.website'
 const LABELLED = 'CAST(substr(s.labelled, 1, 4) AS INTEGER)'
 
 /** FTS5 query from free words: every word must match, as a prefix. */
@@ -74,17 +78,31 @@ export const searchStartups = createServerFn()
     if (f.from) (where.push(`${LABELLED} >= $from`), (params.$from = f.from))
     if (f.to) (where.push(`${LABELLED} <= $to`), (params.$to = f.to))
     if (f.founded) (where.push('s.creation_year = $founded'), (params.$founded = f.founded))
-    if (f.website) where.push(f.website === 'yes' ? 's.website IS NOT NULL' : 's.website IS NULL')
+    const sets = derivedSets(db)
+    const idsOf = (ids: Iterable<string>) => JSON.stringify([...ids])
+    if (f.website === 'yes') where.push('s.website IS NOT NULL')
+    else if (f.website === 'no') where.push('s.website IS NULL')
+    else if (f.website) {
+      where.push('s.id IN (SELECT value FROM json_each($siteIds))')
+      params.$siteIds = idsOf([...sets.site].filter(([, state]) => state === f.website).map(([id]) => id))
+    }
+    if (f.ventures) {
+      where.push('s.id IN (SELECT value FROM json_each($ventureIds))')
+      params.$ventureIds = idsOf(f.ventures === 'founders' ? sets.founders : sets.names.keys())
+    }
     if (f.described) where.push(f.described === 'yes' ? 's.description IS NOT NULL' : 's.description IS NULL')
 
     let from = 'startups s'
     // A total order: without the id tie-break, rows could repeat or vanish between pages.
     let order = 's.name COLLATE NOCASE, s.id'
     if (q) {
-      from = 'startups_fts f JOIN startups s ON s.id = f.startup_id'
-      where.unshift('startups_fts MATCH $q')
+      // Words match the published name, description and sector (full text) and the startup's other names.
+      const other = [...sets.names].filter(([, names]) => namesMatch(names, q)).map(([id]) => id)
+      from = `startups s LEFT JOIN (SELECT startup_id, rank AS r FROM startups_fts WHERE startups_fts MATCH $q) m ON m.startup_id = s.id`
+      where.unshift('(m.startup_id IS NOT NULL OR s.id IN (SELECT value FROM json_each($otherIds)))')
       params.$q = ftsAll(q)
-      order = 'rank, s.id'
+      params.$otherIds = idsOf(other)
+      order = 'm.r IS NULL, m.r, s.id'
     }
     const clause = where.length ? ` WHERE ${where.join(' AND ')}` : ''
     const matched = db.query<{ n: number }, typeof params>(`SELECT COUNT(*) AS n FROM ${from}${clause}`).get(params)?.n ?? 0
@@ -98,7 +116,20 @@ export const searchStartups = createServerFn()
     }
     page = Math.min(pages, Math.max(1, page || 1))
     const rows = db.query<StartupRow, typeof params>(`SELECT ${COLUMNS} FROM ${from}${clause} ORDER BY ${order} LIMIT ${PAGE_SIZE} OFFSET ${(page - 1) * PAGE_SIZE}`).all(params)
-    return { rows, matched, page, pages, sectors, years, foundedYears, total, read }
+    // How many startups each derived value holds, for the filter's choices.
+    const states = [...sets.site.values()]
+    const facets = {
+      website: {
+        yes: db.query<{ n: number }, []>('SELECT COUNT(*) AS n FROM startups WHERE website IS NOT NULL').get()?.n ?? 0,
+        no: db.query<{ n: number }, []>('SELECT COUNT(*) AS n FROM startups WHERE website IS NULL').get()?.n ?? 0,
+        answers: states.filter((x) => x === 'answers').length,
+        moved: states.filter((x) => x === 'moved').length,
+        parked: states.filter((x) => x === 'parked').length,
+        silent: states.filter((x) => x === 'silent').length,
+      },
+      ventures: { founders: sets.founders.size, names: sets.names.size },
+    }
+    return { rows, matched, page, pages, sectors, years, foundedYears, total, read, facets }
   })
 
 export type Change = { field: string; from: string | null; to: string | null; why: string }
@@ -178,7 +209,7 @@ export const getStartup = createServerFn()
     // The same people on other startups: matched on person_key, so one person under two spellings is one person.
     const alsoFounded = db
       .query<{ fn: string; id: string; name: string }, [string, string]>(
-        `SELECT mine.name AS fn, s.id, s.name FROM founders mine
+        `SELECT mine.name AS fn, s.id, COALESCE(s.display_name, s.name) AS name FROM founders mine
          JOIN founders other ON other.person_key = mine.person_key AND other.startup_id != mine.startup_id
          JOIN startups s ON s.id = other.startup_id
          WHERE mine.startup_id = ? AND s.id != ? ORDER BY mine.position, s.name`,
@@ -218,7 +249,7 @@ export type WallTile = { id: string; name: string; sector: string | null; year: 
 export const getWall = createServerFn().handler(async () => {
   return getDatabase()
     .query<{ id: string; name: string; sector: string | null; year: number | null; described: number }, []>(
-      `SELECT id, name, sector, CAST(substr(labelled, 1, 4) AS INTEGER) AS year, description IS NOT NULL AS described
+      `SELECT id, COALESCE(display_name, name) AS name, sector, CAST(substr(labelled, 1, 4) AS INTEGER) AS year, description IS NOT NULL AS described
        FROM startups ORDER BY sector, year, name`,
     )
     .all()
@@ -244,7 +275,7 @@ export const getLandscapeRows = createServerFn().handler(async () => {
   const db = getDatabase()
   const rows = db
     .query<{ id: string; name: string; sector: string; month: number; year: number; founded: number | null; founders: number; website: number; description: string | null }, []>(
-      `SELECT id, name, sector, CAST(substr(labelled, 6, 2) AS INTEGER) AS month, CAST(substr(labelled, 1, 4) AS INTEGER) AS year,
+      `SELECT id, COALESCE(display_name, name) AS name, sector, CAST(substr(labelled, 6, 2) AS INTEGER) AS month, CAST(substr(labelled, 1, 4) AS INTEGER) AS year,
               creation_year AS founded, (SELECT COUNT(*) FROM founders f WHERE f.startup_id = s.id) AS founders, website IS NOT NULL AS website, description
        FROM startups s WHERE sector IS NOT NULL AND labelled IS NOT NULL ORDER BY name COLLATE NOCASE`,
     )
@@ -280,7 +311,7 @@ export const getCorpus = createServerFn().handler(async () => {
 
 export type RegistryCard = { id: string; name: string; sector: string | null; labelled: string | null; description: string | null }
 
-const CARD_SQL = `SELECT s.id, s.name, s.sector, s.labelled, substr(s.description, 1, 320) AS description FROM startups s`
+const CARD_SQL = `SELECT s.id, COALESCE(s.display_name, s.name) AS name, s.sector, s.labelled, substr(s.description, 1, 320) AS description FROM startups s`
 
 // The wall on the home page: a few startups from every sector, the same ones on every visit.
 export const getWallCards = createServerFn()

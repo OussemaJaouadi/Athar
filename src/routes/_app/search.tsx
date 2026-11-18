@@ -1,5 +1,5 @@
 import { Link, createFileRoute, getRouteApi, useNavigate } from '@tanstack/react-router'
-import { CalendarDays, ChevronsLeft, ChevronsRight, Equal, FileCheck, FileText, FileX, Globe, Link2, Link2Off, Quote, Shapes, Sprout, TextSearch } from 'lucide-react'
+import { CalendarDays, ChevronsLeft, ChevronsRight, Equal, FileCheck, FileText, FileX, Globe, Link2, Link2Off, Milestone, Quote, Shapes, Sprout, TextSearch, Users } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import { Profile } from '@/components/athar/profile'
@@ -10,6 +10,7 @@ import { Filters } from '@/components/reui/filters/filters'
 import { createFilterQuery, createFilterRule, flattenFilterConditions } from '@/components/reui/filters/filters-query'
 import type { FilterField, FilterQuery } from '@/components/reui/filters/filters-types'
 import { cn } from '@/lib/utils'
+import { parseVentures, parseWebsite } from '#/server/api/archive-sets'
 import { PAGE_SIZE, getStartup, searchStartups, type SearchInput } from '#/server/api/app'
 
 type Search = Omit<SearchInput, 'open'> & { open?: string }
@@ -29,7 +30,8 @@ export const Route = createFileRoute('/_app/search')({
     from: num(s.from),
     to: num(s.to),
     founded: num(s.founded),
-    website: s.website === 'yes' || s.website === 'no' ? s.website : undefined,
+    website: parseWebsite(s.website),
+    ventures: parseVentures(s.ventures),
     described: s.described === 'yes' || s.described === 'no' ? s.described : undefined,
     page: int(s.page),
     open: str(s.open),
@@ -45,7 +47,10 @@ export const Route = createFileRoute('/_app/search')({
 })
 
 // The filter bar's schema: six attributes, each with an icon and only the conditions the archive can answer.
-function filterFields(sectors: { sector: string; count: number }[], years: { year: number; count: number }[], founded: { year: number; count: number }[]): FilterField[] {
+type Facets = Awaited<ReturnType<typeof searchStartups>>['facets']
+
+function filterFields(sectors: { sector: string; count: number }[], years: { year: number; count: number }[], founded: { year: number; count: number }[], facets: Facets): FilterField[] {
+  const n = (count: number) => `${count} startups`
   return [
     { id: 'q', label: 'Words', icon: <TextSearch />, type: 'text', placeholder: 'olive, payment, tutoring', operators: [{ value: 'contains', label: 'contains', icon: <Quote /> }] },
     {
@@ -76,7 +81,34 @@ function filterFields(sectors: { sector: string; count: number }[], years: { yea
       operators: [{ value: 'is', label: 'in', icon: <Equal /> }],
       options: founded.map((y) => ({ value: String(y.year), label: String(y.year), icon: <Sprout />, description: `${y.count} founded` })),
     },
-    { id: 'website', label: 'Website', icon: <Globe />, type: 'select', searchable: false, operators: [{ value: 'is', label: 'is', icon: <Equal /> }], options: [{ value: 'yes', label: 'listed', icon: <Link2 /> }, { value: 'no', label: 'not listed', icon: <Link2Off /> }] },
+    {
+      id: 'website',
+      label: 'Website',
+      icon: <Globe />,
+      type: 'select',
+      searchable: false,
+      operators: [{ value: 'is', label: 'is', icon: <Equal /> }],
+      options: [
+        { value: 'answers', label: 'answers today', icon: <Link2 />, description: n(facets.website.answers) },
+        { value: 'moved', label: 'moved', icon: <Link2 />, description: n(facets.website.moved) },
+        { value: 'parked', label: 'parked or gone', icon: <Link2Off />, description: n(facets.website.parked) },
+        { value: 'silent', label: 'silent', icon: <Link2Off />, description: n(facets.website.silent) },
+        { value: 'yes', label: 'listed', icon: <Link2 />, description: n(facets.website.yes) },
+        { value: 'no', label: 'not listed', icon: <Link2Off />, description: n(facets.website.no) },
+      ],
+    },
+    {
+      id: 'ventures',
+      label: 'Ventures',
+      icon: <Users />,
+      type: 'select',
+      searchable: false,
+      operators: [{ value: 'is', label: 'is', icon: <Equal /> }],
+      options: [
+        { value: 'founders', label: 'founders have another venture', icon: <Milestone />, description: n(facets.ventures.founders) },
+        { value: 'names', label: 'has another name', icon: <Quote />, description: n(facets.ventures.names) },
+      ],
+    },
     { id: 'described', label: 'Description', icon: <FileText />, type: 'select', searchable: false, operators: [{ value: 'is', label: 'is', icon: <Equal /> }], options: [{ value: 'yes', label: 'present', icon: <FileCheck /> }, { value: 'no', label: 'missing', icon: <FileX /> }] },
   ]
 }
@@ -92,6 +124,7 @@ function toQuery(s: Filtering): FilterQuery {
   else if (s.to) rules.push(createFilterRule({ id: 'labelled', path: ['labelled'], operator: 'before', value: String(s.to + 1) }))
   if (s.founded) rules.push(createFilterRule({ id: 'founded', path: ['founded'], operator: 'is', value: String(s.founded) }))
   if (s.website) rules.push(createFilterRule({ id: 'website', path: ['website'], operator: 'is', value: s.website }))
+  if (s.ventures) rules.push(createFilterRule({ id: 'ventures', path: ['ventures'], operator: 'is', value: s.ventures }))
   if (s.described) rules.push(createFilterRule({ id: 'described', path: ['described'], operator: 'is', value: s.described }))
   return createFilterQuery(rules)
 }
@@ -104,7 +137,8 @@ function fromQuery(q: FilterQuery): Filtering {
     if (c.field === 'q') out.q = v
     if (c.field === 'sector') out.sector = v
     if (c.field === 'founded') out.founded = Number(v)
-    if (c.field === 'website' && (v === 'yes' || v === 'no')) out.website = v
+    if (c.field === 'website') out.website = parseWebsite(v)
+    if (c.field === 'ventures') out.ventures = parseVentures(v)
     if (c.field === 'described' && (v === 'yes' || v === 'no')) out.described = v
     if (c.field === 'labelled') {
       const y = Number(v)
@@ -121,7 +155,7 @@ function ArchivePage() {
   const { viewer } = shell.useLoaderData()
   const search = Route.useSearch()
   const navigate = useNavigate({ from: Route.fullPath })
-  const { rows, matched, page, pages, sectors, years, foundedYears, total } = results
+  const { rows, matched, page, pages, sectors, years, foundedYears, total, facets } = results
   const [query, setQuery] = useState<FilterQuery>(() => toQuery(search))
   const ledger = useRef<HTMLDivElement>(null)
   const pending = useRef<'first' | 'last' | null>(null)
@@ -161,16 +195,17 @@ function ArchivePage() {
     return () => window.removeEventListener('keydown', onKey)
   }, [rows, selected, page, pages, navigate])
 
+  const filtering = flattenFilterConditions(query).length
   const first = (page - 1) * PAGE_SIZE + 1
   const last = Math.min(matched, page * PAGE_SIZE)
   const pageLink = (n: number) => ({ to: '/search' as const, search: (p: { open?: string }) => ({ ...(p as Search), open: p.open ?? selected, page: n === 1 ? undefined : n }), resetScroll: false, preload: 'intent' as const })
 
   return (
-    <main className="grid w-full flex-1 grid-rows-[auto_minmax(0,1fr)] px-4 sm:px-8 xl:h-[calc(100dvh-57px)] xl:flex-none xl:overflow-hidden">
-      <div role="search" aria-label="Filter the archive" className="-mx-4 flex items-center gap-5 border-b border-hairline px-4 py-3.5 sm:-mx-8 sm:px-8">
+    <main className="grid w-full flex-1 grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)] px-4 sm:px-8 xl:h-[calc(100dvh-57px)] xl:flex-none xl:overflow-hidden">
+      <div role="search" aria-label="Filter the archive" className="-mx-4 flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-hairline px-4 py-3.5 sm:-mx-8 sm:px-8">
         <div className="min-w-0 flex-1">
           <Filters
-            fields={filterFields(sectors, years, foundedYears)}
+            fields={filterFields(sectors, years, foundedYears, facets)}
             query={query}
             showClear
             className="gap-3 [&_[role=toolbar]]:gap-3"
@@ -185,12 +220,14 @@ function ArchivePage() {
         </p>
       </div>
 
-      <div className="grid min-h-0 gap-x-8 xl:grid-cols-12">
+      <div className="grid min-h-0 grid-cols-[minmax(0,1fr)] gap-x-8 xl:grid-cols-12">
         <section aria-label="Ledger" className="flex min-h-0 flex-col xl:col-span-3 xl:border-e xl:border-hairline">
           {rows.length === 0 ? (
             <div className="grid gap-2 py-10 text-sm">
               <p className="font-display text-xl font-bold">No startup matches.</p>
-              <p className="text-ink">The archive only holds labelled startups. Loosen a filter, or ask it as an idea.</p>
+              <p className="text-ink">
+                {filtering > 1 ? `No labelled startup fits all ${filtering} filters at once; remove one to widen the list.` : 'No labelled startup fits this filter; clear it, or ask it as an idea.'}
+              </p>
               <Link to="/" className="w-fit">Ask it as an idea</Link>
             </div>
           ) : (
@@ -225,7 +262,7 @@ function ArchivePage() {
 
           {matched > PAGE_SIZE && (
             // Interior's Pagination, whole: the window of numbers moves and the current-page indicator glides.
-            <div className="flex items-center justify-between gap-3 border-t border-hairline py-2.5 xl:-ms-3 xl:pe-3 xl:ps-3">
+            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-hairline py-2.5 xl:-ms-3 xl:pe-3 xl:ps-3">
               <span className="text-[0.8125rem] whitespace-nowrap text-ink-2 tabular-nums">
                 {first}–{last} of {matched.toLocaleString('en-GB')}
               </span>

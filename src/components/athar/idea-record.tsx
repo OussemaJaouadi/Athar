@@ -177,7 +177,7 @@ export function IdeaRecord({ data }: { data: IdeaPage }) {
             ))}
         </dl>
         <div className="flex flex-wrap gap-2">
-          <Link to="/idea" className="inline-flex h-10 items-center rounded-[4px] bg-glaze px-4 text-[0.9375rem] font-medium text-glaze-ink no-underline hover:bg-glaze-hover">
+          <Link to="/" className="inline-flex h-10 items-center rounded-[4px] bg-glaze px-4 text-[0.9375rem] font-medium text-glaze-ink no-underline hover:bg-glaze-hover">
             Check another idea
           </Link>
           <button

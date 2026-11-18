@@ -18,7 +18,7 @@ export const Route = createFileRoute('/portal')({
 // quality facts are filters on Startups; AI keys and the raw tables are in the account menu.
 const NAV: NavItem[] = [
   { to: '/portal', label: 'Status', Icon: Activity, exact: true, also: ['/portal/runs', '/portal/changes'] },
-  { to: '/portal/startups', label: 'Startups', Icon: Building2, also: ['/portal/entries', '/portal/trace', '/portal/quality'] },
+  { to: '/portal/startups', label: 'Startups', Icon: Building2, also: ['/portal/entries', '/portal/trace', '/portal/quality', '/portal/review'] },
   { to: '/portal/ideas', label: 'Ideas', Icon: Lightbulb },
 ]
 

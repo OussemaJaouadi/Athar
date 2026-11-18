@@ -36,6 +36,8 @@ export type ReviewItem = {
   decided: { value: unknown; note: string | null; decidedAt: string } | null
   /** Set on relations that follow a person reading. */
   follows?: Follow | null
+  /** The subject in the registry's words: startup and founder names in place of ids and keys. */
+  label?: string
 }
 
 export type ReviewSummary = {
@@ -139,6 +141,24 @@ function toItem(e: Effective, follow: Follow | null | undefined): ReviewItem {
   return item
 }
 
+/** Names for a queue row: a startup by its display name, a person by a published spelling. */
+function labeller(db: Database): (item: ReviewItem) => ReviewItem {
+  const startups = new Map(db.query<{ id: string; name: string }, []>('SELECT id, COALESCE(display_name, name) AS name FROM startups').all().map((r) => [r.id, r.name]))
+  const people = new Map(db.query<{ key: string; name: string }, []>('SELECT person_key AS key, MIN(COALESCE(display_name, name)) AS name FROM founders GROUP BY person_key').all().map((r) => [r.key, r.name]))
+  const startup = (id: string) => startups.get(id) ?? id
+  const person = (key: string) => people.get(key) ?? key
+  return (item) => {
+    const s = item.subject
+    const label =
+      item.kind === 'person' ? person(s)
+      : item.kind === 'person_pair' ? s.split('|').map(person).join(' · ')
+      : item.kind === 'relation' ? s.split('|').map(startup).join(' · ')
+      : item.kind === 'founder' ? startup(s.slice(0, s.lastIndexOf('#') < 0 ? undefined : s.lastIndexOf('#')))
+      : startup(s)
+    return { ...item, label }
+  }
+}
+
 export function reviewQueue(
   db: Database,
   options: { kind?: ReadingKind; include?: 'open' | 'decided' | 'all' | 'following' } = {},
@@ -161,6 +181,7 @@ export function reviewQueue(
       return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
     })
     .map((e) => toItem(e, follows.get(e.id)))
+    .map(labeller(db))
 }
 
 export function reviewSummary(db: Database): ReviewSummary {

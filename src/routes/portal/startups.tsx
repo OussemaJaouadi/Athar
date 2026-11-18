@@ -2,6 +2,7 @@ import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
 import { Archive, Bookmark, CalendarCheck, Check, CircleDashed, Copy, FileText, Files, Flag, Globe, Languages, Link2, ScanText, Search, Tag, Users } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import { DeskSwitch } from '@/components/athar/review-desk'
 import { Desk, DeskBar, DeskEmpty, DeskItem, DeskPane, DeskSelect, JsonBlock, Kbd, PaneSection, deskBtn, deskInput, useDeskKeys } from '@/components/athar/desk'
 import { GROUP_NAME, costOf, factShort, groupFacts, isSilent } from '@/components/athar/quality-facts'
 import { Differences, HowRead, Namesakes, Observed } from '@/components/athar/ops-startup-sections'
@@ -12,6 +13,7 @@ import { cn } from '@/lib/utils'
 import { getCorpus } from '#/server/api/app'
 import { getEntry, getFactRows, getFoundersOf, getLeadEntry, getQualitySummary, searchStartupsOps } from '#/server/api/ops'
 import type { FactRow, QualityFact } from '#/server/pipeline/facts'
+import { getReviewSummary } from '#/server/api/review'
 import { getStartupPage } from '#/server/api/startup'
 import type { EntryView } from '#/server/pipeline/state'
 
@@ -44,7 +46,7 @@ export const Route = createFileRoute('/portal/startups')({
   }),
   loaderDeps: ({ search }) => ({ q: search.q ?? '', startup: search.startup, entry: search.entry, fact: search.fact }),
   loader: async ({ deps }) => {
-    const [facts, corpus] = await Promise.all([getQualitySummary(), getCorpus()])
+    const [facts, corpus, review] = await Promise.all([getQualitySummary(), getCorpus(), getReviewSummary()])
     // The list: a search, else the startups behind the chosen fact, else the ones an operator should read first
     // (more than one entry, or a note that says the registry and Athar's reading differ).
     const fact = !deps.q && deps.fact ? facts.find((f) => f.code === deps.fact) : undefined
@@ -74,7 +76,7 @@ export const Route = createFileRoute('/portal/startups')({
     if (!startupId && deps.entry) startupId = (await getEntry({ data: deps.entry }))?.startup?.id
     if (!startupId && items[0]) startupId = items[0].entry ? (await getEntry({ data: items[0].entry }))?.startup?.id : items[0].id.startsWith('row:') ? undefined : items[0].id
     const detail = startupId ? await loadStartup(startupId) : null
-    return { items, startupId, detail, facts, fact, factRows, factTotal, startups: corpus.startups }
+    return { items, startupId, detail, facts, fact, factRows, factTotal, startups: corpus.startups, openQuestions: review.toAnswer }
   },
   component: StartupsPage,
 })
@@ -106,7 +108,7 @@ async function loadStartup(id: string) {
 type Detail = NonNullable<Awaited<ReturnType<typeof loadStartup>>>
 
 function StartupsPage() {
-  const { items, startupId, detail, facts, fact, factRows, factTotal, startups } = Route.useLoaderData()
+  const { items, startupId, detail, facts, fact, factRows, factTotal, startups, openQuestions } = Route.useLoaderData()
   const search = Route.useSearch()
   const navigate = useNavigate({ from: '/portal/startups' })
   const searchRef = useRef<HTMLInputElement>(null)
@@ -169,6 +171,7 @@ function StartupsPage() {
   return (
     <main className="flex min-h-0 flex-1 flex-col">
       <DeskBar title="Startups" facts={search.q ? plural(items.length, 'match', 'matches') + (items.length === 30 ? ' (first 30)' : '') : `${startups.toLocaleString('en-GB')} startups`}>
+        <DeskSwitch current="startups" open={openQuestions} />
         <label className="relative flex items-center">
           <span className="sr-only">Search startups by name, slug, website or entry id</span>
           <Search className="pointer-events-none absolute start-2.5 size-4 text-ink-2" aria-hidden />

@@ -1,0 +1,1 @@
+CREATE TABLE follows (startup_id TEXT PRIMARY KEY REFERENCES startups(id) ON DELETE CASCADE, created_at TEXT NOT NULL);

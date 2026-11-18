@@ -103,19 +103,3 @@ export const getQualitySummary = createServerFn().handler(async () => qualitySum
 export const searchStartupsOps = createServerFn()
   .validator((q: string) => q)
   .handler(async ({ data }) => searchStartups(getDatabase(), data))
-
-/** The counts behind the "How it works" flow: how many rows become entries, startups, asked websites and vectors. */
-export const getPipelineFlow = createServerFn().handler(async () => {
-  const db = getDatabase()
-  const n = (sql: string) => db.query<{ n: number }, []>(sql).get()?.n ?? 0
-  return {
-    rows: n('SELECT row_count AS n FROM downloads ORDER BY id DESC LIMIT 1'),
-    entries: n('SELECT COUNT(*) AS n FROM entries'),
-    startups: n('SELECT COUNT(*) AS n FROM startups'),
-    answers: n("SELECT COUNT(*) AS n FROM website_checks WHERE status = 'reachable'"),
-    silent: n("SELECT COUNT(*) AS n FROM website_checks WHERE status = 'unreachable'"),
-    described: n('SELECT COUNT(*) AS n FROM startups WHERE description IS NOT NULL'),
-    prepared: n('SELECT COUNT(*) AS n FROM prepared_texts'),
-    embedded: n('SELECT COUNT(*) AS n FROM embedding_meta'),
-  }
-})

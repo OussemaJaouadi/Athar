@@ -1,5 +1,5 @@
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Blocks, BookOpen, Check, CircleAlert, CircleCheck, CircleDashed, CircleX, LoaderCircle, Download, Gauge, Globe, History, KeyRound, Sparkles, TriangleAlert, Waypoints, Workflow } from "lucide-react";
+import { Blocks, Check, CircleAlert, CircleCheck, CircleDashed, CircleX, LoaderCircle, Download, Gauge, Globe, History, KeyRound, Sparkles, TriangleAlert, Waypoints, Workflow } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
@@ -19,7 +19,6 @@ import {
 } from "@/components/athar/desk";
 import { ProgressBar } from "@/components/interior/progress-bar";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { PipelineFlow, type PipelineFlowCounts } from "@/components/athar/pipeline-flow";
 import { Frame, FramePanel } from "@/components/reui/frame";
 import { Stepper, StepperIndicator, StepperItem, StepperNav, StepperTitle, StepperTrigger } from "@/components/reui/stepper";
 import { Trace, TraceDescription, TraceIcon, TraceLine, TraceTitle } from "@/components/ui/trace";
@@ -32,7 +31,6 @@ import { cn } from "@/lib/utils";
 import {
   getDownloadChanges,
   getFactRows,
-  getPipelineFlow,
   getPipelineState,
   listDownloads,
 } from "#/server/api/ops";
@@ -104,14 +102,13 @@ export const Route = createFileRoute("/portal/")({
     const runs = data.runs.filter((r) => RUNS_OF[key]?.includes(r.operation));
     const runId =
       linked && runs.some((r) => r.id === linked.id) ? linked.id : runs[0]?.id;
-    const [detail, factResult, downloads, changes, flow] = await Promise.all([
+    const [detail, factResult, downloads, changes] = await Promise.all([
       runId ? getRunDetail({ data: runId }) : null,
       deps.fact && hasRows(deps.fact) ? getFactRows({ data: deps.fact }) : null,
       key === "collect" ? listDownloads() : [],
       key === "collect" && deps.download
         ? getDownloadChanges({ data: deps.download })
         : null,
-      getPipelineFlow(),
     ]);
     return {
       state,
@@ -123,7 +120,6 @@ export const Route = createFileRoute("/portal/")({
       factResult,
       downloads,
       changes,
-      flow,
     };
   },
   component: Pipeline,
@@ -181,7 +177,6 @@ function Pipeline() {
     factResult,
     downloads,
     changes,
-    flow,
   } = Route.useLoaderData();
   const search = Route.useSearch();
   const navigate = useNavigate({ from: "/portal/" });
@@ -293,7 +288,6 @@ function Pipeline() {
             downloads={downloads}
             download={search.download}
             changes={changes}
-            flow={flow}
           />
         }
       />
@@ -342,7 +336,6 @@ function StepPane({
   downloads,
   download,
   changes,
-  flow,
 }: {
   step: StepState;
   runs: RunItem[];
@@ -355,7 +348,6 @@ function StepPane({
   downloads: Awaited<ReturnType<typeof listDownloads>>;
   download?: number;
   changes: Awaited<ReturnType<typeof getDownloadChanges>>;
-  flow: PipelineFlowCounts;
 }) {
   const navigate = useNavigate({ from: "/portal/" });
   // Opening a count or a download keeps the step and run in the URL, so Back returns to the same pane.
@@ -452,14 +444,7 @@ function StepPane({
             </TabsList>
           </Tabs>
           {view === "how" ? (
-            <>
-              <PaneSection title="Where the data goes" icon={Workflow}>
-                <PipelineFlow counts={flow} step={step.operation} />
-              </PaneSection>
-              <PaneSection title="What this step does" icon={BookOpen}>
-                <StepAbout operation={step.operation} />
-              </PaneSection>
-            </>
+            <StepAbout operation={step.operation} />
           ) : view === "runs" ? (
           <PaneSection title="Every run of this step" icon={History}>
             {runs.length ? (

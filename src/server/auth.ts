@@ -1,5 +1,3 @@
-import { timingSafeEqual } from 'node:crypto'
-
 import { createServerFn, createServerOnlyFn } from '@tanstack/react-start'
 import { getCookie, getRequestHeader, getRequestUrl, setCookie } from '@tanstack/react-start/server'
 
@@ -15,10 +13,12 @@ export function operatorToken(passphrase: string): string {
   return new Bun.CryptoHasher('sha256').update(`athar-operator:${passphrase}`).digest('hex')
 }
 
+// Compared in constant time, without a Node module: this file is also loaded in the browser for its server functions.
 function sameText(a: string, b: string): boolean {
-  const left = Buffer.from(a)
-  const right = Buffer.from(b)
-  return left.length === right.length && timingSafeEqual(left, right)
+  if (a.length !== b.length) return false
+  let diff = 0
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i)
+  return diff === 0
 }
 
 export function isOperatorCookie(cookie: string | undefined, passphrase: string | undefined): boolean {

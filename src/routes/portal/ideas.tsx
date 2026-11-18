@@ -88,7 +88,7 @@ function IdeasPage() {
         <DeskEmpty>
           <span className="grid justify-items-center gap-2">
             <span>No idea has been checked yet. Ideas typed on the home page or /idea appear here.</span>
-            <Link to="/idea" className="text-glaze underline">
+            <Link to="/" className="text-glaze underline">
               Check an idea
             </Link>
           </span>

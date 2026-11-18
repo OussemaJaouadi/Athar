@@ -61,7 +61,7 @@ export const getStartupPage = createServerFn()
 
     // Same people: each founder, and the other startups the same person founded, whatever the spelling.
     const other = db.query<{ id: string; name: string; sector: string | null; labelled: string | null }, [string, string]>(
-      `SELECT s.id, s.name, s.sector, s.labelled FROM founders f JOIN startups s ON s.id = f.startup_id
+      `SELECT s.id, COALESCE(s.display_name, s.name) AS name, s.sector, s.labelled FROM founders f JOIN startups s ON s.id = f.startup_id
        WHERE f.person_key = ? AND f.startup_id <> ? ORDER BY s.labelled, s.name`,
     )
     const people: Person[] = db
@@ -71,7 +71,7 @@ export const getStartupPage = createServerFn()
 
     // Same idea: the startups whose description is closest in meaning, oldest label first.
     const near = db.query<Omit<Neighbour, 'check'> & Partial<CheckRow>, [string]>(
-      `SELECT s.id, s.name, s.sector, s.labelled, s.description, w.status, w.detail, w.final_host, w.checked_at, w.since
+      `SELECT s.id, COALESCE(s.display_name, s.name) AS name, s.sector, s.labelled, s.description, w.status, w.detail, w.final_host, w.checked_at, w.since
        FROM startups s LEFT JOIN website_checks w ON w.startup_id = s.id WHERE s.id = ?`,
     )
     const sameIdea: Neighbour[] = similarToStartup(db, id, SAME_IDEA_MAX)
@@ -88,7 +88,7 @@ export const getStartupPage = createServerFn()
     const cohort = s.sector && year
       ? db
           .query<{ id: string; name: string }, [string, string, string]>(
-            "SELECT id, name FROM startups WHERE sector = ? AND substr(labelled, 1, 4) = ? AND id <> ? ORDER BY labelled, name",
+            "SELECT id, COALESCE(display_name, name) AS name FROM startups WHERE sector = ? AND substr(labelled, 1, 4) = ? AND id <> ? ORDER BY labelled, name",
           )
           .all(s.sector, year, id)
       : []
@@ -151,7 +151,7 @@ export const getStartupGlimpse = createServerFn()
           website_kind: string | null; status: string | null; since: string | null; founders: number; withdrawn: number },
         [string]
       >(
-        `SELECT s.id, s.name, s.sector, s.labelled, s.description, s.website, s.website_kind, w.status, w.since,
+        `SELECT s.id, COALESCE(s.display_name, s.name) AS name, s.sector, s.labelled, s.description, s.website, s.website_kind, w.status, w.since,
                 (SELECT COUNT(*) FROM founders f WHERE f.startup_id = s.id) AS founders,
                 s.last_download < (SELECT MAX(id) FROM downloads) AS withdrawn
          FROM startups s LEFT JOIN website_checks w ON w.startup_id = s.id WHERE s.id = ?`,

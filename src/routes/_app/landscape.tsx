@@ -610,11 +610,11 @@ function Teams({ story, rows, t, renderer, founders }: { story: Awaited<ReturnTy
         )}
         <p className="mt-2 text-[0.8125rem] text-ink-2">Matched on the written name, so a namesake can appear here by mistake.</p>
         <p className="mt-4 max-w-[60rem] text-[0.9375rem] leading-6 text-ink">
-          Founders of {ventures} pairs of startups went on to another venture (a renamed, successor or sibling startup);{' '}
+          {ventures * 2} startups come in pairs whose founders went from one venture to another (the same venture renamed, a later one, or a second one alongside);{' '}
           <Link to="/search" search={{ ventures: 'founders' }}>
             see them in the Archive
           </Link>
-          . {story.nameOnly} more pairs share a founder name that is not confirmed as the same person.{' '}
+          . {story.nameOnly} more pairs of startups share a founder name that is not confirmed as the same person.{' '}
           <Link to="/search" search={{ ventures: 'names' }}>
             {story.otherNames} other names
           </Link>{' '}

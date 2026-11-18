@@ -17,6 +17,8 @@ export type Venture = {
   sentence: string
   /** Display names of the founders both list. */
   sharedFounders: string[]
+  /** The same founders with their person keys, so a page can link each to their person page. */
+  shared: { name: string; key: string }[]
   said: Said
   /** True when the tie rests on one founder name that is not confirmed to be one person. */
   nameOnly: boolean
@@ -244,6 +246,7 @@ export function startupStory(db: Database, id: string): StartupStory | null {
       relation: tie.relation,
       sentence: sentenceOf(db, tie, { id, creationYear: row.creation_year }, { id: otherId, creationYear: other.creation_year }, keyName),
       sharedFounders: [...keyName].filter(([k]) => tie.shared.includes(k)).map(([, name]) => name),
+      shared: [...keyName].filter(([k]) => tie.shared.includes(k)).map(([key, name]) => ({ name, key })),
       said: saidOf(tie.reading),
       nameOnly: tie.nameOnly,
       year: other.creation_year,

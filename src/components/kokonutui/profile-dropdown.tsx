@@ -264,7 +264,7 @@ function Avatar({
     <span
       aria-hidden="true"
       className={cn(
-        "relative grid shrink-0 select-none place-items-center rounded-full font-medium text-[11px] tracking-wide",
+        "relative grid shrink-0 select-none place-items-center rounded-full font-medium text-[0.8125rem] tracking-normal",
         AVATAR_TONES[tone % AVATAR_TONES.length],
         className
       )}
@@ -339,7 +339,7 @@ function Identity({
         </motion.span>
         <motion.span
           className={cn(
-            "relative z-20 block truncate text-xs text-ink-2 leading-4",
+            "relative z-20 block truncate text-[0.8125rem] text-ink-2 leading-4",
             hidden
           )}
           key={shared ? "email-shared" : "email-static"}
@@ -410,7 +410,7 @@ function HoldSignOut({
     <>
       <LogOut className="size-4" />
       <span className="flex-1">Sign out</span>
-      <span className="text-xs opacity-60">
+      <span className="text-[0.8125rem] opacity-60">
         {nudge ? "Keep holding" : "Hold"}
       </span>
     </>
@@ -493,7 +493,7 @@ function StatusRow({
             <button
               aria-checked={checked}
               aria-label={entry.name}
-              className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs text-ink-2 outline-none transition-colors duration-100 focus:bg-surface aria-checked:text-ink"
+              className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[0.8125rem] text-ink-2 outline-none transition-colors duration-100 focus:bg-surface aria-checked:text-ink"
               data-menu-item=""
               data-row="status"
               key={entry.id}
@@ -580,7 +580,7 @@ function LinkItem({
       <span className="text-ink-2">{item.icon}</span>
       <span className="flex-1">{item.label}</span>
       {item.value ? (
-        <span className="text-xs text-ink-2">
+        <span className="text-[0.8125rem] text-ink-2">
           {item.value}
         </span>
       ) : null}
@@ -999,7 +999,7 @@ export default function ProfileDropdown({
                   />
                   {account.plan ? (
                     <motion.span
-                      className="shrink-0 pt-0.5 text-xs text-ink-2"
+                      className="shrink-0 pt-0.5 text-[0.8125rem] text-ink-2"
                       style={{ opacity: bodyOpacity }}
                     >
                       {account.plan}
@@ -1128,7 +1128,7 @@ export default function ProfileDropdown({
                           <span className="truncate text-ink">
                             {entry.name}
                           </span>
-                          <span className="truncate text-xs text-ink-2">
+                          <span className="truncate text-[0.8125rem] text-ink-2">
                             {entry.email}
                           </span>
                         </span>

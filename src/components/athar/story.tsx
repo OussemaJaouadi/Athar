@@ -1,3 +1,4 @@
+import { Link } from '@tanstack/react-router'
 import { Info } from 'lucide-react'
 
 import { StartupTitle } from '@/components/athar/startup-title'
@@ -135,7 +136,14 @@ function VentureRow({ v }: { v: StartupStory['ventures'][number] }) {
         <p className="col-span-full text-sm">
           In common:{' '}
           <span className="font-normal" dir="auto">
-            {v.sharedFounders.join(', ')}
+            {v.shared.map((f, i) => (
+              <span key={f.key}>
+                {i > 0 && ', '}
+                <Link to="/people/$slug" params={{ slug: f.key.replace(/ /g, '-') }} className="underline decoration-hairline underline-offset-4 hover:text-glaze">
+                  {f.name}
+                </Link>
+              </span>
+            ))}
           </span>
         </p>
       )}

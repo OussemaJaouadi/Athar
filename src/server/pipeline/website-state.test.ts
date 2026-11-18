@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { hostOnly, siteName, websiteState } from './website-state'
+import { BUILDER_SUFFIXES, builderName, hostOnly, siteName, websiteState } from './website-state'
 
 const reachable = (finalHost: string | null) => ({ status: 'reachable', detail: 'answered 200', finalHost })
 const unreachable = (detail: string) => ({ status: 'unreachable', detail, finalHost: null })
@@ -131,5 +131,101 @@ describe('websiteState: unrelated', () => {
     const r = websiteState(reachable('airmanishillside.com'), null)
     expect(r.value).toBe('unrelated')
     expect(r.lane).toBe('review')
+  })
+})
+
+describe('websiteState: dead pages', () => {
+  test('ib-space.com landing on expired.renderforestsites.com is parked', () => {
+    const r = websiteState(reachable('expired.renderforestsites.com'), 'ib-space.com')
+    expect(r.value).toBe('parked')
+    expect(r.lane).toBe('rule')
+    expect(r.rule).toBe('website.dead-page')
+    expect(r.why).toBe('Answers from expired.renderforestsites.com, a page for a site that is no longer there.')
+  })
+
+  test('sheshares.store landing on error.alibaba.com is parked', () => {
+    const r = websiteState(reachable('error.alibaba.com'), 'sheshares.store')
+    expect(r.value).toBe('parked')
+    expect(r.lane).toBe('rule')
+    expect(r.rule).toBe('website.dead-page')
+  })
+
+  test('same-site dead label still answers', () => {
+    expect(websiteState(reachable('error.verse.tn'), 'www.verse.tn').value).toBe('answers')
+  })
+})
+
+describe('websiteState: builder pages', () => {
+  test('controlmed2.cms.webnode.fr landing on webnode.com is parked', () => {
+    const r = websiteState(reachable('webnode.com'), 'controlmed2.cms.webnode.fr')
+    expect(r.value).toBe('parked')
+    expect(r.lane).toBe('rule')
+    expect(r.rule).toBe('website.builder-page-gone')
+    expect(r.why).toBe('The page on webnode is gone; the address now leads to webnode.com.')
+  })
+
+  test('same with www.webnode.com is parked', () => {
+    const r = websiteState(reachable('www.webnode.com'), 'controlmed2.cms.webnode.fr')
+    expect(r.value).toBe('parked')
+    expect(r.rule).toBe('website.builder-page-gone')
+  })
+
+  test('shop.wixsite.com landing on www.wixsite.com is parked', () => {
+    const r = websiteState(reachable('www.wixsite.com'), 'shop.wixsite.com')
+    expect(r.value).toBe('parked')
+    expect(r.rule).toBe('website.builder-page-gone')
+  })
+
+  test('a different page on the same builder keeps the old behaviour', () => {
+    expect(websiteState(reachable('b.wixsite.com'), 'a.wixsite.com').value).toBe('answers')
+  })
+
+  test('asked on the builder itself, no final host, answers', () => {
+    expect(websiteState(reachable(null), 'orcompost.odoo.com').value).toBe('answers')
+  })
+})
+
+describe('websiteState: regression cases', () => {
+  test('verse.tn to verse.ad is still moved, inferred', () => {
+    const r = websiteState(reachable('verse.ad'), 'verse.tn')
+    expect(r.value).toBe('moved')
+    expect(r.lane).toBe('inferred')
+  })
+
+  test('slidzo.com to hugedomains.com is still parked, website.parked', () => {
+    const r = websiteState(reachable('hugedomains.com'), 'slidzo.com')
+    expect(r.value).toBe('parked')
+    expect(r.rule).toBe('website.parked')
+  })
+
+  test('app.legaltech.tn to annonces.legaltech.tn still answers', () => {
+    expect(websiteState(reachable('annonces.legaltech.tn'), 'app.legaltech.tn').value).toBe('answers')
+  })
+
+  test('epilert.io to airmanishillside.com is still unrelated, review', () => {
+    const r = websiteState(reachable('airmanishillside.com'), 'epilert.io')
+    expect(r.value).toBe('unrelated')
+    expect(r.lane).toBe('review')
+  })
+})
+
+describe('new parked hosts', () => {
+  test('added parking hosts are parked', () => {
+    for (const host of ['domainnamesales.com', 'hostinger.com', 'parkingpage.namecheap.com', 'ovh.net', 'lws.fr']) {
+      expect(websiteState(reachable(host), 'slidzo.com').value).toBe('parked')
+    }
+  })
+})
+
+describe('builder helpers', () => {
+  test('builderName is the first label of the suffix', () => {
+    expect(builderName('webnode.fr')).toBe('webnode')
+    expect(builderName('wixsite.com')).toBe('wixsite')
+  })
+
+  test('BUILDER_SUFFIXES lists the required builders', () => {
+    expect(BUILDER_SUFFIXES).toContain('webnode.fr')
+    expect(BUILDER_SUFFIXES).toContain('sites.google.com')
+    expect(BUILDER_SUFFIXES.length).toBeGreaterThanOrEqual(21)
   })
 })

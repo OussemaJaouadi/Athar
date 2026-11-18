@@ -6,7 +6,10 @@ import * as sqliteVec from 'sqlite-vec'
 
 import { build, slug } from './build'
 import { RULES, cleanEntry, detectLanguage, displayRow, nameKey, parseWebsite, personKey } from './clean'
+import { saveChecks } from './check'
 import { entryId, ingest } from './collect'
+import { afterEmbed } from './embed'
+import { laneNotes } from './store-readings'
 import type { RegistryRow } from './registry'
 
 // The rules of the pipeline, pinned to the cases found in the real registry on 17 Nov 2026.
@@ -398,5 +401,38 @@ describe('the rows behind the numbers', () => {
     const { ideaCheck } = require('./facts') as typeof import('./facts')
     expect(ideaCheck(db, 'abc')).toEqual(ideaChecks(db)[0])
     expect(ideaCheck(db, 'zzz')).toBeNull()
+  })
+})
+
+describe('readings stay current after check and embed', () => {
+  const seeded = () => {
+    const db = database()
+    ingest(db, body([row({ name: 'VENARI SECURITY TUNISIA', website: 'https://venari.tn' })]), null)
+    run(db)
+    db.run('DELETE FROM readings')
+    return db
+  }
+  const count = (db: Database) => db.query<{ n: number }, []>('SELECT COUNT(*) AS n FROM readings').get()!.n
+
+  test('embed refreshes the readings and reports the lanes', () => {
+    const db = seeded()
+    expect(count(db)).toBe(0)
+    const notes = afterEmbed(db)
+    expect(count(db)).toBeGreaterThan(0)
+    expect(notes.some((n) => n.code.startsWith('lane_'))).toBe(true)
+  })
+
+  test('check stores the observation, decides its state once in storeReadings, and reports the lanes', () => {
+    const db = seeded()
+    const id = startups(db)[0].id
+    const outcome = { status: 'unreachable' as const, detail: 'no such domain', finalHost: null, title: null, summary: null }
+    const { lanes, turned } = saveChecks(db, [{ id, website: 'https://venari.tn' }], [outcome])
+    expect(turned).toBe(0)
+    expect(count(db)).toBeGreaterThan(0)
+    expect(laneNotes(lanes).some((n) => n.code.startsWith('lane_'))).toBe(true)
+    const check = db.query<{ status: string; state: string | null; state_lane: string | null }, []>('SELECT status, state, state_lane FROM website_checks').get()!
+    expect(check.status).toBe('unreachable')
+    expect(check.state).not.toBeNull()
+    expect(check.state_lane).not.toBeNull()
   })
 })

@@ -35,6 +35,8 @@ import {
   listDownloads,
 } from "#/server/api/ops";
 import { getPipeline, getRunDetail, type RunChange } from "#/server/api/portal";
+import { getReviewSummary } from "#/server/api/review";
+import { LaneTotals } from "@/components/athar/lane-totals";
 import type { StepState } from "#/server/pipeline/state";
 
 // fact: a counted fact opened as the rows behind it; download: a download opened as what it changed (Collect).
@@ -84,9 +86,10 @@ export const Route = createFileRoute("/portal/")({
   // The selected step: the one in the URL, else the step of a linked run, else the running one, else the first with
   // something to do, else Collect. Its pane shows the facts of the selected run, or of its last run.
   loader: async ({ deps }) => {
-    const [state, data] = await Promise.all([
+    const [state, data, summary] = await Promise.all([
       getPipelineState(),
       getPipeline(),
+      getReviewSummary(),
     ]);
     const keys = state.steps.map((s) => s.operation);
     const linked = deps.run
@@ -113,6 +116,7 @@ export const Route = createFileRoute("/portal/")({
     return {
       state,
       data,
+      summary,
       key,
       step,
       runs,
@@ -170,6 +174,7 @@ function Pipeline() {
   const {
     state,
     data,
+    summary,
     key,
     step,
     runs,
@@ -234,6 +239,7 @@ function Pipeline() {
         onBack={() => navigate({ search: {}, replace: true })}
         backLabel="All steps"
         list={
+          <>
           <Stepper
             value={keys.indexOf(key) + 1}
             onValueChange={(n) => select(keys[n - 1])}
@@ -274,6 +280,16 @@ function Pipeline() {
               </StepperNav>
             </Frame>
           </Stepper>
+          <div className="grid gap-6 px-6 pb-6 pt-2">
+            <div className="grid justify-items-start gap-2">
+              <RunStepButton operation="all" label="Run everything" disabled={!!running} />
+              <p className="max-w-[60ch] text-[0.875rem] text-ink-2">
+                {data.operations.find((o) => o.id === "all")?.description}
+              </p>
+            </div>
+            <LaneTotals summary={summary} />
+          </div>
+          </>
         }
         pane={
           <StepPane

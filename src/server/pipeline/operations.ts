@@ -18,6 +18,12 @@ export const OPERATIONS: Operation[] = [
   { id: 'check', label: 'Check websites', description: 'Ask each startup website whether it answers. Takes about five minutes.', steps: [check] },
   { id: 'prepare', label: 'Prepare', description: 'Rewrite each description as one plain English statement with your AI key. Optional.', steps: [prepare] },
   { id: 'embed', label: 'Embed', description: 'Embed every described startup on this machine for the idea check.', steps: [embed] },
+  {
+    id: 'all',
+    label: 'Run everything',
+    description: 'Collect, build, check the websites and embed, in that order, and bring the readings up to date. Prepare is left out because it needs an AI key.',
+    steps: [collect, build, check, embed],
+  },
 ]
 
 export const getOperation = (id: string) => OPERATIONS.find((o) => o.id === id)

@@ -1,8 +1,9 @@
+import type { Database } from 'bun:sqlite'
 import { now } from '../ids'
-import { looksParked, pageFacts } from './page-facts'
+import { pageFacts } from './page-facts'
 import { REGISTRY } from './registry'
 import type { RunNote, Step } from './types'
-import { websiteState, type WebsiteState } from './website-state'
+import { laneNotes, storeReadings, type StoreResult } from './store-readings'
 
 // Check: ask each startup's website once whether it answers. The result is an observation with a
 // date ("unreachable since 17 Nov"), never a verdict about the company.
@@ -115,6 +116,38 @@ async function pool<T, R>(items: T[], size: number, work: (item: T) => Promise<R
   return results
 }
 
+/**
+ * Writes the outcomes and then refreshes the readings. What a check means (answers, parked, moved...) is decided in
+ * one place, `storeReadings`, which also stores it on the check; this only records what was observed.
+ */
+export function saveChecks(db: Database, sites: { id: string; website: string }[], outcomes: Outcome[]) {
+  const at = now()
+  const previous = new Map(
+    db.query<{ startup_id: string; url: string; status: string; since: string }, []>('SELECT startup_id, url, status, since FROM website_checks').all().map((c) => [c.startup_id, c]),
+  )
+  let turned = 0
+  db.transaction(() => {
+    const save = db.query(
+      `INSERT INTO website_checks (startup_id, url, status, detail, final_host, checked_at, since, title, summary)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+       ON CONFLICT(startup_id) DO UPDATE SET url = ?2, status = ?3, detail = ?4, final_host = ?5, checked_at = ?6, since = ?7,
+         title = ?8, summary = ?9`,
+    )
+    sites.forEach((s, i) => {
+      const o = outcomes[i]
+      const before = previous.get(s.id)
+      const same = before && before.url === s.website && before.status === o.status
+      if (before && before.url === s.website && before.status !== o.status) turned++
+      save.run(s.id, s.website, o.status, o.detail, o.finalHost, at, same ? before.since : at, o.title, o.summary)
+    })
+    // A startup whose website is gone from the registry, or is now a social page, has nothing to observe.
+    db.run("DELETE FROM website_checks WHERE startup_id NOT IN (SELECT id FROM startups WHERE website IS NOT NULL AND website_kind IN ('own', 'hosted', 'shortlink'))")
+  })()
+  const lanes: StoreResult = storeReadings(db)
+  const parked = db.query<{ n: number }, []>("SELECT COUNT(*) AS n FROM website_checks WHERE state = 'parked'").get()?.n ?? 0
+  return { turned, parked, lanes }
+}
+
 export const check: Step = {
   name: 'check',
   label: 'Ask each website whether it answers',
@@ -133,45 +166,8 @@ export const check: Step = {
     const second = await pool(failed, 4, (i) => probe(sites[i].website))
     failed.forEach((i, n) => (outcomes[i] = second[n]))
 
-    // What each check means: a page that answers but says it is for sale or gone is parked, whatever the rule said.
-    const stored = sites.map((s, i) => {
-      const o = outcomes[i]
-      const st = websiteState({ status: o.status, detail: o.detail, finalHost: o.finalHost }, s.domain)
-      if (st.value === 'answers' && looksParked({ title: o.title, summary: o.summary })) {
-        return {
-          state: 'parked' as WebsiteState,
-          lane: 'inferred' as const,
-          why: `The page says the domain is for sale or the site is gone: "${o.title ?? o.summary}"`,
-        }
-      }
-      return { state: st.value, lane: st.lane, why: st.why }
-    })
-    const parked = stored.filter((x) => x.state === 'parked').length
     const described = outcomes.filter((o) => o.summary !== null).length
-
-    const at = now()
-    const previous = new Map(
-      db.query<{ startup_id: string; url: string; status: string; since: string }, []>('SELECT startup_id, url, status, since FROM website_checks').all().map((c) => [c.startup_id, c]),
-    )
-    let turned = 0
-    db.transaction(() => {
-      const save = db.query(
-        `INSERT INTO website_checks (startup_id, url, status, detail, final_host, checked_at, since, state, state_lane, state_why, title, summary)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
-         ON CONFLICT(startup_id) DO UPDATE SET url = ?2, status = ?3, detail = ?4, final_host = ?5, checked_at = ?6, since = ?7,
-           state = ?8, state_lane = ?9, state_why = ?10, title = ?11, summary = ?12`,
-      )
-      sites.forEach((s, i) => {
-        const o = outcomes[i]
-        const before = previous.get(s.id)
-        const same = before && before.url === s.website && before.status === o.status
-        if (before && before.url === s.website && before.status !== o.status) turned++
-        const v = stored[i]
-        save.run(s.id, s.website, o.status, o.detail, o.finalHost, at, same ? before.since : at, v.state, v.lane, v.why, o.title, o.summary)
-      })
-      // A startup whose website is gone from the registry, or is now a social page, has nothing to observe.
-      db.run("DELETE FROM website_checks WHERE startup_id NOT IN (SELECT id FROM startups WHERE website IS NOT NULL AND website_kind IN ('own', 'hosted', 'shortlink'))")
-    })()
+    const { turned, parked, lanes } = saveChecks(db, sites, outcomes)
 
     const reachable = outcomes.filter((o) => o.status === 'reachable').length
     const why = new Map<string, number>()
@@ -187,6 +183,7 @@ export const check: Step = {
       { code: 'social_not_checked', count: social, text: 'pages on social networks; not checked, they answer whether or not the page exists' },
       { code: 'no_website', count: none, text: 'startups with no website in the registry' },
     ].filter((n) => n.count > 0)
+    notes.push(...laneNotes(lanes))
 
     return {
       itemsIn: sites.length,

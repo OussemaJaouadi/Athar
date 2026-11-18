@@ -1,12 +1,17 @@
+import type { Database } from 'bun:sqlite'
 import { now, sha256 } from '../ids'
 import { EMBEDDING, embedDocuments } from './embedder'
-import type { Step } from './types'
+import { laneNotes, storeReadings } from './store-readings'
+import type { RunNote, Step } from './types'
 
 /** What is embedded for one startup: its sector, then the prepared text when Prepare has run, else the description. */
 export const embeddingText = (sector: string | null, text: string) => (sector ? `${sector}. ${text}` : text)
 
 /** What a vector was made from: the model, its revision and the text. A different hash means the vector is out of date. */
 export const embeddingHash = (text: string) => sha256(`${EMBEDDING.model}\n${EMBEDDING.revision}\n${text}`)
+
+/** Two descriptions that are alike decide relations, so the readings are derived again once the vectors changed. */
+export const afterEmbed = (db: Database): RunNote[] => laneNotes(storeReadings(db))
 
 // Embed: one vector per startup that has a description, computed on this machine.
 // A startup is embedded again only when its text or the model changed.
@@ -64,7 +69,7 @@ export const embed: Step = {
         { code: 'from_prepared', count: startups.filter((s) => s.prepared).length, text: 'startups embedded from their prepared text' },
         { code: 'removed', count: stale.length, text: 'vectors removed because the startup has no description any more' },
         { code: 'no_description', count: without, text: 'startups with no description; nothing to embed, they cannot be matched to an idea' },
-      ].filter((n) => n.count > 0),
+      ].filter((n) => n.count > 0).concat(afterEmbed(db)),
     }
   },
 }

@@ -3,6 +3,7 @@ import { createServerFn } from '@tanstack/react-start'
 import { getDatabase } from '../db'
 import type { ReadingKind } from '../pipeline/readings'
 import { decideReading, forgetStale, REVIEW_ORDER, reviewQueue, reviewSummary, undoDecision } from '../pipeline/review'
+import { reviewContext, startupCard } from '../pipeline/review-context'
 
 // The operator's review of derived readings. The logic lives in pipeline/review.ts so it can be tested without a server.
 
@@ -40,3 +41,13 @@ export const undoReview = createServerFn({ method: 'POST' })
 
 /** Deletes the decisions that no longer apply; returns how many were removed. */
 export const forgetStaleDecisions = createServerFn({ method: 'POST' }).handler(async (): Promise<number> => forgetStale(getDatabase()))
+
+/** The question, answers and evidence for one reading; null when the reading does not exist. */
+export const getReviewContext = createServerFn()
+  .validator((id: string) => id)
+  .handler(async ({ data }) => wire(reviewContext(getDatabase(), data)))
+
+/** One startup with its founders, for the evidence beside a question; null when the id is unknown. */
+export const getStartupCard = createServerFn()
+  .validator((id: string) => id)
+  .handler(async ({ data }) => wire(startupCard(getDatabase(), data)))

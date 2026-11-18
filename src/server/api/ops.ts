@@ -1,5 +1,6 @@
 import { createServerFn } from '@tanstack/react-start'
 
+import { requireOperator } from '../auth'
 import { getDatabase } from '../db'
 import { entryView, findEntries, leadEntry, pipelineState } from '../pipeline/state'
 
@@ -7,22 +8,22 @@ import { entryView, findEntries, leadEntry, pipelineState } from '../pipeline/st
 // The logic lives in pipeline/state.ts so it can be tested without a server.
 
 /** Each step of the pipeline: what it covers, what is out of date or missing and why, and what to run next. */
-export const getPipelineState = createServerFn().handler(async () => pipelineState(getDatabase()))
+export const getPipelineState = createServerFn().handler(async () => { requireOperator(); return pipelineState(getDatabase()) })
 
 /** Entries by the start of their id, by words in the published row, or by the startup's website. */
 export const searchEntries = createServerFn()
   .validator((q: string) => q)
-  .handler(async ({ data }) => findEntries(getDatabase(), data))
+  .handler(async ({ data }) => { requireOperator(); return findEntries(getDatabase(), data) })
 
 /** The id of the entry a startup's values were read from, for every "open its entry" link; null for an unknown startup. */
 export const getLeadEntry = createServerFn()
   .validator((startupId: string) => startupId)
-  .handler(async ({ data }) => leadEntry(getDatabase(), data))
+  .handler(async ({ data }) => { requireOperator(); return leadEntry(getDatabase(), data) })
 
 /** One entry: the published row, how it was read, the startup it became, why, and what the later steps hold. */
 export const getEntry = createServerFn()
   .validator((id: string) => id)
-  .handler(async ({ data }) => entryView(getDatabase(), data))
+  .handler(async ({ data }) => { requireOperator(); return entryView(getDatabase(), data) })
 
 // ── The rows behind the numbers ─────────────────────────────────────────────────────────────────
 
@@ -33,25 +34,25 @@ import type { Provider } from '#/shared/providers'
 /** The startups or entries a counted fact stands for, by the note's code. Null when the code has no rows behind it. */
 export const getFactRows = createServerFn()
   .validator((code: string) => code)
-  .handler(async ({ data }) => factRows(getDatabase(), data))
+  .handler(async ({ data }) => { requireOperator(); return factRows(getDatabase(), data) })
 
 /** Every download, newest first, with what it added and what it no longer published. */
-export const listDownloads = createServerFn().handler(async () => downloads(getDatabase()))
+export const listDownloads = createServerFn().handler(async () => { requireOperator(); return downloads(getDatabase()) })
 
 /** What one download changed against the one before it, entry by entry. */
 export const getDownloadChanges = createServerFn()
   .validator((id: number) => id)
-  .handler(async ({ data }) => downloadChanges(getDatabase(), data))
+  .handler(async ({ data }) => { requireOperator(); return downloadChanges(getDatabase(), data) })
 
 /** People named as founders, grouped by person, searchable by any spelling. */
 export const listPeople = createServerFn()
   .validator((options: { q?: string; repeat?: boolean; limit?: number; offset?: number }) => options)
-  .handler(async ({ data }) => people(getDatabase(), data))
+  .handler(async ({ data }) => { requireOperator(); return people(getDatabase(), data) })
 
 /** Stored idea checks, newest first. */
 export const listIdeaChecks = createServerFn()
   .validator((options: { savedOnly?: boolean; limit?: number }) => options)
-  .handler(async ({ data }) => ideaChecks(getDatabase(), data))
+  .handler(async ({ data }) => { requireOperator(); return ideaChecks(getDatabase(), data) })
 
 export type KeyProbe = { ok: true; reply: string; milliseconds: number; inputTokens: number | null; outputTokens: number | null } | { ok: false; error: string; milliseconds: number }
 
@@ -62,6 +63,7 @@ export type KeyProbe = { ok: true; reply: string; milliseconds: number; inputTok
 export const probeKey = createServerFn({ method: 'POST' })
   .validator((id: string) => id)
   .handler(async ({ data: id }): Promise<KeyProbe> => {
+    requireOperator()
     const db = getDatabase()
     const key = db.query<{ id: string; provider: Provider; model: string; api_key: string }, [string]>('SELECT id, provider, model, api_key FROM ai_keys WHERE id = ?').get(id)
     const started = Date.now()
@@ -84,22 +86,22 @@ export const probeKey = createServerFn({ method: 'POST' })
 /** The founders of one startup, in published order, each with the slug of the person and how many startups name them. */
 export const getFoundersOf = createServerFn()
   .validator((startupId: string) => startupId)
-  .handler(async ({ data }) => foundersOf(getDatabase(), data))
+  .handler(async ({ data }) => { requireOperator(); return foundersOf(getDatabase(), data) })
 
 /** One person by slug, whatever page of the people list they are on. */
 export const getPersonRow = createServerFn()
   .validator((slug: string) => slug)
-  .handler(async ({ data }) => person(getDatabase(), data))
+  .handler(async ({ data }) => { requireOperator(); return person(getDatabase(), data) })
 
 /** One stored idea check by id, however old. */
 export const getIdeaCheckRow = createServerFn()
   .validator((id: string) => id)
-  .handler(async ({ data }) => ideaCheck(getDatabase(), data))
+  .handler(async ({ data }) => { requireOperator(); return ideaCheck(getDatabase(), data) })
 
 /** Every doubtful or missing thing, counted on today's data; each code opens with getFactRows. */
-export const getQualitySummary = createServerFn().handler(async () => qualitySummary(getDatabase()))
+export const getQualitySummary = createServerFn().handler(async () => { requireOperator(); return qualitySummary(getDatabase()) })
 
 /** Startups by name, exact slug, website or the start of an entry id, for the operator's Startups page. */
 export const searchStartupsOps = createServerFn()
   .validator((q: string) => q)
-  .handler(async ({ data }) => searchStartups(getDatabase(), data))
+  .handler(async ({ data }) => { requireOperator(); return searchStartups(getDatabase(), data) })

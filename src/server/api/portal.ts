@@ -1,15 +1,9 @@
 import { createServerFn } from '@tanstack/react-start'
-import { getCookie } from '@tanstack/react-start/server'
 
+import { requireOperator } from '../auth'
 import { getDatabase } from '../db'
 import { OPERATIONS, getOperation } from '../pipeline/operations'
 import { recoverInterrupted, startRun } from '../pipeline/runner'
-
-// Every portal call is operator-only, checked on the server, not only in the UI.
-function requireOperator() {
-  if (getCookie('athar_role') !== 'operator')
-    throw new Error('Operator role required')
-}
 
 export type RunRow = {
   id: string

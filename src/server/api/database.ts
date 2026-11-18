@@ -1,18 +1,13 @@
 import { createServerFn } from '@tanstack/react-start'
-import { getCookie } from '@tanstack/react-start/server'
 
 import type { Database } from 'bun:sqlite'
 
 import { DB_PAGE_SIZE as PAGE_SIZE } from '#/shared/database'
+import { requireOperator } from '../auth'
 import { getDatabase } from '../db'
 import { displayRow } from '../pipeline/clean'
 import type { RegistryRow } from '../pipeline/registry'
 import { foundersOf, websiteCheckOf, type WebsiteCheck } from './startup-facts'
-
-// Every database call is operator-only, checked on the server, not only in the UI.
-function requireOperator() {
-  if (getCookie('athar_role') !== 'operator') throw new Error('Operator role required')
-}
 
 /*
  * The Database view lists the tables by what kind of thing they hold (docs/DATA.md): what the registry published, what

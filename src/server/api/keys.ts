@@ -1,14 +1,9 @@
 import { createServerFn } from '@tanstack/react-start'
-import { getCookie } from '@tanstack/react-start/server'
 
 import { isProvider, type Provider } from '#/shared/providers'
+import { requireOperator } from '../auth'
 import { getDatabase } from '../db'
 import { newId, now } from '../ids'
-
-// Every key call is operator-only, checked on the server, not only in the UI.
-function requireOperator() {
-  if (getCookie('athar_role') !== 'operator') throw new Error('Operator role required')
-}
 
 export type KeyRow = {
   id: string

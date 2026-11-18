@@ -1,5 +1,6 @@
 import { createServerFn } from '@tanstack/react-start'
 
+import { requireOperator } from '../auth'
 import { getDatabase } from '../db'
 import type { ReadingKind } from '../pipeline/readings'
 import { decideReading, forgetStale, REVIEW_ORDER, reviewQueue, reviewSummary, undoDecision } from '../pipeline/review'
@@ -21,10 +22,10 @@ const asKind = (kind: string | undefined): ReadingKind | undefined => (kind && K
 /** The open, decided or both readings, in review order, optionally one kind. */
 export const getReviewQueue = createServerFn()
   .validator((options: { kind?: string; include?: 'open' | 'decided' | 'all' }) => options)
-  .handler(async ({ data }) => wire(reviewQueue(getDatabase(), { kind: asKind(data.kind), include: data.include })))
+  .handler(async ({ data }) => { requireOperator(); return wire(reviewQueue(getDatabase(), { kind: asKind(data.kind), include: data.include })) })
 
 /** Lane totals, percentages, counts by kind and the number of stale decisions. */
-export const getReviewSummary = createServerFn().handler(async () => wire(reviewSummary(getDatabase())))
+export const getReviewSummary = createServerFn().handler(async () => { requireOperator(); return wire(reviewSummary(getDatabase())) })
 
 /** The operator's answer to one reading. */
 export const decideReview = createServerFn({ method: 'POST' })
@@ -32,22 +33,22 @@ export const decideReview = createServerFn({ method: 'POST' })
     if (!input.id) throw new Error('A reading id is required')
     return input
   })
-  .handler(async ({ data }) => wire(decideReading(getDatabase(), data)))
+  .handler(async ({ data }) => { requireOperator(); return wire(decideReading(getDatabase(), data)) })
 
 /** Removes the operator's answer to one reading, so it waits again. */
 export const undoReview = createServerFn({ method: 'POST' })
   .validator((id: string) => id)
-  .handler(async ({ data }): Promise<boolean> => undoDecision(getDatabase(), data))
+  .handler(async ({ data }): Promise<boolean> => { requireOperator(); return undoDecision(getDatabase(), data) })
 
 /** Deletes the decisions that no longer apply; returns how many were removed. */
-export const forgetStaleDecisions = createServerFn({ method: 'POST' }).handler(async (): Promise<number> => forgetStale(getDatabase()))
+export const forgetStaleDecisions = createServerFn({ method: 'POST' }).handler(async (): Promise<number> => { requireOperator(); return forgetStale(getDatabase()) })
 
 /** The question, answers and evidence for one reading; null when the reading does not exist. */
 export const getReviewContext = createServerFn()
   .validator((id: string) => id)
-  .handler(async ({ data }) => wire(reviewContext(getDatabase(), data)))
+  .handler(async ({ data }) => { requireOperator(); return wire(reviewContext(getDatabase(), data)) })
 
 /** One startup with its founders, for the evidence beside a question; null when the id is unknown. */
 export const getStartupCard = createServerFn()
   .validator((id: string) => id)
-  .handler(async ({ data }) => wire(startupCard(getDatabase(), data)))
+  .handler(async ({ data }) => { requireOperator(); return wire(startupCard(getDatabase(), data)) })

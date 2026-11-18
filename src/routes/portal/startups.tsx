@@ -180,7 +180,7 @@ function StartupsPage() {
               title={<span dir="auto">{it.name}</span>}
               qualifier={it.sector ?? (fact ? month(it.labelled ?? null) ?? undefined : undefined)}
               detailMono={!!fact && !!it.value}
-              detail={fact ? (it.value ?? undefined) : [it.kept !== undefined ? plural(it.kept, 'note', 'notes') : null, it.entries !== null ? plural(it.entries, 'entry', 'entries') : null, ...it.notes.map((n) => NOTE[n] ?? n), it.withdrawn ? 'no longer in the registry' : null].filter(Boolean).join(' · ')}
+              detail={fact ? (it.value ?? undefined) : [it.kept ? plural(it.kept, 'note', 'notes') : null, it.entries !== null ? plural(it.entries, 'entry', 'entries') : null, ...it.notes.map((n) => NOTE[n] ?? n), it.withdrawn ? 'no longer in the registry' : null].filter(Boolean).join(' · ')}
             />
           </div>
         ))

@@ -258,3 +258,8 @@ Install: `bunx --bun shadcn@latest add @interior/<name> --yes`.
 - **loading-button** → `LoadingButton` (`onAction` returning a promise, `children` as the idle label, `pendingLabel`, `successLabel`, `errorLabel`, `resetAfter`, `disabled`, `className`). A rejected promise shows the error label. Used for "Test and save" in the AI key drawer.
 - **tabs** → `Tabs` (`items: {value,label}[]`, `value`, `onValueChange`, `label`, `renderPanel?`, `className`); one underline that travels between tabs. Used in the Status step pane (Overview, Runs, How it works).
 - **progress-bar** → `ProgressBar` (`value: number | null`, `max`, `label`, `pendingLabel`, `completeLabel`); `null` is an indeterminate sweep that hands over to a fraction. Used under "Where it stands" on Status.
+
+## Changed 2026-11-18
+
+- **pagination** → the Archive now uses the whole `Pagination` component (`count`, `page`, `onPageChange`, `siblings`, `boundaries`, `label`), not only its `paginate` helper with hand-written buttons.
+- **tabs** was removed: in the Status step pane its tab row vanished after switching tabs. The pane uses shadcn `Tabs` with `TabsList variant="line"` (`src/components/ui/tabs.tsx`) instead.

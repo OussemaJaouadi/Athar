@@ -242,8 +242,12 @@ function Growth({ rows, labelYears, t, renderer, sector }: { rows: LandscapeRow[
   const y1 = Math.max(...founded, ...rows.map((r) => r.year))
   const years = Array.from({ length: y1 - y0 + 1 }, (_, i) => String(y0 + i))
   const per = years.map((y) => ({ year: y, founded: rows.filter((r) => r.founded === Number(y)).length, labelled: rows.filter((r) => r.year === Number(y)).length }))
-  const bars = per.map((p) => ({ year: p.year, kind: 'Founded', count: p.founded }))
-  const line = per.filter((p) => Number(p.year) >= labelYears[0]).map((p) => ({ year: p.year, kind: 'Labelled', count: p.labelled }))
+  // Running totals: how many startups existed by each year, and how many of them carried the label by then.
+  let fSum = 0
+  let lSum = 0
+  const cum = per.map((p) => ({ ...p, foundedSoFar: (fSum += p.founded), labelledSoFar: (lSum += p.labelled) }))
+  const bars = cum.map((p) => ({ year: p.year, kind: 'Founded', count: p.foundedSoFar }))
+  const line = cum.filter((p) => Number(p.year) >= labelYears[0]).map((p) => ({ year: p.year, kind: 'Labelled', count: p.labelledSoFar }))
   const pf = [...per].sort((a, b) => b.founded - a.founded)[0]
   const last = per[per.length - 1]
   const known = rows.filter((r) => r.founded !== null)
@@ -265,28 +269,34 @@ function Growth({ rows, labelYears, t, renderer, sector }: { rows: LandscapeRow[
         tooltip: {
           use: tooltip,
           formatGroup: (points: readonly { datum: { year: string } }[]) => {
-            const p = per.find((x) => x.year === points[0]?.datum.year)
+            const p = cum.find((x) => x.year === points[0]?.datum.year)
             if (!p) return ''
-            const d = p.labelled - p.founded
-            return [p.year, `Founded ${p.founded}`, `Labelled ${p.labelled}`, Number(p.year) >= labelYears[0] ? `Difference ${d > 0 ? '+' : ''}${d}` : null].filter(Boolean).join('\n')
+            return [
+              `By the end of ${p.year}`,
+              `Founded ${p.foundedSoFar} (+${p.founded} that year)`,
+              Number(p.year) >= labelYears[0] ? `Labelled ${p.labelledSoFar} (+${p.labelled} that year)` : 'The label did not exist yet',
+              Number(p.year) >= labelYears[0] ? `Not yet labelled ${p.foundedSoFar - p.labelledSoFar}` : null,
+            ]
+              .filter(Boolean)
+              .join('\n')
           },
         },
         theme: theme(t, [t.tile4, t.glaze]),
         margin: { left: 44 },
       }),
-    [t, JSON.stringify(per)], // eslint-disable-line react-hooks/exhaustive-deps
+    [t, JSON.stringify(cum)], // eslint-disable-line react-hooks/exhaustive-deps
   )
   return (
     <Section
       question="How fast did the registry grow?"
       chart={
         <>
-          <Swatches items={t ? [['Founded that year (bars)', t.tile4], ['Labelled that year (line)', t.glaze]] : []} />
-          <div className="mt-3">{def ? <Chart definition={def} renderer={renderer} height={380} ariaLabel={`Founded and labelled each year. Founding peaked in ${pf?.year} with ${pf?.founded}.`} /> : <Empty h={380} />}</div>
-          <DataTable caption="Startups founded and labelled each year" head={['Year', 'Founded', 'Labelled']} rows={per.map((p) => [p.year, p.founded, p.labelled])} />
+          <Swatches items={t ? [['Founded so far (bars)', t.tile4], ['Labelled so far (line)', t.glaze]] : []} />
+          <div className="mt-3">{def ? <Chart definition={def} renderer={renderer} height={380} ariaLabel={`Startups founded and labelled so far, year by year, reaching ${rows.length} in ${last?.year}. Founding peaked in ${pf?.year} with ${pf?.founded}.`} /> : <Empty h={380} />}</div>
+          <DataTable caption="Startups founded and labelled, so far and that year" head={['Year', 'Founded so far', 'Founded that year', 'Labelled so far', 'Labelled that year']} rows={cum.map((p) => [p.year, p.foundedSoFar, p.founded, p.labelledSoFar, p.labelled])} />
         </>
       }
-      caption="Where the line runs above the bars, the label was catching up on startups founded in earlier years."
+      caption="The gap between the bars and the line is startups that already existed and did not carry the label yet. It closes as the label catches up."
       findings={[
         { figure: rows.length, text: `labelled startups${sector ? ` in ${sector}` : ''} in the registry.` },
         { figure: pf?.founded, text: `founded in ${pf?.year}, the peak founding year. ${last?.labelled} were labelled in ${last?.year}.` },

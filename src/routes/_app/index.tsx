@@ -1,14 +1,10 @@
-import { Link, createFileRoute, getRouteApi, useNavigate } from '@tanstack/react-router'
+import { Link, createFileRoute, getRouteApi } from '@tanstack/react-router'
 import { ArrowRight } from 'lucide-react'
-import { useState } from 'react'
 
+import { AskForm } from '@/components/athar/ask-form'
 import { TileMark } from '@/components/athar/tile-mark'
-import AILoader from '@/components/smoothui/ai-loader'
-import AIPromptInput from '@/components/smoothui/ai-prompt-input'
-import AISuggestions from '@/components/smoothui/ai-suggestions'
 import { cn } from '@/lib/utils'
 import { getWallCards, type RegistryCard } from '#/server/api/app'
-import { checkIdea } from '#/server/api/ideas'
 
 type Search = { draft?: string }
 const shell = getRouteApi('/_app')
@@ -21,7 +17,6 @@ export const Route = createFileRoute('/_app/')({
   component: Home,
 })
 
-const EXAMPLES = ['Olive farmers selling straight to restaurants abroad', 'تطبيق لحجز موعد مع الطبيب في الأرياف', 'Location de matériel agricole entre voisins']
 
 const longDate = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
 
@@ -30,55 +25,6 @@ function Home() {
   const { cards } = Route.useLoaderData()
   const { draft } = Route.useSearch()
   return <Ask cards={cards} draft={draft} />
-}
-
-function AskForm({ initial, compact }: { initial?: string; compact?: boolean }) {
-  const { corpus } = shell.useLoaderData()
-  const navigate = useNavigate()
-  const [text, setText] = useState(initial ?? '')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string>()
-  const ask = async (idea: string) => {
-    setBusy(true)
-    setError(undefined)
-    try {
-      const { id } = await checkIdea({ data: idea })
-      await navigate({ to: '/ideas/$id', params: { id } })
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setBusy(false)
-    }
-  }
-  const short = text.trim().length < 12
-  const send = () => {
-    if (!short && !busy) ask(text.trim())
-  }
-  return (
-    <form role="search" onSubmit={(e) => (e.preventDefault(), send())} className="grid gap-4">
-      {/* SmoothUI's composer as it ships: it grows with the text, Enter sends, and its state drives the motion. */}
-      <AIPromptInput
-        aria-label="Describe your idea"
-        className={compact ? undefined : 'text-lg'}
-        value={text}
-        onValueChange={setText}
-        onSubmit={send}
-        state={busy ? 'thinking' : error ? 'error' : 'idle'}
-        disabled={busy}
-        placeholder="Describe your idea in a sentence"
-      >
-        {busy ? (
-          <AILoader variant="bar" showElapsed label={`Reading all ${corpus.startups.toLocaleString('en-GB')} startups`} />
-        ) : (
-          <span className="text-[0.9375rem] text-ink-2" aria-live="polite">
-            {text && short ? 'A little more: a short sentence is enough.' : 'Enter to ask · Shift+Enter for a new line'}
-          </span>
-        )}
-      </AIPromptInput>
-      {error && <p className="ps-5 text-[0.9375rem] text-destructive">{error}</p>}
-      {!compact && <AISuggestions className="ps-1" label="Or try one" suggestions={EXAMPLES.map((label, i) => ({ id: String(i), label }))} onSelect={(sug) => setText(sug.label)} />}
-    </form>
-  )
 }
 
 function Ask({ cards, draft }: { cards: RegistryCard[]; draft?: string }) {

@@ -422,7 +422,7 @@ function Highlighted({ text, matches }: { text: string; matches: number[] }) {
 
 function Kbd({ children }: { children: ReactNode }) {
   return (
-    <kbd className="inline-flex h-5 min-w-5 items-center justify-center rounded border border-zinc-200 bg-zinc-50 px-1 font-sans text-[11px] text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
+    <kbd className="inline-flex h-[22px] min-w-[22px] items-center justify-center rounded-[5px] border border-hairline bg-surface px-1.5 font-sans text-[0.8125rem] leading-none text-ink-2">
       {children}
     </kbd>
   );
@@ -937,16 +937,16 @@ function ActionSearchBar({
     >
       <div
         className={cn(
-          "@container/palette absolute inset-x-0 top-0 z-30 overflow-hidden rounded-lg border border-edge bg-surface",
+          "@container/palette absolute inset-x-0 top-0 z-30 overflow-hidden rounded-[8px] border border-edge bg-canvas transition-colors duration-150 hover:border-ink focus-within:border-ink",
           open
             ? "shadow-[0_16px_40px_-16px_rgb(0_0_0/0.2)] dark:shadow-[0_16px_40px_-16px_rgb(0_0_0/0.7)]"
-            : "shadow-xs"
+            : "shadow-none"
         )}
       >
-        <div className="flex h-[34px] items-center gap-2 px-3">
+        <div className="flex h-[34px] items-center gap-2.5 px-3">
           <Search
             aria-hidden="true"
-            className="size-4 shrink-0 text-zinc-400 dark:text-zinc-500"
+            className="size-4 shrink-0 text-ink-2"
           />
           {stack.map((p, i) => (
             <button
@@ -977,7 +977,7 @@ function ActionSearchBar({
             aria-controls={open ? listboxId : undefined}
             aria-expanded={open}
             autoComplete="off"
-            className="h-full min-w-0 flex-1 bg-transparent text-sm text-zinc-900 outline-none placeholder:text-zinc-400 dark:text-zinc-100 dark:placeholder:text-zinc-500"
+            className="h-full min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-2"
             id={inputId}
             onChange={handleChange}
             onKeyDown={handleKeyDown}

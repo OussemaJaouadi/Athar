@@ -1,11 +1,11 @@
 import { Link, createFileRoute, getRouteApi, useNavigate } from '@tanstack/react-router'
-import { CalendarDays, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Equal, FileCheck, FileText, FileX, Globe, Link2, Link2Off, Quote, Shapes, Sprout, TextSearch } from 'lucide-react'
+import { CalendarDays, ChevronsLeft, ChevronsRight, Equal, FileCheck, FileText, FileX, Globe, Link2, Link2Off, Quote, Shapes, Sprout, TextSearch } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import { Profile } from '@/components/athar/profile'
 import { Scroller } from '@/components/athar/scroller'
 import { SectorSwatch, TileMark } from '@/components/athar/tile-mark'
-import { paginate } from '@/components/interior/pagination'
+import { Pagination } from '@/components/interior/pagination'
 import { Filters } from '@/components/reui/filters/filters'
 import { createFilterQuery, createFilterRule, flattenFilterConditions } from '@/components/reui/filters/filters-query'
 import type { FilterField, FilterQuery } from '@/components/reui/filters/filters-types'
@@ -224,52 +224,13 @@ function ArchivePage() {
           )}
 
           {matched > PAGE_SIZE && (
-            <nav aria-label="Ledger pages" className="flex items-center justify-between gap-3 border-t border-hairline py-2.5 xl:-ms-3 xl:pe-3 xl:ps-3">
-              <span className="font-mono text-[0.8125rem] whitespace-nowrap text-ink-2">
-                {first}–{last} of {matched}
+            // Interior's Pagination, whole: the window of numbers moves and the current-page indicator glides.
+            <div className="flex items-center justify-between gap-3 border-t border-hairline py-2.5 xl:-ms-3 xl:pe-3 xl:ps-3">
+              <span className="text-[0.8125rem] whitespace-nowrap text-ink-2 tabular-nums">
+                {first}–{last} of {matched.toLocaleString('en-GB')}
               </span>
-              <ol className="flex items-center gap-0.5">
-                <li>
-                  {page > 1 ? (
-                    <Link {...pageLink(page - 1)} aria-label="Previous page" className="grid size-11 place-content-center rounded-[4px] text-ink no-underline hover:bg-surface xl:size-8">
-                      <ChevronLeft className="size-4" aria-hidden />
-                    </Link>
-                  ) : (
-                    <span aria-disabled="true" className="grid size-11 place-content-center text-ink-3 xl:size-8">
-                      <ChevronLeft className="size-4" aria-hidden />
-                    </span>
-                  )}
-                </li>
-                {paginate(page, pages, 0, 1).map((item) =>
-                  typeof item === 'number' ? (
-                    <li key={item}>
-                      <Link
-                        {...pageLink(item)}
-                        aria-current={item === page ? 'page' : undefined}
-                        className={cn('grid h-11 min-w-11 place-content-center rounded-[4px] px-1.5 font-mono text-[0.8125rem] no-underline xl:h-8 xl:min-w-8', item === page ? 'bg-surface-raised text-ink shadow-[inset_0_-2px_0_var(--glaze)]' : 'text-ink-2 hover:bg-surface hover:text-ink')}
-                      >
-                        {item}
-                      </Link>
-                    </li>
-                  ) : (
-                    <li key={item} aria-hidden className="grid h-11 w-5 place-content-center font-mono text-[0.8125rem] text-ink-2 xl:h-8">
-                      …
-                    </li>
-                  ),
-                )}
-                <li>
-                  {page < pages ? (
-                    <Link {...pageLink(page + 1)} aria-label="Next page" className="grid size-11 place-content-center rounded-[4px] text-ink no-underline hover:bg-surface xl:size-8">
-                      <ChevronRight className="size-4" aria-hidden />
-                    </Link>
-                  ) : (
-                    <span aria-disabled="true" className="grid size-11 place-content-center text-ink-3 xl:size-8">
-                      <ChevronRight className="size-4" aria-hidden />
-                    </span>
-                  )}
-                </li>
-              </ol>
-            </nav>
+              <Pagination label="Archive pages" count={pages} page={page} siblings={1} boundaries={1} onPageChange={(n) => navigate(pageLink(n))} />
+            </div>
           )}
         </section>
 

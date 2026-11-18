@@ -31,3 +31,9 @@ Registry: `https://www.kibo-ui.com/r/<name>.json`. The `kibo-ui add` CLI stops o
 - **choicebox** → `src/components/kibo-ui/choicebox.tsx`. Radio options as cards: `Choicebox` (a RadioGroup), `ChoiceboxItem` (`value`, `id`), `ChoiceboxItemHeader`, `ChoiceboxItemTitle`, `ChoiceboxItemDescription`, `ChoiceboxIndicator`. Needs shadcn `radio-group` and `field`. Used for the provider choice in the AI key drawer.
 - **combobox** → `src/components/kibo-ui/combobox.tsx`. `Combobox` (`data: {label,value}[]`, `type`, `value`, `onValueChange`), `ComboboxTrigger`, `ComboboxContent`, `ComboboxInput`, `ComboboxList`, `ComboboxGroup`, `ComboboxItem`, `ComboboxEmpty`, `ComboboxCreateNew` (`onCreateNew`, children as a render function). Needs shadcn `command`, `popover`, `cmdk`. The trigger shows the label found in `data`, so a created value must be added to `data`. Used for the model in the AI key drawer.
 - **status** → `src/components/kibo-ui/status.tsx`. `Status` (`status: online | offline | maintenance | degraded`), `StatusIndicator` (a dot with a ping), `StatusLabel`. Needs shadcn `badge`. Athar change: the four dot colours read `--ok`, `--bad`, `--glaze`, `--warn`. Used by `StepStateBadge` for up to date, failed, running and out of date.
+
+## Changed 2026-11-18
+
+- **choicebox** was removed: the owner wanted the provider as a dropdown with each provider's own mark. The provider is now the portal's Select (`DeskSelect`) with `ProviderMark` (`src/components/athar/provider-mark.tsx`), which inlines the one-colour SVGs from `@lobehub/icons-static-svg` (Lobe Icons, MIT): openrouter, groq, openai, anthropic, google.
+- **combobox**: the trigger takes children; the model trigger shows the provider's mark and the model id. The chosen row carries a check.
+- shadcn `command` fix: cmdk writes `data-selected="false"` on every other row, so `data-selected:` styled all rows as selected. The classes now read `data-[selected=true]:`.

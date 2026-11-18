@@ -1,9 +1,10 @@
 import { useRouter } from "@tanstack/react-router";
-import { CircleAlert, EyeIcon, EyeOffIcon, KeyRound } from "lucide-react";
+import { Check, ChevronsUpDown, CircleAlert, EyeIcon, EyeOffIcon, KeyRound } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 
 import { LoadingButton } from "@/components/interior/loading-button";
-import { Choicebox, ChoiceboxIndicator, ChoiceboxItem, ChoiceboxItemDescription, ChoiceboxItemHeader, ChoiceboxItemTitle } from "@/components/kibo-ui/choicebox";
+import { DeskSelect } from "@/components/athar/desk";
+import { ProviderMark } from "@/components/athar/provider-mark";
 import {
   Combobox,
   ComboboxContent,
@@ -41,7 +42,8 @@ const PROVIDER_HINT: Record<Provider, string> = {
 /**
  * "Add a key" in a right-side drawer, composed from library components kept as they ship:
  *  - the form-in-a-sheet layout is ReUI's sheet pattern (c-sheet-2) on shadcn Sheet and Field;
- *  - Provider is Kibo's Choicebox: five options, all visible, each with a line of what it is;
+ *  - Provider is a dropdown (shadcn Select, as in ReUI's select-with-icons pattern) with each provider's own mark
+ *    from Lobe Icons and a line of what it is;
  *  - Model is Kibo's Combobox: suggestions that filter as you type and a "create new" row for any other id;
  *  - Key is ReUI's password input group (c-input-group-35) with a visibility toggle;
  *  - a failed test is ReUI's destructive Alert (c-alert-4);
@@ -109,32 +111,27 @@ export function AddKeyForm({ open, onOpenChange, onSaved }: { open: boolean; onO
           <FieldGroup>
             <Field>
               <FieldLabel id={`${id}-provider`}>Provider</FieldLabel>
-              <Choicebox
-                aria-labelledby={`${id}-provider`}
+              <DeskSelect
+                label="Provider"
                 value={provider}
-                onValueChange={(v) => {
+                onChange={(v) => {
                   const p = v as Provider;
                   setProvider(p);
                   setModel(SUGGESTED_MODELS[p][0]);
                   setTest(null);
                 }}
-              >
-                {PROVIDERS.map((p) => (
-                  <ChoiceboxItem key={p} value={p} id={`${id}-${p}`}>
-                    <ChoiceboxItemHeader>
-                      <ChoiceboxItemTitle>{PROVIDER_NAME[p]}</ChoiceboxItemTitle>
-                      <ChoiceboxItemDescription>{PROVIDER_HINT[p]}</ChoiceboxItemDescription>
-                    </ChoiceboxItemHeader>
-                    <ChoiceboxIndicator />
-                  </ChoiceboxItem>
-                ))}
-              </Choicebox>
+                options={PROVIDERS.map((p) => ({ value: p, label: PROVIDER_NAME[p], hint: PROVIDER_HINT[p], mark: <ProviderMark provider={p} /> }))}
+              />
             </Field>
 
             <Field>
               <FieldLabel>Model</FieldLabel>
               <Combobox data={models.map((m) => ({ label: m, value: m }))} type="model" value={model} onValueChange={(v) => (setModel(v), setTest(null))}>
-                <ComboboxTrigger className="w-full font-mono text-[0.8125rem]" />
+                <ComboboxTrigger className="h-9 w-full justify-start gap-2 px-2.5 font-normal">
+                  <ProviderMark provider={provider} />
+                  <span className="min-w-0 flex-1 truncate text-start font-mono text-[0.8125rem]">{model}</span>
+                  <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                </ComboboxTrigger>
                 <ComboboxContent>
                   <ComboboxInput placeholder="Search, or type any model id" />
                   <ComboboxEmpty>
@@ -143,8 +140,9 @@ export function AddKeyForm({ open, onOpenChange, onSaved }: { open: boolean; onO
                   <ComboboxList>
                     <ComboboxGroup heading={`Suggested for ${PROVIDER_NAME[provider]}`}>
                       {models.map((m) => (
-                        <ComboboxItem key={m} value={m} className="font-mono text-[0.8125rem]">
-                          {m}
+                        <ComboboxItem key={m} value={m} className="min-h-9 font-mono text-[0.8125rem]">
+                          <span className="min-w-0 flex-1 truncate">{m}</span>
+                          {m === model && <Check className="ms-auto size-4" aria-hidden />}
                         </ComboboxItem>
                       ))}
                     </ComboboxGroup>

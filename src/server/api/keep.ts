@@ -1,5 +1,6 @@
 import { createServerFn } from '@tanstack/react-start'
 
+import { requireOperator } from '../auth'
 import { getDatabase } from '../db'
 import { now } from '../ids'
 import { addNote, citation, exportRows, follow, followed, notesOf, removeNote, toCsv, unfollow } from '../pipeline/keep'
@@ -14,25 +15,25 @@ export const getNotes = createServerFn()
 /** Adds a note; throws the message the form should show when the input is not acceptable. */
 export const addStartupNote = createServerFn({ method: 'POST' })
   .validator((input: { startupId: string; kind: string; text: string; source?: string | null; onDate?: string | null }) => input)
-  .handler(async ({ data }) => addNote(getDatabase(), data))
+  .handler(async ({ data }) => (requireOperator(), addNote(getDatabase(), data)))
 
 /** Removes one note; false when it did not exist. */
 export const removeStartupNote = createServerFn({ method: 'POST' })
   .validator((id: string) => id)
-  .handler(async ({ data }): Promise<boolean> => removeNote(getDatabase(), data))
+  .handler(async ({ data }): Promise<boolean> => (requireOperator(), removeNote(getDatabase(), data)))
 
 /** Follows a startup; false when it was already followed. */
 export const followStartup = createServerFn({ method: 'POST' })
   .validator((id: string) => id)
-  .handler(async ({ data }): Promise<boolean> => follow(getDatabase(), data))
+  .handler(async ({ data }): Promise<boolean> => (requireOperator(), follow(getDatabase(), data)))
 
 /** Stops following a startup; false when it was not followed. */
 export const unfollowStartup = createServerFn({ method: 'POST' })
   .validator((id: string) => id)
-  .handler(async ({ data }): Promise<boolean> => unfollow(getDatabase(), data))
+  .handler(async ({ data }): Promise<boolean> => (requireOperator(), unfollow(getDatabase(), data)))
 
 /** The startups the person follows, newest follow first. */
-export const getFollowed = createServerFn().handler(async () => followed(getDatabase()))
+export const getFollowed = createServerFn().handler(async () => (requireOperator(), followed(getDatabase())))
 
 /** The export as a file: CSV with a BOM and CRLF, or JSON. Filtered by ids or to the followed startups. */
 export const getExport = createServerFn()

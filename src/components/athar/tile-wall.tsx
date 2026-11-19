@@ -41,7 +41,7 @@ export function Tile({ t, min, max, marked, dim, size = 'sm' }: { t: WallTile; m
  * The archive as a Qallaline wall that doubles as the sector filter: one panel per sector,
  * one tile per startup. Search hits take the ochre evidence colour; the rest dim.
  */
-export function SectorWall({ tiles, marked, active, className }: { tiles: WallTile[]; marked?: Set<string>; active?: string; className?: string }) {
+export function SectorWall({ tiles, marked, active, className, legible }: { tiles: WallTile[]; marked?: Set<string>; active?: string; className?: string; legible?: boolean }) {
   const { sectors, min, max } = useWallGroups(tiles)
   const filtering = marked !== undefined
 
@@ -64,7 +64,7 @@ export function SectorWall({ tiles, marked, active, className }: { tiles: WallTi
               active && !isActive && 'opacity-60',
             )}
           >
-            <span className="flex items-baseline justify-between gap-2 font-mono text-[0.625rem] text-ink-2">
+            <span className={cn('flex items-baseline justify-between gap-2 font-mono text-ink-2', legible ? 'text-[0.8125rem]' : 'text-[0.625rem]')}>
               <span className={cn('truncate', isActive && 'text-ink')}>{sector}</span>
               <span className="tabular-nums">{filtering ? `${hits}/${group.length}` : group.length}</span>
             </span>

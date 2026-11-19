@@ -37,7 +37,7 @@ export const Route = createFileRoute('/_app/landscape')({
 const pct = (a: number, b: number) => (b ? Math.round((a / b) * 100) : 0)
 const sizeOf = (r: LandscapeRow) => (r.founders <= 1 ? 0 : r.founders === 2 ? 1 : r.founders === 3 ? 2 : 3)
 
-type Tokens = Record<'glaze' | 'ochre' | 'terracotta' | 'manganese' | 'steel' | 'ink' | 'ink2' | 'ink3' | 'hairline' | 'edge' | 'canvas' | 'surface' | 'raised' | 'tile4', string>
+type Tokens = Record<'glaze' | 'ochre' | 'terracotta' | 'manganese' | 'steel' | 'ink' | 'ink2' | 'ink3' | 'hairline' | 'edge' | 'canvas' | 'surface' | 'raised' | 'tile4' | 'before', string>
 
 /** Athar's tokens as real colours (SVG paint cannot read CSS variables); empty until mount so hydration matches. */
 function useTokens() {
@@ -61,6 +61,7 @@ function useTokens() {
         surface: v('--surface'),
         raised: v('--surface-raised'),
         tile4: v('--tile-4'),
+        before: v('--bar-before'),
       })
     }
     read()
@@ -247,7 +248,8 @@ function Growth({ rows, labelYears, t, renderer, sector }: { rows: LandscapeRow[
   let fSum = 0
   let lSum = 0
   const cum = per.map((p) => ({ ...p, foundedSoFar: (fSum += p.founded), labelledSoFar: (lSum += p.labelled) }))
-  const bars = cum.map((p) => ({ year: p.year, kind: 'Founded', count: p.foundedSoFar }))
+  // Each bar is two parts: what existed before that year, and that year's addition stacked on it.
+  const bars = cum.map((p) => ({ year: p.year, before: p.foundedSoFar - p.founded, total: p.foundedSoFar, added: p.founded }))
   const line = cum.filter((p) => Number(p.year) >= labelYears[0]).map((p) => ({ year: p.year, kind: 'Labelled', count: p.labelledSoFar }))
   const pf = [...per].sort((a, b) => b.founded - a.founded)[0]
   const last = per[per.length - 1]
@@ -258,7 +260,12 @@ function Growth({ rows, labelYears, t, renderer, sector }: { rows: LandscapeRow[
       defineChart({
         marks: [
           crosshair({ x: { band: { inset: 0, fill: t.ink, fillOpacity: 0.06 }, label: false }, y: false }),
-          barY(bars, { id: 'founded', x: 'year', y: 'count', key: 'year', fill: t.tile4, inset: 8, radius: 2 }),
+          barY(bars, { id: 'before', x: 'year', y1: () => 0, y2: 'before', key: 'year', fill: t.before, inset: 8 }),
+          barY(bars, { id: 'added', x: 'year', y1: 'before', y2: 'total', key: 'year', fill: t.ochre, inset: 8, stroke: t.canvas, strokeWidth: 2 }),
+          text(
+            bars.filter((b) => b.added > 0),
+            { x: 'year', y: 'total', text: (b) => `+${b.added}`, dy: -9, fontSize: 13, fill: t.ink },
+          ),
           lineY(line, { id: 'labelled', x: 'year', y: 'count', key: 'year', stroke: t.glaze, strokeWidth: 3, points: true }),
         ],
         scales: {
@@ -274,7 +281,7 @@ function Growth({ rows, labelYears, t, renderer, sector }: { rows: LandscapeRow[
             if (!p) return ''
             return [
               `By the end of ${p.year}`,
-              `Founded ${p.foundedSoFar} (+${p.founded} that year)`,
+              `Founded ${p.foundedSoFar}: ${p.foundedSoFar - p.founded} before, ${p.founded} that year`,
               Number(p.year) >= labelYears[0] ? `Labelled ${p.labelledSoFar} (+${p.labelled} that year)` : 'The label did not exist yet',
               Number(p.year) >= labelYears[0] ? `Not yet labelled ${p.foundedSoFar - p.labelledSoFar}` : null,
             ]
@@ -282,8 +289,8 @@ function Growth({ rows, labelYears, t, renderer, sector }: { rows: LandscapeRow[
               .join('\n')
           },
         },
-        theme: theme(t, [t.tile4, t.glaze]),
-        margin: { left: 44 },
+        theme: theme(t, [t.before, t.ochre, t.glaze]),
+        margin: { left: 44, top: 22 },
       }),
     [t, JSON.stringify(cum)], // eslint-disable-line react-hooks/exhaustive-deps
   )
@@ -292,14 +299,14 @@ function Growth({ rows, labelYears, t, renderer, sector }: { rows: LandscapeRow[
       question="How fast did the registry grow?"
       chart={
         <>
-          <Swatches items={t ? [['Founded so far (bars)', t.tile4], ['Labelled so far (line)', t.glaze]] : []} />
+          <Swatches items={t ? [['Founded before', t.before], ['Founded that year', t.ochre], ['Labelled so far (line)', t.glaze]] : []} />
           <div className="mt-3">{def ? <Chart definition={def} renderer={renderer} height={380} ariaLabel={`Startups founded and labelled so far, year by year, reaching ${rows.length} in ${last?.year}. Founding peaked in ${pf?.year} with ${pf?.founded}.`} /> : <Empty h={380} />}</div>
-          <DataTable caption="Startups founded and labelled, so far and that year" head={['Year', 'Founded so far', 'Founded that year', 'Labelled so far', 'Labelled that year']} rows={cum.map((p) => [p.year, p.foundedSoFar, p.founded, p.labelledSoFar, p.labelled])} />
+          <DataTable caption="Startups founded and labelled, so far and that year" head={['Year', 'Founded before', 'Founded that year', 'Founded so far', 'Labelled so far', 'Labelled that year']} rows={cum.map((p) => [p.year, p.foundedSoFar - p.founded, p.founded, p.foundedSoFar, p.labelledSoFar, p.labelled])} />
         </>
       }
       caption={
         <>
-          The gap between the bars and the line is startups that already existed and did not carry the label yet. It closes as the label catches up.
+          Each bar adds the startups founded that year (ochre, number above) to those founded before (brown). The gap between the bars and the line is startups that already existed and did not carry the label yet. It closes as the label catches up.
           <span className="mt-1.5 block">Fewer labels in the latest years may reflect a change in how the label is granted as well as fewer startups, and the latest year is incomplete.</span>
         </>
       }

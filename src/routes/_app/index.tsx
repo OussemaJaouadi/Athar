@@ -5,7 +5,8 @@ import { AskForm } from '@/components/athar/ask-form'
 import { SavedChecks } from '@/components/athar/saved-checks'
 import { TileMark } from '@/components/athar/tile-mark'
 import { cn } from '@/lib/utils'
-import { getWallCards, type RegistryCard } from '#/server/api/app'
+import { SectorWall } from '@/components/athar/tile-wall'
+import { getWall, getWallCards, type RegistryCard, type WallTile } from '#/server/api/app'
 import { listIdeas } from '#/server/api/ideas'
 
 type Search = { draft?: string; q?: string }
@@ -16,7 +17,7 @@ export const Route = createFileRoute('/_app/')({
     draft: typeof s.draft === 'string' ? s.draft : undefined,
     q: typeof s.q === 'string' ? s.q : undefined,
   }),
-  loader: async () => ({ cards: await getWallCards({ data: { perSector: 3 } }), saved: await listIdeas() }),
+  loader: async () => ({ cards: await getWallCards({ data: { perSector: 3 } }), saved: await listIdeas(), tiles: await getWall() }),
   component: Home,
 })
 
@@ -25,22 +26,25 @@ const longDate = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { da
 
 // Home: ask the registry. The check opens on its own page (/ideas/<id>); before asking, the wall of startups.
 function Home() {
-  const { cards, saved } = Route.useLoaderData()
+  const { cards, saved, tiles } = Route.useLoaderData()
   const { draft, q } = Route.useSearch()
-  return <Ask cards={cards} saved={saved} draft={q ?? draft} />
+  return <Ask cards={cards} saved={saved} tiles={tiles} draft={q ?? draft} />
 }
 
-function Ask({ cards, saved, draft }: { cards: RegistryCard[]; saved: Awaited<ReturnType<typeof listIdeas>>; draft?: string }) {
+function Ask({ cards, saved, tiles, draft }: { cards: RegistryCard[]; saved: Awaited<ReturnType<typeof listIdeas>>; tiles: WallTile[]; draft?: string }) {
   const { corpus } = shell.useLoaderData()
   return (
     <main className="flex-1">
       <section className="mx-auto w-full max-w-[90rem] px-4 pt-14 pb-14 sm:px-8 lg:pt-24">
-        <h1 className="text-[clamp(3.25rem,8vw,7rem)] leading-[0.92] tracking-[-0.015em]">
-          Was it tried
-          <span className="block sm:ps-[14%]">in Tunisia?</span>
-        </h1>
-        <div className="mt-12 max-w-[64rem]">
-          <AskForm initial={draft} />
+        <div className="grid gap-12 min-[1100px]:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] min-[1100px]:items-stretch min-[1100px]:gap-16">
+          <div className="flex min-w-0 flex-col justify-between gap-12">
+            <h1 className="text-[clamp(3.25rem,6.4vw,7rem)] leading-[0.92] tracking-[-0.015em]">
+              Was it tried
+              <span className="block sm:ps-[14%]">in Tunisia?</span>
+            </h1>
+            <AskForm initial={draft} />
+          </div>
+          <Registry tiles={tiles} />
         </div>
         {saved.length > 0 && <SavedChecks saved={saved} />}
       </section>
@@ -65,6 +69,23 @@ function Ask({ cards, saved, draft }: { cards: RegistryCard[]; saved: Awaited<Re
         </div>
       </section>
     </main>
+  )
+}
+
+/** The archive itself beside the question: one tile per startup, a panel per sector, each panel a way into the archive. */
+function Registry({ tiles }: { tiles: WallTile[] }) {
+  const sectors = new Set(tiles.map((t) => t.sector).filter(Boolean)).size
+  return (
+    <section aria-labelledby="registry-glance" className="flex min-w-0 flex-col">
+      <h2 id="registry-glance" className="flex flex-wrap items-baseline justify-between gap-x-4 border-b border-edge pb-2 font-sans text-[0.9375rem] font-medium text-ink">
+        What you are asking
+        <span className="text-[0.8125rem] font-normal text-ink-2 tabular-nums">
+          {tiles.length} startups in {sectors} sectors
+        </span>
+      </h2>
+      <SectorWall tiles={tiles} legible className="mt-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 min-[1100px]:grid-cols-2 min-[1500px]:grid-cols-3" />
+      <p className="mt-3 text-[0.8125rem] leading-5 text-ink-2">One tile per startup. Darker tiles were labelled earlier; a dashed tile has no description. Open a sector to browse it.</p>
+    </section>
   )
 }
 

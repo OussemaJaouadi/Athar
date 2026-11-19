@@ -17,7 +17,6 @@ import {
   deskTh,
   useDeskKeys,
 } from "@/components/athar/desk";
-import { ProgressBar } from "@/components/interior/progress-bar";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Frame, FramePanel } from "@/components/reui/frame";
 import { Stepper, StepperIndicator, StepperItem, StepperNav, StepperTitle, StepperTrigger } from "@/components/reui/stepper";
@@ -27,6 +26,7 @@ import { RunStatus, StepStateBadge } from "@/components/athar/run-status";
 import { DownloadChanges, DownloadList } from "@/components/athar/pipeline-downloads";
 import { FactList, hasRows } from "@/components/athar/pipeline-facts";
 import { StepAbout } from "@/components/athar/pipeline-steps";
+import { StepPicture, toldByPicture } from "@/components/athar/step-overview";
 import { cn } from "@/lib/utils";
 import {
   getDownloadChanges,
@@ -389,6 +389,8 @@ function StepPane({
   const notConfigured = step.state === "not_configured";
   const StepIcon = STEP_ICON[step.operation] ?? Download;
   const [view, setView] = useState<"overview" | "runs" | "how">("overview");
+  const told = toldByPicture(step, facts);
+  const listed = facts.filter((x) => !told.has(x.code));
   const factNote = fact ? facts.find((n) => n.code === fact) : undefined;
   const firstDownload = downloads.length
     ? Math.min(...downloads.map((d) => d.id))
@@ -533,34 +535,15 @@ function StepPane({
           ) : (
             <>
           <PaneSection title="Where it stands" icon={Gauge}>
-            <p className="max-w-[75ch] text-[0.9375rem] text-ink">{step.counts}</p>
-            {step.total > 0 && (
-              <ProgressBar
-                className="mt-3 max-w-[520px]"
-                value={step.state === "running" ? null : step.current}
-                max={step.total}
-                label={`${step.current.toLocaleString("en-GB")} of ${step.total.toLocaleString("en-GB")} done and up to date`}
-                pendingLabel="Running"
-                completeLabel="All current"
-              />
-            )}
-            <p className="mt-1.5 flex flex-wrap items-baseline gap-x-5 gap-y-1 text-[0.875rem] text-ink tabular-nums">
-              <span>
-                <span className="font-medium">{step.current.toLocaleString("en-GB")}</span>
-                <span className="text-ink-2">
-                  {" "}
-                  of {step.total.toLocaleString("en-GB")} done and up to date
-                </span>
-              </span>
-              {step.outOfDate > 0 && (
-                <span>
-                  {plural(step.outOfDate, "out of date", "out of date")}
-                </span>
-              )}
-              {step.missing > 0 && (
-                <span>{plural(step.missing, "never done", "never done")}</span>
-              )}
-            </p>
+            <p className="mb-3 max-w-[75ch] text-[0.9375rem] text-ink">{step.counts}</p>
+            <StepPicture
+              step={step}
+              notes={facts}
+              selected={detail?.run ?? null}
+              runs={runs}
+              downloads={downloads}
+              onOpen={(code) => open({ fact: code })}
+            />
           </PaneSection>
 
           {(step.reasons.length > 0 || step.next) && (
@@ -628,9 +611,9 @@ function StepPane({
                   ))}
                 </Trace>
               )}
-              {facts.length ? (
-                <ul className="grid max-w-[880px] gap-x-10 md:grid-cols-2">
-                  {facts.map((n) => (
+              {listed.length ? (
+                <ul className="grid gap-x-10 [grid-template-columns:repeat(auto-fill,minmax(min(100%,22rem),1fr))]">
+                  {listed.map((n) => (
                     <li
                       key={n.code}
                       title={n.text}
@@ -663,7 +646,7 @@ function StepPane({
                   ))}
                 </ul>
               ) : (
-                !failure && (
+                !failure && facts.length === 0 && (
                   <p className="text-[0.875rem] text-ink">
                     Nothing counted for this step in that run.
                   </p>

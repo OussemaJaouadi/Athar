@@ -76,7 +76,8 @@ export type RunChange =
   | { kind: 'legacy' }
   | { kind: 'none' }
 
-export type PipelineRun = RunRow & { rows: number | null; startups: number | null; change: RunChange }
+export type StartupTally = { created: number; changed: number; unchanged: number }
+export type PipelineRun = RunRow & { rows: number | null; startups: number | null; built: StartupTally | null; change: RunChange }
 
 function runSummary(db: ReturnType<typeof getDatabase>, run: RunRow): PipelineRun {
   const steps = db
@@ -90,16 +91,17 @@ function runSummary(db: ReturnType<typeof getDatabase>, run: RunRow): PipelineRu
     .query<{ id: number; fetched_at: string; row_count: number }, [string]>('SELECT id, fetched_at, row_count FROM downloads WHERE run_id = ?')
     .get(run.id)
 
+  // Build counts its startups as notes (startups_new / _changed / _unchanged). Runs stored before those notes
+  // existed have no tally, and the page then shows none rather than guessing from the message.
+  const built = parseNotes(build?.notes_json)
+  const count = (code: string) => built.find((n) => n.code === code)?.count
+  const tally: StartupTally | null = count('startups_new') !== undefined ? { created: count('startups_new')!, changed: count('startups_changed') ?? 0, unchanged: count('startups_unchanged') ?? 0 } : null
+
   let change: RunChange = { kind: 'none' }
   if (!build && steps.some((s) => s.step === 'clean' || s.step === 'merge')) change = { kind: 'legacy' }
   else if (download) {
     const notes = parseNotes(collect?.notes_json)
     const n = (code: string) => notes.find((x) => x.code === code)?.count ?? 0
-    // Build counts its startups as notes (startups_new / _changed / _unchanged). Runs stored before those notes
-    // existed have no tally, and the page then shows none rather than guessing from the message.
-    const built = parseNotes(build?.notes_json)
-    const count = (code: string) => built.find((n) => n.code === code)?.count
-    const tally = count('startups_new') !== undefined ? [count('startups_new')!, count('startups_changed') ?? 0, count('startups_unchanged') ?? 0] : null
     change = {
       kind: 'stored',
       download: download.id,
@@ -107,7 +109,7 @@ function runSummary(db: ReturnType<typeof getDatabase>, run: RunRow): PipelineRu
       rows: download.row_count,
       entriesNew: n('entries_new'),
       entriesWithdrawn: n('entries_withdrawn'),
-      startups: tally ? { created: tally[0], changed: tally[1], unchanged: tally[2] } : null,
+      startups: tally,
     }
   } else if (run.status === 'done' && collect?.message?.startsWith('Same rows')) {
     change = { kind: 'confirmed', sameAs: collect.message.match(/download of (\S+);/)?.[1] ?? '' }
@@ -116,6 +118,7 @@ function runSummary(db: ReturnType<typeof getDatabase>, run: RunRow): PipelineRu
     ...run,
     rows: collect?.items_in ?? null,
     startups: build?.status === 'done' ? (build.items_out ?? null) : null,
+    built: build?.status === 'done' ? tally : null,
     change,
   }
 }

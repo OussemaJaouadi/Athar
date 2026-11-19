@@ -24,6 +24,7 @@ export function DownloadList({ downloads, onOpen }: { downloads: DownloadSummary
   if (!downloads.length) return <p className="text-[0.875rem] text-ink">Nothing downloaded yet.</p>
   const first = Math.min(...downloads.map((d) => d.id))
   return (
+    <div className="overflow-x-auto [scrollbar-width:thin] [scrollbar-color:var(--edge)_transparent]">
     <table className="w-full border-collapse tabular-nums">
       <thead>
         <tr>
@@ -53,6 +54,7 @@ export function DownloadList({ downloads, onOpen }: { downloads: DownloadSummary
         ))}
       </tbody>
     </table>
+    </div>
   )
 }
 

@@ -1,9 +1,9 @@
 import { createFileRoute, useNavigate, useRouter } from '@tanstack/react-router'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { Desk, DeskBar, DeskEmpty, DeskGroup, DeskItem, DeskSelect, deskBtn, useDeskKeys } from '@/components/athar/desk'
+import { Desk, DeskBar, DeskEmpty, DeskGroup, DeskItem, deskBtn, useDeskKeys } from '@/components/athar/desk'
 import { DeskSwitch, KIND_NAME, ReviewPane, answerWords, subjectWords } from '@/components/athar/review-desk'
-import { SegmentedControl } from '@/components/interior/segmented-control'
+import { ReviewFilters } from '@/components/athar/review-filters'
 import { plural } from '@/components/athar/trace-parts'
 import { decideReview, forgetStaleDecisions, getReviewContext, getReviewQueue, getReviewSummary, undoReview, type Json } from '#/server/api/review'
 
@@ -27,11 +27,6 @@ export const Route = createFileRoute('/portal/review')({
   component: ReviewPage,
 })
 
-const SHOW = [
-  { value: 'open', label: 'To answer' },
-  { value: 'decided', label: 'Answered' },
-]
-
 function ReviewPage() {
   const { summary, items, readingId, item, context } = Route.useLoaderData()
   const search = Route.useSearch()
@@ -45,8 +40,10 @@ function ReviewPage() {
 
   const open = summary.toAnswer
   const waiting = summary.waitingOnPerson
+  const [query, setQuery] = useState('')
+  const searchRef = useRef<HTMLInputElement>(null)
   const settled = summary.totals.rule + summary.totals.inferred
-  const sentence = `${open === 0 ? 'No questions wait for you' : `${plural(open, 'question')} ${open === 1 ? 'waits' : 'wait'} for you`}; ${plural(settled, 'reading')} ${settled === 1 ? 'was' : 'were'} settled by rules or inferred${waiting ? `; ${waiting.toLocaleString('en-GB')} more about related startups depend on your answers about people` : ''}${summary.totals.decided ? `; you answered ${summary.totals.decided.toLocaleString('en-GB')}` : ''}.`
+  const sentence = `${open === 0 ? 'No questions wait for you' : `${plural(open, 'question')} ${open === 1 ? 'waits' : 'wait'} for you`}; ${plural(settled, 'reading')} ${settled === 1 ? 'was' : 'were'} settled by rules or inferred${summary.totals.decided ? `; you answered ${summary.totals.decided.toLocaleString('en-GB')}` : ''}.`
 
   // A new question starts with an empty note and no old error.
   useEffect(() => {
@@ -62,7 +59,11 @@ function ReviewPage() {
   }, [readingId, items])
 
   const select = useCallback((id: string) => navigate({ search: (s) => ({ ...s, reading: id }) }), [navigate])
-  const ids = useMemo(() => items.map((i) => i.id), [items])
+  // The text filter narrows the list already loaded: person and startup names, accents and case ignored.
+  const fold = (t: string) => t.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
+  const needle = fold(query.trim())
+  const shownItems = useMemo(() => (needle ? items.filter((i) => fold(`${subjectWords(i)} ${i.subject}`).includes(needle)) : items), [items, needle])
+  const ids = useMemo(() => shownItems.map((i) => i.id), [shownItems])
 
   const run = useCallback(
     async (act: () => Promise<unknown>) => {
@@ -104,11 +105,11 @@ function ReviewPage() {
     else context?.answers.forEach((a, i) => (k[String(i + 1)] = () => answer(a.value)))
     return k
   }, [item, context, answer, undo])
-  useDeskKeys({ ids, current: readingId, select, keys })
+  useDeskKeys({ ids, current: readingId, select, search: searchRef, keys })
 
   // Group headers in the order the API returns.
   const groups: { kind: string; rows: typeof items }[] = []
-  for (const it of items) {
+  for (const it of shownItems) {
     const last = groups[groups.length - 1]
     if (last?.kind === it.kind) last.rows.push(it)
     else groups.push({ kind: it.kind, rows: [it] })
@@ -175,22 +176,40 @@ function ReviewPage() {
         }
       >
         <DeskSwitch current="review" open={open} />
-        <SegmentedControl label="Show" value={show} options={SHOW} onValueChange={(v) => navigate({ search: (s) => ({ ...s, show: v === 'decided' ? 'decided' : undefined, reading: undefined }) })} className="shrink-0" />
-        <div className="w-32 min-[480px]:w-64">
-          <DeskSelect
-            label="Kind of question"
-            value={search.kind ?? '-'}
-            onChange={(v) => navigate({ search: (s) => ({ ...s, kind: v === '-' ? undefined : v, reading: undefined }) })}
-            options={[{ value: '-', label: 'All kinds' }, ...summary.byKind.map((k) => ({ value: k.kind, label: KIND_NAME[k.kind] ?? k.kind, hint: `${k.open} to answer · ${k.decided} answered` }))]}
-          />
-        </div>
       </DeskBar>
+      <ReviewFilters
+        show={show}
+        kind={search.kind}
+        byKind={summary.byKind}
+        totals={{ open: summary.byKind.reduce((t, k) => t + k.open, 0), decided: summary.byKind.reduce((t, k) => t + k.decided, 0) }}
+        query={query}
+        onQuery={setQuery}
+        searchRef={searchRef}
+        onShow={(v) => navigate({ search: (s) => ({ ...s, show: v === 'decided' ? 'decided' : undefined, reading: undefined }) })}
+        kindName={(k) => KIND_NAME[k] ?? k}
+        waiting={waiting}
+        shown={shownItems.length}
+        total={items.length}
+      />
       <Desk
         storageKey="review"
         showPaneOnNarrow={!!search.reading}
         onBack={() => navigate({ search: (s) => ({ ...s, reading: undefined }) })}
         backLabel="All questions"
-        list={items.length === 0 ? <p className="px-4 py-6 text-[0.875rem] text-ink">{show === 'open' ? 'No question to answer.' : 'No answered question.'}</p> : list}
+        list={
+          items.length === 0 ? (
+            <p className="px-4 py-6 text-[0.875rem] text-ink">{show === 'open' ? 'No question to answer.' : 'No answered question.'}</p>
+          ) : shownItems.length === 0 ? (
+            <p className="px-4 py-6 text-[0.875rem] text-ink">
+              No question matches “{query.trim()}”.{' '}
+              <button type="button" className="text-glaze underline" onClick={() => setQuery('')}>
+                Clear the filter
+              </button>
+            </p>
+          ) : (
+            list
+          )
+        }
         pane={
           context ? (
             <ReviewPane ctx={context} item={item} position={position} busy={busy} error={error} note={note} onNote={setNote} onAnswer={answer} onUndo={undo} />

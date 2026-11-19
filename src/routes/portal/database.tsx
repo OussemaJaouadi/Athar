@@ -4,6 +4,8 @@ import { useTable, type ColumnDef, type RowSelectionState, type SortingState } f
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Search } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import { JsonRows, RawCell, registryKeys } from '@/components/athar/db-json'
+import { SegmentedControl } from '@/components/interior/segmented-control'
 import { IdeaCheckRecord, PersonRecord, RecordPane, asJson, humanize, idText, isUrl, tableName, type DbColumn } from '@/components/athar/db-panel'
 import { DeskBar, EmptyValue, deskBtn, deskInput, useDeskKeys } from '@/components/athar/desk'
 import { DataGrid, DataGridContainer, dataGridFeatures, type DataGridFeatures } from '@/components/reui/data-grid/data-grid'
@@ -15,7 +17,7 @@ import { getIdeaCheckRow, getPersonRow, listIdeaChecks, listPeople } from '#/ser
 import type { IdeaCheckRow, PersonRow } from '#/server/pipeline/facts'
 import { DB_PAGE_SIZE as PAGE_SIZE } from '#/shared/database'
 
-type Search = { table?: string; q?: string; sort?: string; dir?: 'asc' | 'desc'; page?: number; row?: string; repeat?: boolean }
+type Search = { table?: string; q?: string; sort?: string; dir?: 'asc' | 'desc'; page?: number; row?: string; repeat?: boolean; view?: 'json' }
 
 export const Route = createFileRoute('/portal/database')({
   validateSearch: (s: Record<string, unknown>): Search => ({
@@ -26,6 +28,7 @@ export const Route = createFileRoute('/portal/database')({
     page: typeof s.page === 'number' && s.page > 1 ? Math.floor(s.page) : undefined,
     row: typeof s.row === 'string' || typeof s.row === 'number' ? String(s.row) : undefined,
     repeat: s.repeat === true || s.repeat === 'true' ? true : undefined,
+    view: s.view === 'json' ? 'json' : undefined,
   }),
   // Raw tables shows what is stored as published: downloads and entries. Everything else has its own page now, so
   // older links to those views land there.
@@ -177,6 +180,7 @@ function DatabasePage() {
             key={table}
             data={data}
             ideas={ideas}
+            view={search.view}
             selected={search.row}
             go={go}
             searchRef={searchRef}
@@ -300,6 +304,7 @@ function Cell({ col, v }: { col: DbColumn; v: DbRow[string] }) {
 function Workspace({
   data,
   ideas,
+  view,
   selected,
   go,
   searchRef,
@@ -308,6 +313,7 @@ function Workspace({
 }: {
   data: Data
   ideas: IdeaCheckRow[] | null
+  view: 'json' | undefined
   selected: string | undefined
   go: (next: Partial<Search>, replace?: boolean) => void
   searchRef: React.RefObject<HTMLInputElement | null>
@@ -328,37 +334,64 @@ function Workspace({
   )
   useDeskKeys({ ids, current, select: (id) => go({ row: id }, true), search: searchRef })
 
-  const columns = useMemo<ColumnDef<DataGridFeatures, DbRow>[]>(
-    () =>
-      data.columns.map((c) => ({
-        id: c.name,
-        accessorFn: (r: DbRow) => r[c.name] ?? null,
-        enableSorting: !c.blob && !c.secret && !c.virtual,
-        header: () => {
-          if (c.virtual) return <span className="text-[0.8125rem] font-normal whitespace-nowrap text-ink-2">{humanize(c.name)}</span>
-          const sorted = data.sort === c.name ? data.dir : null
-          return (
-            <button
-              type="button"
-              title={c.name}
-              onClick={() => {
-                const next = data.sort !== c.name ? 'asc' : data.dir === 'asc' ? 'desc' : null
-                go({ sort: next ? c.name : undefined, dir: next ?? undefined, page: undefined, row: undefined })
-              }}
-              aria-label={`Sort by ${humanize(c.name)}`}
-              className={cn('inline-flex items-center gap-1 text-[0.8125rem] font-normal whitespace-nowrap hover:text-ink', sorted ? 'text-ink' : 'text-ink-2')}
-            >
-              {humanize(c.name)}
-              {sorted === 'asc' && <ArrowUp className="size-3.5" aria-hidden />}
-              {sorted === 'desc' && <ArrowDown className="size-3.5" aria-hidden />}
-            </button>
-          )
-        },
-        cell: ({ row }) => <Cell col={c} v={row.original[c.name] ?? null} />,
-        meta: { headerTitle: humanize(c.name) },
-      })),
-    [data.columns, data.sort, data.dir, go],
-  )
+  // Entries keep the registry row as text in one column; here it is parsed and each key the rows on this page carry
+  // becomes a column headed by the registry's own key. Other tables show their own columns.
+  const expand = data.table === 'entries'
+  const parsedRaw = useMemo(() => (expand ? data.rows.map((r) => asJson(r.raw_json ?? null)) : []), [expand, data.rows])
+  const rawKeys = useMemo(() => registryKeys(parsedRaw), [parsedRaw])
+  const rawByRow = useMemo(() => new Map(data.rows.map((r, i) => [keyOf(r), parsedRaw[i]] as const)), [data.rows, parsedRaw, keyOf])
+
+  const columns = useMemo<ColumnDef<DataGridFeatures, DbRow>[]>(() => {
+    const plain = (c: (typeof data.columns)[number]): ColumnDef<DataGridFeatures, DbRow> => ({
+      id: c.name,
+      accessorFn: (r: DbRow) => r[c.name] ?? null,
+      enableSorting: !c.blob && !c.secret && !c.virtual,
+      size: c.name === 'id' ? 150 : undefined,
+      header: () => {
+        if (c.virtual) return <span className="text-[0.8125rem] font-normal whitespace-nowrap text-ink-2">{humanize(c.name)}</span>
+        const sorted = data.sort === c.name ? data.dir : null
+        return (
+          <button
+            type="button"
+            title={c.name}
+            onClick={() => {
+              const next = data.sort !== c.name ? 'asc' : data.dir === 'asc' ? 'desc' : null
+              go({ sort: next ? c.name : undefined, dir: next ?? undefined, page: undefined, row: undefined })
+            }}
+            aria-label={`Sort by ${humanize(c.name)}`}
+            className={cn('inline-flex items-center gap-1 text-[0.8125rem] font-normal whitespace-nowrap hover:text-ink', sorted ? 'text-ink' : 'text-ink-2')}
+          >
+            {humanize(c.name)}
+            {sorted === 'asc' && <ArrowUp className="size-3.5" aria-hidden />}
+            {sorted === 'desc' && <ArrowDown className="size-3.5" aria-hidden />}
+          </button>
+        )
+      },
+      cell: ({ row }) => <Cell col={c} v={row.original[c.name] ?? null} />,
+      meta: { headerTitle: humanize(c.name) },
+    })
+    if (!expand) return data.columns.map(plain)
+    const raw = rawKeys.map<ColumnDef<DataGridFeatures, DbRow>>((k) => ({
+      id: `raw:${k}`,
+      accessorFn: (r: DbRow) => {
+        const p = rawByRow.get(keyOf(r))
+        return p && typeof p === 'object' ? ((p as Record<string, unknown>)[k] ?? null) : null
+      },
+      enableSorting: false,
+      header: () => (
+        <span title="The registry's own key" className="font-mono text-[0.8125rem] font-normal whitespace-nowrap text-ink-2">
+          {k}
+        </span>
+      ),
+      cell: ({ row }) => {
+        const p = rawByRow.get(keyOf(row.original))
+        return <RawCell name={k} v={p && typeof p === 'object' ? (p as Record<string, unknown>)[k] : undefined} />
+      },
+      meta: { headerTitle: k },
+    }))
+    const own = data.columns.filter((c) => c.name !== 'raw_json' && !c.virtual)
+    return [...own.slice(0, 1).map(plain), ...raw, ...own.slice(1).map(plain)]
+  }, [data.columns, data.sort, data.dir, go, expand, rawKeys, rawByRow, keyOf])
   const sorting = useMemo<SortingState>(() => (data.sort ? [{ id: data.sort, desc: data.dir === 'desc' }] : []), [data.sort, data.dir])
   const rowSelection = useMemo<RowSelectionState>(() => (current ? { [current]: true } : {}), [current])
   const table = useTable({
@@ -366,7 +399,7 @@ function Workspace({
     data: data.rows,
     columns,
     getRowId: keyOf,
-    state: { sorting, rowSelection },
+    state: { sorting, rowSelection, columnPinning: { start: [data.columns[0]?.name ?? 'id'], end: [] } },
     manualSorting: true,
     manualPagination: true,
     manualFiltering: true,
@@ -375,9 +408,34 @@ function Workspace({
   })
 
   const name = tableName(data.table)
+  // The JSON view: each row with its JSON columns parsed, virtual columns left out.
+  const jsonRows = useMemo(
+    () =>
+      view === 'json'
+        ? data.rows.map((r) => ({
+            key: keyOf(r),
+            value: Object.fromEntries(data.columns.filter((c) => !c.virtual).map((c) => [c.name, c.secret ? '••••' : (asJson(r[c.name] ?? null) ?? r[c.name] ?? null)])),
+          }))
+        : [],
+    [view, data.rows, data.columns, keyOf],
+  )
   return (
     <>
-      <section aria-label={`${name} rows`} className={cn('min-h-0 min-w-0', narrowRecord && 'max-[1099px]:hidden')}>
+      <section aria-label={`${name} rows`} className={cn('flex min-h-0 min-w-0 flex-col', narrowRecord && 'max-[1099px]:hidden')}>
+        {data.rows.length > 0 && (
+          <div className="flex shrink-0 items-center gap-3 border-b border-hairline px-4 py-1.5">
+            <SegmentedControl
+              label="How the rows are shown"
+              value={view === 'json' ? 'json' : 'table'}
+              options={[
+                { value: 'table', label: 'Table' },
+                { value: 'json', label: 'JSON' },
+              ]}
+              onValueChange={(v) => go({ view: v === 'json' ? 'json' : undefined }, true)}
+            />
+            <span className="min-w-0 truncate text-[0.8125rem] text-ink-2">{view === 'json' ? 'Each row as parsed JSON; open one to read it.' : expand ? 'The registry row is split into its own keys.' : ''}</span>
+          </div>
+        )}
         {data.rows.length === 0 ? (
           <p className="p-6 text-[0.875rem] text-ink">
             {data.q ? (
@@ -391,23 +449,28 @@ function Workspace({
               'This table is empty.'
             )}
           </p>
+        ) : view === 'json' ? (
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+            <JsonRows rows={jsonRows} rowKey={data.table} selected={current} onSelect={(k) => select(k)} />
+          </div>
         ) : (
           <DataGrid
             table={table}
             recordCount={data.total}
             onRowClick={(r) => select(keyOf(r))}
-            tableLayout={{ headerSticky: true, width: 'auto', rowBorder: true, headerBorder: true }}
+            tableLayout={{ columnsPinnable: true, headerSticky: true, width: 'auto', rowBorder: true, headerBorder: true }}
             tableClassNames={{
               base: 'text-[0.875rem]',
               header: 'bg-canvas',
               headerRow: '[&>th]:h-[34px] [&>th]:border-b [&>th]:border-edge [&>th]:px-3 [&>th]:bg-canvas',
               bodyRow: cn(
                 'hover:bg-surface data-[state=selected]:bg-surface data-[state=selected]:[&>td:first-child]:shadow-[inset_3px_0_0_var(--ink)]',
+                '[&>td:first-child]:bg-canvas hover:[&>td:first-child]:bg-surface data-[state=selected]:[&>td:first-child]:bg-surface',
                 '[&>td]:h-9 [&>td]:max-w-[340px] [&>td]:truncate [&>td]:border-hairline [&>td]:px-3 [&>td]:py-0 [&>td]:text-ink',
               ),
             }}
           >
-            <DataGridContainer className="h-full">
+            <DataGridContainer className="min-h-0 flex-1">
               <DataGridScrollArea className="h-full">
                 <DataGridTable />
               </DataGridScrollArea>

@@ -1,7 +1,8 @@
 import { Link } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 
-import { Fields, JsonBlock, PaneSection, isEmpty, type DeskField } from '@/components/athar/desk'
+import { ParsedRow } from '@/components/athar/db-json'
+import { Fields, PaneSection, isEmpty, type DeskField } from '@/components/athar/desk'
 import { StartupLink } from '@/components/athar/startup-glimpse'
 import { languageName, month, websiteCheckWords, websiteKindName } from '@/components/athar/trace-parts'
 import { getDbRecord, type DbColumnInfo, type DbRecord, type DbRow, type DbValue } from '#/server/api/database'
@@ -194,6 +195,9 @@ export function RecordPane({ table, rowKey }: { table: string; rowKey: string | 
             { label: 'Startup', value: rec.startup ? <StartupLink id={rec.startup.id} className="text-glaze underline">{rec.startup.name}</StartupLink> : null },
           ]}
         />
+        <PaneSection title="Registry row, as published">
+          {rec.row ? <ParsedRow key={rec.id} value={rec.row} title={`Entry ${rec.id}`} /> : <p className="text-[0.875rem] text-ink">The stored row could not be read.</p>}
+        </PaneSection>
       </>
     )
 
@@ -291,6 +295,13 @@ export function RecordPane({ table, rowKey }: { table: string; rowKey: string | 
             ]}
           />
         </PaneSection>
+        <PaneSection title="Row as stored">
+          <ParsedRow
+            key={rec.id}
+            title={`Download ${rec.id}`}
+            value={{ id: rec.id, url: rec.url, fetched_at: rec.fetchedAt, last_checked_at: rec.lastCheckedAt, row_count: rec.rows, byte_size: rec.bytes, run_id: rec.runId, content_hash_start: rec.hash }}
+          />
+        </PaneSection>
       </>
     )
 
@@ -307,7 +318,9 @@ export function RecordPane({ table, rowKey }: { table: string; rowKey: string | 
         <CopyJson value={plain} label="Row" />
       </Links>
       {jsonCols.map((c) => (
-        <JsonBlock key={c.name} title={humanize(c.name)} value={asJson(row[c.name] ?? null)} />
+        <PaneSection key={`${rowKey}-${c.name}`} title={humanize(c.name)}>
+          <ParsedRow value={asJson(row[c.name] ?? null)} title={humanize(c.name)} />
+        </PaneSection>
       ))}
     </>
   )

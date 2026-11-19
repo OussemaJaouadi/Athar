@@ -3,9 +3,14 @@ import { createServerFn } from '@tanstack/react-start'
 import { getDatabase } from '../db'
 import { cleanEntry, displayRow } from '../pipeline/clean'
 import type { RegistryRow } from '../pipeline/registry'
-import { derivedSets, namesMatch, type VentureFilter, type WebsiteFilter } from './archive-sets'
+import { derivedSets, namesMatch, unconfirmedKeys, type VentureFilter, type WebsiteFilter } from './archive-sets'
+import { clampPage, clampSize, personListRow, type PersonListRow } from '../../shared/archive'
+
+export type { PersonListRow }
+import { people as listFounders } from '../pipeline/facts'
 import { readAsk } from './ask'
 import { themesOf } from '../../shared/themes'
+import { sectorSlug } from '../../shared/sector'
 
 export type StartupRow = {
   id: string
@@ -31,13 +36,14 @@ export type SearchInput = {
   /** `founders`: the founders have another venture. `names`: the startup has another name. */
   ventures?: VentureFilter
   described?: 'yes' | 'no'
-  /** 1-based page of PAGE_SIZE rows. Out of range is clamped to the last page. */
+  /** 1-based page. Out of range is clamped to the last page. */
   page?: number
+  /** Rows per page: 20, 50 or 100. Anything else is rounded up to one of these, never above 100. */
+  size?: number
   /** With no page given, return the page that holds this startup, so a shared link lands on its row. */
   open?: string
 }
 
-export const PAGE_SIZE = 20
 
 const COLUMNS = 's.id, COALESCE(s.display_name, s.name) AS name, s.description, s.sector, s.labelled, s.creation_year, s.website'
 const LABELLED = 'CAST(substr(s.labelled, 1, 4) AS INTEGER)'
@@ -106,16 +112,17 @@ export const searchStartups = createServerFn()
     }
     const clause = where.length ? ` WHERE ${where.join(' AND ')}` : ''
     const matched = db.query<{ n: number }, typeof params>(`SELECT COUNT(*) AS n FROM ${from}${clause}`).get(params)?.n ?? 0
-    const pages = Math.max(1, Math.ceil(matched / PAGE_SIZE))
+    const size = clampSize(data.size)
+    const pages = Math.max(1, Math.ceil(matched / size))
     let page = Math.floor(f.page ?? 0)
     if (!page && f.open) {
       const at = db
         .query<{ n: number }, typeof params>(`SELECT n FROM (SELECT s.id, ROW_NUMBER() OVER (ORDER BY ${order}) AS n FROM ${from}${clause}) WHERE id = $open`)
         .get({ ...params, $open: f.open })?.n
-      if (at) page = Math.ceil(at / PAGE_SIZE)
+      if (at) page = Math.ceil(at / size)
     }
-    page = Math.min(pages, Math.max(1, page || 1))
-    const rows = db.query<StartupRow, typeof params>(`SELECT ${COLUMNS} FROM ${from}${clause} ORDER BY ${order} LIMIT ${PAGE_SIZE} OFFSET ${(page - 1) * PAGE_SIZE}`).all(params)
+    page = clampPage(page, pages)
+    const rows = db.query<StartupRow, typeof params>(`SELECT ${COLUMNS} FROM ${from}${clause} ORDER BY ${order} LIMIT ${size} OFFSET ${(page - 1) * size}`).all(params)
     // How many startups each derived value holds, for the filter's choices.
     const states = [...sets.site.values()]
     const facets = {
@@ -129,7 +136,7 @@ export const searchStartups = createServerFn()
       },
       ventures: { founders: sets.founders.size, names: sets.names.size },
     }
-    return { rows, matched, page, pages, sectors, years, foundedYears, total, read, facets }
+    return { rows, matched, page, pages, size, sectors, years, foundedYears, total, read, facets }
   })
 
 export type Change = { field: string; from: string | null; to: string | null; why: string }
@@ -245,17 +252,6 @@ export const getStartup = createServerFn()
 
 export type WallTile = { id: string; name: string; sector: string | null; year: number | null; described: boolean }
 
-// The wall: one tile per startup, in sector order, for the archive overview and the palette.
-export const getWall = createServerFn().handler(async () => {
-  return getDatabase()
-    .query<{ id: string; name: string; sector: string | null; year: number | null; described: number }, []>(
-      `SELECT id, COALESCE(display_name, name) AS name, sector, CAST(substr(labelled, 1, 4) AS INTEGER) AS year, description IS NOT NULL AS described
-       FROM startups ORDER BY sector, year, name`,
-    )
-    .all()
-    .map((t): WallTile => ({ ...t, described: t.described === 1 }))
-})
-
 export type LandscapeRow = {
   id: string
   name: string
@@ -333,3 +329,102 @@ export const getWallCards = createServerFn()
       )
       .all(per)
   })
+
+export type StartupHitRow = { id: string; name: string; sector: string | null; /** The other name that matched, when the published name did not. */ other?: string }
+
+// The header palette: a few startups by name or sector, or other name, as the visitor types. Empty: the latest labelled.
+export const findStartups = createServerFn()
+  .validator((input: { q?: string; limit?: number }) => input)
+  .handler(async ({ data }) => {
+    const db = getDatabase()
+    const q = (data.q ?? '').trim().slice(0, 80)
+    const limit = Math.min(20, Math.max(1, Math.floor(data.limit ?? 8)))
+    const name = 'COALESCE(s.display_name, s.name) AS name'
+    if (!q) {
+      const rows = db.query<StartupHitRow, [number]>(`SELECT s.id, ${name}, s.sector FROM startups s WHERE s.labelled IS NOT NULL ORDER BY s.labelled DESC, s.name LIMIT ?`).all(limit)
+      return { q, rows }
+    }
+    const fts = ftsAll(q)
+    // Name and sector in full text, ranked; other names (renames, aliases) after, by the Archive's own prefix rule.
+    const names = derivedSets(db).names
+    const other = [...names].filter(([, list]) => namesMatch(list, q)).map(([id]) => id)
+    const found = db
+      .query<StartupHitRow, { $q: string; $ids: string; $limit: number }>(
+        `SELECT s.id, ${name}, s.sector FROM startups s
+         LEFT JOIN (SELECT startup_id, rank AS r FROM startups_fts WHERE startups_fts MATCH $q) m ON m.startup_id = s.id
+         WHERE m.startup_id IS NOT NULL OR s.id IN (SELECT value FROM json_each($ids))
+         ORDER BY m.r IS NULL, m.r, s.name COLLATE NOCASE LIMIT $limit`,
+      )
+      .all({ $q: `{name sector} : (${fts})`, $ids: JSON.stringify(other), $limit: limit })
+    const rows = found.map((r) => {
+      const alias = names.get(r.id)?.find((n) => namesMatch([n], q))
+      return alias && !namesMatch([r.name], q) ? { ...r, other: alias } : r
+    })
+    return { q, rows }
+  })
+
+export type PeopleInput = { q?: string; repeat?: boolean; page?: number; size?: number }
+
+// The people list: founders by person key, a page at a time. Names, counts and years only; the pane loads one person.
+export const listPeopleArchive = createServerFn()
+  .validator((input: PeopleInput) => input)
+  .handler(async ({ data }) => {
+    const db = getDatabase()
+    const size = clampSize(data.size)
+    const count = listFounders(db, { q: data.q, repeat: data.repeat, limit: 1 }).total
+    const pages = Math.max(1, Math.ceil(count / size))
+    const page = clampPage(data.page, pages)
+    const { rows } = listFounders(db, { q: data.q, repeat: data.repeat, limit: size, offset: (page - 1) * size })
+    const open = rows.some((r) => r.startups.length > 1) ? unconfirmedKeys(db) : new Set<string>()
+    const list: PersonListRow[] = rows.map((r) => personListRow(r, open.has(r.slug.replace(/-/g, ' '))))
+    const all = db.query<{ n: number }, []>('SELECT COUNT(DISTINCT person_key) AS n FROM founders').get()?.n ?? 0
+    const repeats = db.query<{ n: number }, []>('SELECT COUNT(*) AS n FROM (SELECT 1 FROM founders GROUP BY person_key HAVING COUNT(DISTINCT startup_id) > 1)').get()?.n ?? 0
+    return { rows: list, matched: count, total: all, repeats, page, pages, size }
+  })
+
+export type SectorListRow = { sector: string; slug: string; count: number; share: number; firstYear: string | null; lastYear: string | null; asked: number; answers: number }
+
+// Every sector with its size, the label years it spans and how many of its websites answer today (decisions applied).
+export const listSectorsArchive = createServerFn()
+  .validator((input: { q?: string }) => input)
+  .handler(async ({ data }) => {
+    const db = getDatabase()
+    const site = derivedSets(db).site
+    const all = db.query<{ id: string; sector: string; year: string | null }, []>('SELECT id, sector, substr(labelled, 1, 4) AS year FROM startups WHERE sector IS NOT NULL').all()
+    const by = new Map<string, SectorListRow>()
+    for (const r of all) {
+      const row = by.get(r.sector) ?? { sector: r.sector, slug: sectorSlug(r.sector), count: 0, share: 0, firstYear: null, lastYear: null, asked: 0, answers: 0 }
+      row.count += 1
+      if (r.year) (row.firstYear = !row.firstYear || r.year < row.firstYear ? r.year : row.firstYear), (row.lastYear = !row.lastYear || r.year > row.lastYear ? r.year : row.lastYear)
+      const state = site.get(r.id)
+      if (state) (row.asked += 1), (row.answers += state === 'answers' ? 1 : 0)
+      by.set(r.sector, row)
+    }
+    const q = (data.q ?? '').trim().toLowerCase()
+    const total = all.length
+    const rows = [...by.values()]
+      .map((r) => ({ ...r, share: r.count / total }))
+      .filter((r) => !q || r.sector.toLowerCase().includes(q))
+      .sort((a, b) => b.count - a.count || a.sector.localeCompare(b.sector))
+    return { rows, matched: rows.length, total: by.size }
+  })
+
+export type YearListRow = { year: string; count: number; share: number; sectors: number; asked: number; answers: number }
+
+// Every label year with its count, its share of the registry and how many of its websites answer today.
+export const listYearsArchive = createServerFn().handler(async () => {
+  const db = getDatabase()
+  const site = derivedSets(db).site
+  const all = db.query<{ id: string; sector: string | null; year: string }, []>('SELECT id, sector, substr(labelled, 1, 4) AS year FROM startups WHERE labelled IS NOT NULL').all()
+  const by = new Map<string, YearListRow & { set: Set<string> }>()
+  for (const r of all) {
+    const row = by.get(r.year) ?? { year: r.year, count: 0, share: 0, sectors: 0, asked: 0, answers: 0, set: new Set<string>() }
+    row.count += 1
+    if (r.sector) row.set.add(r.sector)
+    const state = site.get(r.id)
+    if (state) (row.asked += 1), (row.answers += state === 'answers' ? 1 : 0)
+    by.set(r.year, row)
+  }
+  const rows: YearListRow[] = [...by.values()].map(({ set, ...r }) => ({ ...r, sectors: set.size, share: r.count / all.length })).sort((a, b) => b.year.localeCompare(a.year))
+  return { rows, matched: rows.length, total: rows.length }
+})

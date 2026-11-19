@@ -75,3 +75,18 @@ export function derivedSets(db: Database): DerivedSets {
   memo = { key, sets }
   return sets
 }
+
+/** Person keys whose "same person" reading nobody has answered. A name on one startup has no reading and is not listed. */
+export function unconfirmedKeys(db: Database): Set<string> {
+  const out = new Set<string>()
+  const keys = db.query<{ k: string }, []>('SELECT person_key AS k FROM founders GROUP BY person_key HAVING COUNT(DISTINCT startup_id) > 1').all()
+  const read = new Map<string, { decided: unknown; value: unknown }>()
+  for (const e of effective(db)) if (e.kind === 'person') read.set(e.subject, { decided: e.decided, value: e.effectiveValue })
+  for (const { k } of keys) {
+    const r = read.get(k)
+    const same = typeof r?.value === 'object' && r.value !== null ? (r.value as { same?: unknown }).same : undefined
+    if (same === false) continue
+    if (!r?.decided) out.add(k)
+  }
+  return out
+}

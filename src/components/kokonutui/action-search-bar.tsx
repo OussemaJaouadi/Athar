@@ -60,6 +60,8 @@ export interface CommandItem {
   children?: CommandItem[];
   /** Input placeholder while this item's page is open. */
   placeholder?: string;
+  /** Quiet text at the end of the row, such as a sector. */
+  hint?: string;
 }
 
 /** @deprecated Use `CommandItem`. */
@@ -85,6 +87,17 @@ export interface ActionSearchBarProps {
   label?: string;
   placeholder?: string;
   className?: string;
+  /**
+   * Athar: async mode. When given, the palette does not filter `items` itself: it asks `search` as the visitor
+   * types (debounced, the previous request aborted) and lists what comes back in the server's order.
+   * `search("")` is asked once when the palette first opens and its rows are shown before anything is typed;
+   * `items` is not used.
+   */
+  search?: (query: string, signal: AbortSignal) => Promise<CommandItem[]>;
+  /** Heading over the rows shown before anything is typed (async mode). */
+  idleHeading?: string;
+  /** Heading over the rows found for a typed query (async mode). */
+  foundHeading?: string;
 }
 
 interface Entry {
@@ -504,6 +517,9 @@ function ActionSearchBar({
   label = "Search commands",
   placeholder = "Search or jump to…",
   className,
+  search,
+  idleHeading = "Suggested",
+  foundHeading = "Results",
 }: ActionSearchBarProps) {
   const uid = useId();
   const inputId = `${uid}-input`;
@@ -548,9 +564,80 @@ function ActionSearchBar({
         .slice(0, RECENT_LIMIT),
     [recentIds, items]
   );
+  /* -- async mode: rows come from the server, in its order -- */
+  const [remote, setRemote] = useState<{
+    query: string;
+    items: CommandItem[];
+    failed: boolean;
+  } | null>(null);
+  const [asking, setAsking] = useState(false);
+  const typed = query.trim();
+  const searchRef = useRef(search);
+  searchRef.current = search;
+  const useRemote = search !== undefined;
+  const idleRows = useRef<CommandItem[] | null>(null);
+  useEffect(() => {
+    if (!open) {
+      const idle = idleRows.current;
+      setRemote(idle ? { query: "", items: idle, failed: false } : null);
+    }
+  }, [open]);
+  useEffect(() => {
+    const ask = searchRef.current;
+    if (!(ask && open)) {
+      return;
+    }
+    const controller = new AbortController();
+    setAsking(true);
+    const timer = window.setTimeout(
+      () => {
+        ask(typed, controller.signal).then(
+          (found) => {
+            if (!controller.signal.aborted) {
+              if (!typed) {
+                idleRows.current = found;
+              }
+              setRemote({ query: typed, items: found, failed: false });
+              setAsking(false);
+            }
+          },
+          () => {
+            if (!controller.signal.aborted) {
+              setRemote({ query: typed, items: [], failed: true });
+              setAsking(false);
+            }
+          }
+        );
+      },
+      typed ? 150 : 0
+    );
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [typed, open]);
+  const remoteSections = useMemo<Section[]>(() => {
+    const heading = typed ? foundHeading : idleHeading;
+    // While a newer question is out, the last answer stays on screen instead of flashing empty.
+    const answered = remote?.items ?? [];
+    return [
+      {
+        key: "remote",
+        label: answered.length > 0 ? heading : undefined,
+        rows: answered.map<Row>((item) => ({
+          item,
+          path: [],
+          key: item.id,
+          matches: [],
+          score: 0,
+        })),
+      },
+    ];
+  }, [remote, typed, idleHeading, foundHeading]);
   const sections = useMemo(
-    () => buildSections(page, items, query, recent),
-    [page, items, query, recent]
+    () =>
+      useRemote ? remoteSections : buildSections(page, items, query, recent),
+    [useRemote, remoteSections, page, items, query, recent]
   );
   const rows = useMemo(() => sections.flatMap((s) => s.rows), [sections]);
   const highlighted = Math.min(activeIndex, rows.length - 1);
@@ -951,7 +1038,7 @@ function ActionSearchBar({
           {stack.map((p, i) => (
             <button
               aria-label={`Back from ${p.label}`}
-              className="inline-flex h-6 shrink-0 items-center rounded-md bg-zinc-100 px-2 font-medium text-xs text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+              className="inline-flex h-6 shrink-0 items-center rounded-md bg-zinc-100 px-2 font-medium text-[0.8125rem] text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
               key={p.id}
               onClick={() => {
                 if (i === stack.length - 1 && !running) {
@@ -1027,7 +1114,7 @@ function ActionSearchBar({
                     >
                       {section.label && (
                         <div
-                          className="px-2 pt-2 pb-1 font-medium text-[11px] text-zinc-500 dark:text-zinc-400"
+                          className="px-2 pt-2 pb-1 font-medium text-[0.8125rem] text-ink-2"
                           id={`${uid}-${section.key}`}
                           role="presentation"
                         >
@@ -1084,7 +1171,12 @@ function ActionSearchBar({
                                 <span className="sr-only">, opens a page</span>
                               )}
                             </span>
-                            <span className="flex shrink-0 items-center">
+                            <span className="flex shrink-0 items-center gap-2">
+                              {row.item.hint && (
+                                <span className="max-w-[10rem] truncate text-[0.8125rem] text-ink-2">
+                                  {row.item.hint}
+                                </span>
+                              )}
                               <RowEnd item={row.item} status={status} />
                             </span>
                           </div>
@@ -1093,14 +1185,28 @@ function ActionSearchBar({
                     </div>
                   ))}
                 </div>
-                {rows.length === 0 && (
+                {useRemote && rows.length === 0 && (
+                  <p
+                    className="px-3 pt-1 pb-6 text-center text-sm text-zinc-500 dark:text-zinc-400"
+                    role="status"
+                  >
+                    {asking || !remote
+                      ? "Looking…"
+                      : remote.failed
+                        ? "The archive did not answer. Try again."
+                        : typed
+                          ? `No startup or other name matches “${typed}”`
+                          : "Nothing to suggest yet"}
+                  </p>
+                )}
+                {!useRemote && rows.length === 0 && (
                   <p className="px-3 pt-1 pb-6 text-center text-sm text-zinc-500 dark:text-zinc-400">
                     No results for “{query.trim()}”
                   </p>
                 )}
               </div>
             </div>
-            <div className="flex items-center justify-between gap-3 border-zinc-100 border-t px-3 py-2 text-[11px] text-zinc-500 dark:border-zinc-800/80 dark:text-zinc-400">
+            <div className="flex items-center justify-between gap-3 border-zinc-100 border-t px-3 py-2 text-[0.8125rem] text-ink-2 dark:border-zinc-800/80">
               <span className="flex items-center gap-1.5">
                 <span className="@xs/palette:flex hidden items-center gap-1.5">
                   <Kbd>↑</Kbd>

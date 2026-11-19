@@ -4,7 +4,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import * as sqliteVec from 'sqlite-vec'
 
-import { derivedSets, namesMatch, parseVentures, parseWebsite } from './archive-sets'
+import { derivedSets, namesMatch, parseVentures, parseWebsite, unconfirmedKeys } from './archive-sets'
 
 function database() {
   const db = new Database(':memory:', { strict: true })
@@ -53,5 +53,16 @@ describe('derived sets', () => {
     expect(s.site.get('a')).toBe('moved')
     expect(s.founders.has('d')).toBe(false)
     expect(s.founders.has('a') || s.founders.has('b')).toBe(true)
+  })
+})
+
+describe('unconfirmedKeys', () => {
+  test('a repeated name is unconfirmed until the owner answers, and not when it is two people', () => {
+    const db = database()
+    db.run("UPDATE founders SET name = 'p', person_key = 'p' WHERE startup_id IN ('a', 'b')")
+    db.run("UPDATE founders SET name = 'q', person_key = 'q' WHERE startup_id IN ('c', 'd')")
+    expect([...unconfirmedKeys(db)].sort()).toEqual(['p', 'q'])
+    reading(db, 'person:q', 'person', 'q', { same: false, startups: ['c', 'd'] }, 'person.name-only', 'inferred')
+    expect([...unconfirmedKeys(db)]).toEqual(['p'])
   })
 })

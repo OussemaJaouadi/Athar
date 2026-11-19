@@ -252,6 +252,17 @@ export const getStartup = createServerFn()
 
 export type WallTile = { id: string; name: string; sector: string | null; year: number | null; described: boolean }
 
+// The wall on Home: one tile per startup, in sector order. Loaded by the Home page only, never by the layout.
+export const getWall = createServerFn().handler(async () => {
+  return getDatabase()
+    .query<{ id: string; name: string; sector: string | null; year: number | null; described: number }, []>(
+      `SELECT id, COALESCE(display_name, name) AS name, sector, CAST(substr(labelled, 1, 4) AS INTEGER) AS year, description IS NOT NULL AS described
+       FROM startups ORDER BY sector, year, name`,
+    )
+    .all()
+    .map((t): WallTile => ({ ...t, described: t.described === 1 }))
+})
+
 export type LandscapeRow = {
   id: string
   name: string
